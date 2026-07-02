@@ -289,6 +289,13 @@ mechanism.**
   V8 (BSD) as a swap-in when perf demands. TS → JS transpile handled by the CLI toolchain.
 - **Bindings are generated from `engine_api.json`** — one source of truth produces the C++ glue,
   `engine.d.ts`, and docs. Agents get full type checking against the real API.
+- **The binding layer is batch-first (hard requirement)**: the classic embedded-scripting cost is
+  boundary chatter, not script execution. ECS component data lives in C++ tables; TS query
+  iteration receives **batched, typed views** (typed-array-backed), never per-field crossings in
+  loops; math types are pooled/reusable to kill per-frame GC churn. The per-frame script budget
+  instrumentation reports boundary-crossing counts alongside time, so a chatty pattern is visible
+  the moment an agent writes it. Hot loops that outgrow TS get engine-side native primitives
+  (systems pass types, math/procgen stdlib) — the script tier itself stays TS.
 - Agent-facing code shapes (all TS): **state scripts** (per-state brains with lifecycle hooks),
   **script-components** (data + hooks, implementing EventListener), and **systems** (ordered
   global logic over ECS queries). Event wiring is preferably data in entity files; code drops to
