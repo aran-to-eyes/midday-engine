@@ -1,0 +1,21 @@
+# Midday Engine — static analysis gate (pinned clang-tidy via scripts/verify.sh).
+# Philosophy: high-signal checks as hard errors; noisy style checks stay off — formatting
+# is clang-format's job, naming is the reviewer's job.
+Checks: >
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-special-member-functions,
+  misc-definitions-in-headers,
+  misc-unused-using-decls,
+  readability-container-size-empty,
+  readability-redundant-smartptr-get,
+  readability-static-definition-in-anonymous-namespace,
+  -bugprone-easily-swappable-parameters,
+  -modernize-use-trailing-return-type,
+  -modernize-avoid-c-arrays,
+  -performance-avoid-endl
+WarningsAsErrors: '*'
+HeaderFilterRegex: '^(?!.*(third_party|build)/).*$'
+FormatStyle: file

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://midday-engine.org/formats/cli_envelope.schema.json",
+  "title": "Midday CLI JSON envelope",
+  "description": "Every `midday <verb> --json` invocation emits exactly one JSON object on stdout conforming to this schema. Verb-specific payload fields live at the top level next to the envelope fields (exit tests address them as `.name`, `.ticks`, `.first_divergent_tick`, ...). Exit codes: 0 ok, 1 failed assertion/build/runtime, 2 usage, 3 validation.",
+  "type": "object",
+  "required": ["ok", "verb", "exit_code"],
+  "properties": {
+    "ok": {
+      "type": "boolean",
+      "description": "True iff the verb succeeded; always equals (exit_code == 0)."
+    },
+    "verb": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The verb that produced this envelope. For usage errors before verb resolution this is the empty-verb sentinel \"-\"."
+    },
+    "exit_code": {
+      "type": "integer",
+      "enum": [0, 1, 2, 3],
+      "description": "Process exit code: 0 ok, 1 failure, 2 usage, 3 validation."
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable machine-readable error identifier, dotted lowercase (e.g. \"usage.unknown_verb\", \"selftest.failed\")."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable one-line summary."
+        },
+        "details": {
+          "type": "object",
+          "description": "Structured, error-code-specific diagnostics."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": true } }, "required": ["ok"] },
+      "then": { "properties": { "exit_code": { "const": 0 } }, "not": { "required": ["error"] } }
+    },
+    {
+      "if": { "properties": { "ok": { "const": false } }, "required": ["ok"] },
+      "then": { "required": ["error"], "properties": { "exit_code": { "enum": [1, 2, 3] } } }
+    }
+  ]
+}

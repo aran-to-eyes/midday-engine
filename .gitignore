@@ -3,3 +3,12 @@ godot/
 
 # Agent/session artifacts
 .claude/
+
+# Build output (all CMake presets configure into build/<preset>)
+build/
+
+# Local tooling & agent contract files (no agent traces in git)
+.venv-tools/
+node_modules/
+AGENTS.md
+CLAUDE.md

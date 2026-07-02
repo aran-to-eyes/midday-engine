@@ -1,0 +1,5 @@
+{
+  "schema": "midday.licenses.manifest/1",
+  "description": "NEGATIVE FIXTURE for scripts/test_license_scan.py: third_party/orphan_dep is vendored but deliberately absent from this manifest. license_scan.py must fail on this tree.",
+  "dependencies": []
+}

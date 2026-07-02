@@ -1,0 +1,104 @@
+# Midday Engine CI — M0 lanes that exist today (MILESTONE_0.md "M0 CI lanes"):
+#   build-linux (+ sanitizer job), build-macos, build-windows.
+# golden-software / determinism / drift / boundaries lanes arrive with their
+# owning nodes — they are deliberately NOT stubbed as passing no-ops.
+#
+# Declared host tools (Aurora D-22): cmake, ninja, python3, git, jq, zstd,
+# platform SDK tools. GitHub-hosted runners ship cmake/python3/git/jq/zstd;
+# each job installs ninja explicitly.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Mirrors the local gate EXACTLY (scripts/verify.sh, pinned lint toolchain).
+  # If this job and a developer's local verify.sh ever disagree, that is a bug.
+  verify-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: verify (full local gate)
+        run: ./scripts/verify.sh
+
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure
+        run: cmake --preset ci
+      - name: Build
+        run: ninja -C build/ci
+      - name: Envelope smoke (version --json, schema-validated)
+        run: |
+          build/ci/midday version --json | jq -e '.name=="midday"'
+          build/ci/midday version --json | scripts/validate_envelope.py
+      - name: Selftest
+        run: build/ci/midday selftest
+      - name: License scan (incl. negative fixture)
+        run: scripts/test_license_scan.py
+      - name: FP flag scan
+        run: scripts/check_fp_flags.py build/ci/compile_commands.json
+
+  sanitizer-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure (ASan + UBSan)
+        run: cmake --preset sanitizer
+      - name: Build
+        run: ninja -C build/sanitizer
+      - name: Selftest under sanitizers
+        run: build/sanitizer/midday selftest
+        env:
+          ASAN_OPTIONS: strict_string_checks=1:detect_stack_use_after_return=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+
+  build-macos:
+    # Hosted macOS arm64 — never the managed-firewall dev Mac (Zenith D027).
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ninja
+        run: brew install ninja
+      - name: Configure
+        run: cmake --preset ci
+      - name: Build
+        run: ninja -C build/ci
+      - name: Envelope smoke (version --json, schema-validated)
+        run: |
+          build/ci/midday version --json | jq -e '.name=="midday"'
+          build/ci/midday version --json | scripts/validate_envelope.py
+      - name: Selftest
+        run: build/ci/midday selftest
+
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enter MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Install ninja
+        run: choco install ninja -y
+      - name: Configure
+        run: cmake --preset ci
+      - name: Build
+        run: ninja -C build/ci
+      - name: Envelope smoke (version --json, schema-validated)
+        shell: bash
+        run: |
+          build/ci/midday.exe version --json | jq -e '.name=="midday"'
+          build/ci/midday.exe version --json | python3 scripts/validate_envelope.py
+      - name: Selftest
+        run: build/ci/midday.exe selftest

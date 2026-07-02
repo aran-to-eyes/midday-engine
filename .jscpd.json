@@ -1,0 +1,17 @@
+{
+  "pattern": "**/*.{cpp,h,ts,py}",
+  "ignore": [
+    "**/third_party/**",
+    "**/build/**",
+    "**/godot/**",
+    "**/.claude/**",
+    "**/node_modules/**",
+    "**/.venv-tools/**"
+  ],
+  "minLines": 8,
+  "minTokens": 60,
+  "threshold": 1,
+  "reporters": ["consoleFull"],
+  "gitignore": true,
+  "absolute": true
+}

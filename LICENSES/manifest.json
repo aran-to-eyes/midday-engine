@@ -1,0 +1,15 @@
+{
+  "schema": "midday.licenses.manifest/1",
+  "description": "Machine-readable pin of every vendored dependency under third_party/. scripts/license_scan.py enforces 1:1 correspondence in CI (spec section 15, constraint 1). Allowed licenses: MIT/BSD/Apache/zlib preferred; LGPL only if dynamically linked; no proprietary SDKs.",
+  "dependencies": [
+    {
+      "name": "doctest",
+      "version": "2.4.12",
+      "commit": "1da23a3e8119ec5cce4f9388e91b065e20bf06f5",
+      "license": "MIT",
+      "role": "in-binary test framework (midday selftest)",
+      "path": "third_party/doctest",
+      "source": "https://github.com/doctest/doctest"
+    }
+  ]
+}

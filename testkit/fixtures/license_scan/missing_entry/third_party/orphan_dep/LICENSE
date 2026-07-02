@@ -1,0 +1,7 @@
+MIT License
+
+Copyright (c) 2026 Fixture Author
+
+This directory is a NEGATIVE-TEST fixture: a vendored dependency with no
+entry in LICENSES/manifest.json. scripts/license_scan.py must report it as
+"unpinned_third_party_dir" and exit 1.
