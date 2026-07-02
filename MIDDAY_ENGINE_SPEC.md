@@ -72,6 +72,9 @@ Godot 4.8 baseline this spec inherits from and deviates from deliberately).
 | Procgen | Deterministic seeded stdlib: noise, Poisson/scatter, WFC, dungeon/BSP/maze, spline placement, weighted tables |
 | Cameras | Cinemachine-class direction system: virtual-camera components, rigs, priority blending, event-driven cuts, shake |
 | Director sequences | Scene-owned sequences choreographing many entities + camera + audio (Timeline-class cutscenes) |
+| VFX authoring | Two tiers: ParticleEmitter component (parameter modules) + VFX graph as validated YAML data |
+| VFX sim | Cosmetic-only, GPU, seeded from journaled RNG — particles are pixels, not physics; gameplay uses real entities |
+| VFX primitives | Trail renderer + per-particle trails + sub-emitters + beam/lightning; forces/fields, depth+SDF collision, mesh emission |
 | Save/load | Curated snapshots via `@field({save: true})`, slots, versioned migrations |
 | Quality/loading | Named per-platform quality tiers selecting pipeline variants; async + additive scene loading |
 | Editor | Midday Editor: infinite-canvas workspace, subcanvases instead of windows; built with the engine itself |
@@ -255,7 +258,7 @@ mechanism.**
   owns order):**
   - **Core PBR**: forward+ clustered; directional/point/spot lights; cascaded shadow maps;
     HDR + ACES; bloom; MSAA; IBL environment + procedural sky; glTF 2.0 PBR materials; mesh LOD;
-    frustum culling; 3D text; particles (GPU).
+    frustum culling; 3D text; VFX rendering (particles/trails/beams — system specced in §13).
   - **Screen-space & fidelity**: SSAO, SSR, SSIL; DoF, auto-exposure; decals; TAA + SMAA;
     volumetric fog; occlusion culling; VRS.
   - **GI & scale**: realtime GI (SDFGI-class) + baked GI (lightmapper + probes) + voxel GI;
@@ -533,6 +536,26 @@ unwrapping is also on the table.
   scatters along, and sequences animate position-on-spline — one primitive, four consumers.
 - **Runtime rigging/IK**: constraint components on skeletons — look-at, two-bone limb IK,
   FABRIK chains, foot placement — as data + hooks, alongside blend trees and state machines.
+- **VFX system (particles, trails, beams)** — two authoring tiers mirroring the shader stance:
+  a **ParticleEmitter component** with parameter modules (emission shapes/rate/bursts, lifetime,
+  velocity, size/color-over-life curves, texture sheets) as the common path, and a **VFX graph
+  as data** (typed node graph in validated YAML, compiled to compute) for exotic effects.
+  Module set: forces & fields (gravity/drag, attractors/repulsors, vortex, curl-noise turbulence,
+  spline-following flow via the Spline primitive) · **depth-buffer + SDF collision** (cosmetic
+  GPU collision, no physics coupling) · **mesh-surface/volume emission** (including
+  modeling-module outputs) · **sub-emitters** (spawn on birth/death/collision). Primitives:
+  **trail renderer** (ribbon from any moving transform — sword sweeps via anchors, projectile
+  streaks; width/color-over-trail curves) · **per-particle trails** · **beam/lightning renderer**
+  (point-to-point, noise displacement, branching).
+- **VFX determinism stance (hard rule): particles are pixels, not physics.** VFX never affect
+  gameplay — anything that deals damage or triggers logic is a real entity (the Warden hurtbox
+  pattern). Particles simulate GPU-side, outside the sim tick and replay contract, but every
+  emitter seeds from the journaled RNG stream: replays look identical, golden frames stay stable
+  on the pinned CI GPU class.
+- **VFX integration (falls out of the locked architecture)**: emitters are components, so
+  **state-scoped VFX is free** — a muzzle flash on the Attack state activates and deactivates
+  with the state; sequence trigger/span tracks drive bursts and emission windows; the reaction
+  palette plays VFX off bus events; model anchors serve as emission points.
 - **Procgen stdlib** (deterministic, seeded from engine RNG streams — replay always holds): noise
   fields (FastNoiseLite — MIT), sampling & scatter (Poisson disk, jittered grids), Wave Function
   Collapse, graph/dungeon/BSP/maze generators, spline-driven placement, weighted tables. Runs at
@@ -626,7 +649,7 @@ complete, fully-functional tool with **no AI configured at all**.
 
 **Also on the table (validated against the Unity 6 research pass; the planning protocol owns
 ordering alongside everything else):** terrain system (sculpt-as-data + procgen-driven) ·
-2D/sprite toolchain (tilemaps, sprite animation) · VFX-graph-as-data · video playback ·
+2D/sprite toolchain (tilemaps, sprite animation) · per-particle lights (fire that lights the room, N-brightest capped — fits clustered forward+) · video playback ·
 GPU-driven rendering (resident-drawer-style batching, GPU occlusion culling) · APV-class GI
 upgrades (probe streaming for open worlds, lighting-scenario blending, runtime sky occlusion) ·
 hardware ray tracing · world streaming beyond additive loading · WASM/WebGPU export · versioned
