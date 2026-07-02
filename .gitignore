@@ -1,0 +1,5 @@
+# Godot reference clone (437 MB, analysis distilled into GODOT_REFERENCE_SPEC.md)
+godot/
+
+# Agent/session artifacts
+.claude/
