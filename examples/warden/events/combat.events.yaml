@@ -1,0 +1,12 @@
+# Event definitions — typed payloads, schema-visible to validate-before-write.
+# [SPEC-GAP #1: the spec never fixed a file convention for event definitions —
+#  inventing `*.events.yaml` here]
+events:
+  player.spotted: {payload: {player: Entity, distance: float}}
+  player.lost:    {payload: {player: Entity}}
+  player.inRange: {payload: {player: Entity, distance: float}}
+  attack.swoosh:  {payload: {}}
+  damage.dealt:   {payload: {amount: float, by: Entity, point: Vec3}}
+  death.dealt:    {payload: {by: Entity}}
+  stagger.hit:    {payload: {force: float}}
+  boss.died:      {payload: {boss: Entity, at: Vec3}}

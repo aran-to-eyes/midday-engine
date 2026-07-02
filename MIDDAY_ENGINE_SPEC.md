@@ -185,6 +185,26 @@ mechanism.**
   chain) and every transition records (tick, entity, region, from→to, cause, voided candidates) —
   this journal IS the replay/explain pillar's causality timeline.
 
+**Authoring conventions (fixed by the Warden stress-test, `examples/warden/`):**
+- **Event definitions** live in `*.events.yaml` files (project-wide namespace, validated like all
+  formats).
+- **Key vocabulary at author time**: `key: self` (own entity) · `root` (owning entity of a
+  state-subtree child) · `global` · `<group-name>` (named shared channel) — symbolic, resolved at
+  spawn. Any holder of an EntityRef may trigger at that entity's key.
+- **`on:` on a state is sugar** for a `Transition` component pair list; canonical serialization
+  emits the component form.
+- **Built-in engine events are enumerated in `engine_api.json`** like everything else:
+  `trigger.entered/exited`, `contact.began/ended`, `<state>.finished`, spawn/despawn lifecycle.
+  Nothing implicit.
+- **Component emit sugar**: `this.emit(name, payload)` ≡ `events.trigger(name, payload,
+  {key: this.entity})`; `entity.root()` returns the owning entity from any state-subtree child
+  (for e.g. hurtbox damage attribution).
+- **One expression language** — deterministic, typed, side-effect-free — shared by transition
+  `if:` filters, `when:` watchers, and model `params` expressions; its function inventory is part
+  of `engine_api.json`. No per-context mini-DSLs.
+- **Override path grammar**: `<machine-name>/<Region>/<State>/<ChildEntity>/<Component>` —
+  machines addressed by name, never index; all asset/script paths are project-root-relative.
+
 ### 4.3 Runtime services (from the validated reference architecture)
 
 - **Server + handle pattern**: rendering/physics/audio/navigation behind server interfaces with

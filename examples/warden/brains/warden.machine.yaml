@@ -1,0 +1,57 @@
+# Machine prefab — a subtree asset; entities instance it and override per-instance.
+# `on:` is sugar for a Transition component pair list. [SPEC-GAP #5: sugar↔component
+#  equivalence was implied, never stated]
+machine: warden
+
+regions:
+  locomotion:
+    initial: Idle
+    states:
+      Idle:
+        on:
+          - {event: player.spotted, key: self, goto: Chase}
+      Chase:
+        script: states/chase.ts
+        components:
+          - NavFollow: {speed: 4.5, repathEvery: 0.25}
+        on:
+          - {event: player.lost, key: self, goto: Idle}
+
+  combat:
+    initial: Passive
+    anystate:
+      - {event: death.dealt, key: self, goto: Dead, priority: 100}
+    states:
+      Passive:
+        on:
+          - {event: player.inRange, key: self, goto: SlashAttack}
+
+      SlashAttack:
+        script: states/slash_attack.ts
+        sequence:
+          duration: 1.2          # resolves to 72 ticks @60Hz, tick-locked
+          end: hold              # `then: Passive` would be sugar for the finished-pair below
+          tracks:
+            - trigger: [{t: 0.30, event: attack.swoosh, key: self}]
+            - span: {state: HitboxLive, from: 0.40, to: 0.80}
+        on:
+          - {event: self.finished, goto: Passive}
+          - {event: stagger.hit, key: self, goto: Staggered, priority: 10}
+        states:
+          HitboxLive:            # span target — a child state; its subtree is live only inside the span
+            children:
+              - entity: Hurtbox
+                at: [0, 1.0, 1.2]
+                components:
+                  - Collider: {shape: box, size: [0.6, 0.6, 1.4], trigger: true, layer: enemy_attack}
+                  - DamageOnTouch: {amount: 40, stagger: 8}
+
+      Staggered:
+        script: states/staggered.ts
+        components:
+          - StaggerTimer: {duration: 0.9}
+        on:
+          - {event: self.recovered, goto: Passive}
+
+      Dead:
+        script: states/dead.ts

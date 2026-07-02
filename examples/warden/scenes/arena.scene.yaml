@@ -1,0 +1,34 @@
+# Scene — entities incl. prefab instances, spline, virtual camera.
+scene: arena
+entities:
+  - entity: Ground
+    components:
+      - Transform: {}
+      - Collider: {shape: box, size: [40, 1, 40], at: [0, -0.5, 0], layer: world}
+      - MeshRenderer: {model: {uid: "m:grnd01", path: examples/warden/models/arena_floor.model.yaml}}
+
+  - entity: PatrolPath
+    components:
+      - Spline: {type: catmull-rom, closed: true, points: [[8,0,8], [-8,0,8], [-8,0,-8], [8,0,-8]]}
+
+  - entity: Warden
+    prefab: {uid: "m:wrdp01", path: examples/warden/prefabs/warden.entity.yaml}
+    at: [6, 0, 0]
+    override:
+      # per-instance tweak through the same property-diff mechanism;
+      # machines are addressed by NAME (warden), never by index
+      warden/combat/SlashAttack/sequence: {duration: 1.0}
+
+  - entity: Player
+    prefab: {uid: "m:plyr01", path: examples/warden/prefabs/player.entity.yaml}
+    at: [-10, 0, 0]
+
+  - entity: MainCam
+    components:
+      - Transform: {}
+      - VirtualCamera:
+          rig: follow
+          target: Player
+          damping: [0.4, 0.3, 0.4]
+          offset: [0, 3.2, -6]
+          priority: 10
