@@ -15,7 +15,7 @@ Godot 4.8 baseline this spec inherits from and deviates from deliberately).
 - **Thesis**: an engine designed from scratch for AI agents as developers — text-native formats,
   fully headless operation, deterministic replay, machine-readable everything, and built-in
   perception channels so agents can see and verify their own work.
-- **V1 outcome**: the engine plus **one complete showcase game built by an agent through the
+- **Outcome**: the engine plus **one complete showcase game built by an agent through the
   engine's intended workflow**.
 - **Success bar ("nailed it")**: a one-paragraph game idea goes in; an agent using only the
   engine's tools and docs delivers a playable, reasonably fun 3D game; **zero human-written code**.
@@ -24,16 +24,16 @@ Godot 4.8 baseline this spec inherits from and deviates from deliberately).
 
 | Decision | Choice |
 |---|---|
-| AI-first meaning | AI as the developer (runtime AI explicitly out of v1) |
+| AI-first meaning | AI as the developer (runtime AI parked — §16 non-goals) |
 | Relationship to Godot | Greenfield build; Godot spec is the blueprint, not the base |
 | Game scope | Full 3D capabilities |
 | Core stack | C++ + Vulkan (MoltenVK on macOS; RHI abstraction like Godot's RenderingDevice) |
 | Script tier | Embedded TypeScript (QuickJS first, V8 as later swap) — game logic never recompiles the core |
 | Physics | Jolt Physics (MIT) — deterministic mode for replay, threaded mode for play |
-| Rendering bar | **Full Godot-4 3D parity = v1 definition of done**, phased M1→M3 (showcase gates on M1) |
+| Rendering bar | **Full Godot-4 / URP-class 3D parity** — the whole capability set is on the table; the planning protocol owns ordering |
 | Modeling module | Parametric op-lists (CSG + B-rep features) as source of truth; meshes are compiled output |
 | Modeling perception | Coordinate-gridded ortho views + arbitrary cross-section slices + turntable renders (visual-primary); structured geometry queries live in the testing pillar |
-| AI pillars in v1 | All five: game-testing layer, golden-frame verification, schema + validate-before-write, query/explain over recorded runs, modeling module |
+| AI pillars | All five in scope: game-testing layer, golden-frame verification, schema + validate-before-write, query/explain over recorded runs, modeling module |
 | Licensing | Everything open source — engine and all dependencies (no proprietary SDKs, ever) |
 | Entity model | Pure data-oriented ECS storage; **every entity is a statechart by default** — base components (always live) + states owning component sets (§4.1) |
 | State memory | Components persist for entity lifetime (toggle active/inactive with their state); resets are explicit in lifecycle hooks |
@@ -56,25 +56,25 @@ Godot 4.8 baseline this spec inherits from and deviates from deliberately).
 | Asset hot-reload | Yes in dev runs (journaled swap tick); never in replay mode |
 | Journal format | `run.mrj` bundle: JSONL causality stream (+zstd) + binary snapshot sidecars + hash-pinned header + tick index |
 | Record tiers | FLIGHT (always, shipped = rolling window) → SNAPSHOT (dev default, 300-tick cadence) → TRACE (opt-in deltas) |
-| Replay queries | All v1: event/transition streams, state timelines, at-tick inspection, causality explain, property curves, run-diff |
-| CSG kernel | OpenCASCADE (OCCT, LGPL dynamic) — full B-rep in v1: fillets/chamfers, exact surfaces, STEP interop |
+| Replay queries | All in scope: event/transition streams, state timelines, at-tick inspection, causality explain, property curves, run-diff |
+| CSG kernel | OpenCASCADE (OCCT, LGPL dynamic) — full B-rep: fillets/chamfers, exact surfaces, STEP interop |
 | Model op set | Primitives · booleans · sketches + extrude/revolve/sweep/loft · fillets/chamfers · patterns · hull/offset/shell · anchors (exported sockets) |
 | Geo addressing | Op ids + semantic selectors (faces/edges by predicate); no bare indices; failed selectors error with candidates |
 | Model params | `params` block + expressions over params and prior-op measurements; TS builder emits canonical YAML |
 | View annotations | All default-on: grid/axes/dims, per-op labels + leaders, anchor markers + key dims, slice contour coordinate tables |
-| Platforms | Five (macOS/Win/Linux/Android/iOS) architected from day one; desktop @ M1, Android @ M2, iOS gates v1-done |
-| GPU backends | RHI hard boundary; Vulkan v1 (MoltenVK on macOS) → native Metal M2 → D3D12 optional; SPIR-V once, translated per backend |
-| Shaders | V1: uber-material + raw GLSL→SPIR-V; M2: shader graphs as validated YAML data; no custom DSL ever |
+| Platforms | Five (macOS/Win/Linux/Android/iOS), architected for from the first commit — all on the table |
+| GPU backends | RHI hard boundary; Vulkan + native Metal (D3D12 optional); SPIR-V once, translated per backend |
+| Shaders | Uber-material + raw GLSL→SPIR-V AND shader graphs as validated YAML data; no custom DSL ever |
 | SRP | Pipeline-as-data (render-graph YAML, dumpable) + TS custom passes; C++ only for new pass types |
 | Math stdlib | Full library (vectors/matrices/quats, splines, easing, intersections, seeded RNG streams, noise, distributions) identical in C++ and TS |
 | UI system | HTML/CSS via RmlUi (MIT), rendered through our pipeline; .rml/.css validated; data bindings; in-world screens |
-| Viewport vision | All four channels v1: screenshots + flycam, entity-ID pick buffer/segmentation, debug-draw overlays, G-buffer taps |
+| Viewport vision | All four channels in scope: screenshots + flycam, entity-ID pick buffer/segmentation, debug-draw overlays, G-buffer taps |
 | Procgen | Deterministic seeded stdlib: noise, Poisson/scatter, WFC, dungeon/BSP/maze, spline placement, weighted tables |
 | Cameras | Cinemachine-class direction system: virtual-camera components, rigs, priority blending, event-driven cuts, shake |
 | Director sequences | Scene-owned sequences choreographing many entities + camera + audio (Timeline-class cutscenes) |
 | Save/load | Curated snapshots via `@field({save: true})`, slots, versioned migrations |
 | Quality/loading | Named per-platform quality tiers selecting pipeline variants; async + additive scene loading |
-| Editor | Midday Editor: infinite-canvas workspace, subcanvases instead of windows; built with the engine itself; starts M2, gates v1-done |
+| Editor | Midday Editor: infinite-canvas workspace, subcanvases instead of windows; built with the engine itself |
 | Editor truth | Live document model (transactions, undo/redo) with text persistence — canonical YAML on disk, external edits hot-merge |
 | Midday agent | Engine mascot + embodied agent; one `editor_api.json` tool surface shared by human chrome and Midday; shared undo stack/journal |
 | Midday brain | Bring-your-own endpoint (Anthropic/OpenAI-compatible/local); harness is OSS; editor fully functional with no AI |
@@ -215,9 +215,8 @@ mechanism.**
 - **Reflection as data**: every class/method/property/signal registered in a ClassDB-equivalent;
   `engine_api.json` (with docs inlined) is a **shipped, versioned artifact** — it generates the TS
   type definitions, the schema manifest, and the agent-facing docs. Per-method compat hashes.
-  **Build-order mandate**: the reflection/registration system and the codegen chain
-  (api.json emitter → `.d.ts` generator → schema manifest) are the FIRST infrastructure work
-  item, proven on a single component before any subsystem lands — no subsystem ever gets
+  **Dependency fact for planning**: every subsystem's bindings derive from the reflection/
+  codegen chain (api.json emitter → `.d.ts` generator → schema manifest) — no subsystem ever gets
   hand-written bindings that must later be thrown away (Godot's GDCLASS blob is the cautionary
   tale).
 - **Module init levels** CORE → SERVERS → SCENE (→ TOOLS), torn down in reverse.
@@ -228,8 +227,8 @@ mechanism.**
 
 ### Determinism contract (non-negotiable, pillar-supporting)
 - Same build + same input log + same seed ⇒ **bit-identical simulation**, guaranteed, tested in CI.
-- **Validated by a determinism spike before any subsystem work**: the first runnable slice of the
-  engine is run repeatedly on two different machines and its sim journals byte-compared —
+- **Validated by a dedicated determinism spike**: a runnable slice of the engine is run
+  repeatedly on two different machines and its sim journals byte-compared —
   Jolt config, QuickJS behavior (GC/iteration order in agent-style TS), and FP flags are proven,
   not assumed. The spike's dual-run byte-compare becomes a permanent CI lane.
 - Replay mode: single-threaded or deterministically-reduced parallelism; Jolt deterministic mode;
@@ -241,8 +240,8 @@ mechanism.**
 
 - **RHI is the hard multi-backend boundary** (RenderingDevice-style, render-graph with automatic
   barriers on top): all engine and shader code targets the RHI, never a GPU API directly.
-  Backends by milestone: **Vulkan at v1** (Windows/Linux/Android native; macOS via MoltenVK —
-  production-proven) → **native Metal at M2** (macOS + the iOS path) → D3D12 optional later.
+  Backends: **Vulkan** (Windows/Linux/Android native; macOS via MoltenVK — production-proven)
+  and **native Metal** (macOS + the iOS path); D3D12 optional.
   Shaders compile once to SPIR-V; per-backend translation (MSL via SPIRV-Cross).
 - **The render pipeline is data (the SRP)**: the frame is a declared render-graph document —
   passes, targets, resources, ordering — inspectable, diffable, validated like every other
@@ -252,22 +251,23 @@ mechanism.**
 - **Headless GPU rendering is a launch requirement, not a mode**: every render path works without
   a window or display server — offscreen swapchain, `render → PNG/EXR bytes` as a synchronous API.
   This single decision fixes Godot's worst agent gap (headless = zero pixels).
-- **Milestones (v1 done = M3 = Godot-4 3D parity per reference spec §3):**
-  - **M1 — Lean modern PBR** (showcase game gates on this): forward+ clustered; directional/point/
-    spot lights; cascaded shadow maps; HDR + ACES; bloom; MSAA; IBL environment + procedural sky;
-    glTF 2.0 PBR materials; mesh LOD; frustum culling; 3D text; particles (GPU).
-  - **M2 — Screen-space & fidelity**: SSAO, SSR, SSIL; DoF, auto-exposure; decals; TAA + SMAA;
+- **Rendering capability surface (thematic groups, NOT an ordering — the planning protocol
+  owns order):**
+  - **Core PBR**: forward+ clustered; directional/point/spot lights; cascaded shadow maps;
+    HDR + ACES; bloom; MSAA; IBL environment + procedural sky; glTF 2.0 PBR materials; mesh LOD;
+    frustum culling; 3D text; particles (GPU).
+  - **Screen-space & fidelity**: SSAO, SSR, SSIL; DoF, auto-exposure; decals; TAA + SMAA;
     volumetric fog; occlusion culling; VRS.
-  - **M3 — GI & scale (parity)**: realtime GI (SDFGI-class) + baked GI (lightmapper + probes) +
-    voxel GI; FSR-class upscaling (OSS algorithms only); soft-body/vehicle render support;
-    the long tail of reference spec §3. **The parity bar, precisely: Godot-4 / Unity-URP-class**
-    — exactly where the industry is consolidating (Unity retiring Built-in RP, HDRP in
-    maintenance). Hardware ray tracing and HDRP-class extras stay post-parity roadmap.
+  - **GI & scale**: realtime GI (SDFGI-class) + baked GI (lightmapper + probes) + voxel GI;
+    FSR-class upscaling (OSS algorithms only); soft-body/vehicle render support; the long tail of
+    reference spec §3. **The parity bar, precisely: Godot-4 / Unity-URP-class** — exactly where
+    the industry is consolidating (Unity retiring Built-in RP, HDRP in maintenance). Hardware ray
+    tracing and HDRP-class extras are on the table beyond parity.
 - **2D**: a batched screen-space canvas layer exists as the render substrate for UI (RmlUi, §13)
-  and the editor's infinite canvas (§13a) — there is no separate 2D *game* engine in v1 (the 2D
-  toolchain is roadmap, §16).
-- **Shaders**: v1 = parameter-driven materials (PBR uber-shader, Godot StandardMaterial3D model)
-  + custom GLSL with engine includes, compiled via glslang (BSD) to SPIR-V. **M2 = shader graphs
+  and the editor's infinite canvas (§13a) — there is no separate 2D *game* engine (the 2D
+  toolchain is on the table, §16).
+- **Shaders**: parameter-driven materials (PBR uber-shader, Godot StandardMaterial3D model)
+  + custom GLSL with engine includes, compiled via glslang (BSD) to SPIR-V; plus **shader graphs
   as data**: typed node graphs in validated YAML, compiled through the same SPIR-V pipeline,
   previewable via `midday shader view` (graph render + material ball). No custom shading DSL ever
   (Godot's 406k-line parser is the cautionary tale).
@@ -302,13 +302,12 @@ mechanism.**
   32-bit layer/mask plus a project-level collision-matrix view that validators check (broad-phase
   culling like Unity's Layer Collision Matrix).
 - **Ragdolls are a recipe, not a runtime system** (Unity's model, confirmed): a `midday` generator
-  builds colliders/bodies/joints from a skeleton into a normal prefab; ships with the M2
-  IK/rigging wave.
+  builds colliders/bodies/joints from a skeleton into a normal prefab.
 - Physics runs on the deterministic sim tick; per-tick snapshots feed replay.
 
 ## 7. Scripting tier (embedded TypeScript)
 
-- Runtime: QuickJS (MIT) embedded in core for v1 (small, sandboxable, trivially deterministic);
+- Runtime: QuickJS (MIT) embedded in core first (small, sandboxable, trivially deterministic);
   V8 (BSD) as a swap-in when perf demands. TS → JS transpile handled by the CLI toolchain.
 - **Bindings are generated from `engine_api.json`** — one source of truth produces the C++ glue,
   `engine.d.ts`, and docs. Agents get full type checking against the real API.
@@ -408,7 +407,7 @@ linking is the norm) and off every runtime. Export packaging includes a license 
 this.
 
 **Authoring**: declarative parametric op-lists, the source of truth (`midday model build` compiles
-to mesh). V1 op set: primitives (box, sphere, cylinder, capsule, cone, torus, wedge) · booleans
+to mesh). Op set: primitives (box, sphere, cylinder, capsule, cone, torus, wedge) · booleans
 (union, cut, intersect) · 2D sketches (polyline/arc/circle profiles on any plane) with extrude,
 revolve, sweep-along-path, loft · **fillets & chamfers** (B-rep native) · patterns (linear,
 radial, mirror) · transforms, hull, offset/shell · **anchors** (named oriented mount points —
@@ -438,8 +437,8 @@ view · slice contour vertex coordinates as a margin table (exact numbers beside
 JSON — bounds, volume, center of mass, manifold checks, intersection tests, feature-to-feature
 distances, raycast probes — so tests assert on numbers without vision calls.
 
-Materials/UV: box/planar auto-UV + PBR material assignment per feature in v1; hand-tuned UV
-unwrapping is post-v1.
+Materials/UV: box/planar auto-UV + PBR material assignment per feature; hand-tuned UV
+unwrapping is also on the table.
 
 ## 11. Game-testing layer (pillar)
 
@@ -467,7 +466,7 @@ unwrapping is post-v1.
   **TRACE** (opt-in: + per-tick component deltas for re-sim-free property queries).
 - **Replay**: `midday replay run` reproduces bit-identically; `--to-tick N` seeks via nearest
   snapshot + re-sim.
-- **Query surface (all v1)**: filtered event/transition streams (by name/key/entity/tick-range);
+- **Query surface (all in scope)**: filtered event/transition streams (by name/key/entity/tick-range);
   state timelines + full at-tick entity inspection; `midday replay explain <tick> <entity|event>`
   — walk the cause-id chain backward (input → event → reaction → transition) and render the tree;
   property-over-time curves (TRACE or windowed re-sim); and **run-diff** — compare two runs to the
@@ -480,7 +479,7 @@ unwrapping is post-v1.
   machine.)
 - Profiling: per-function script timing, engine monitors, frame metadata (draw calls, culled
   counts, pass timings) — all queryable as JSON.
-- **Viewport vision (the agent's eyes — all four channels v1)**: interactive screenshots at any
+- **Viewport vision (the agent's eyes — all four channels)**: interactive screenshots at any
   camera or an agent-positioned flycam, deterministic capture mode · **entity-ID pick buffer** —
   "what entity/state is at pixel (x,y)" + full segmentation maps (entity = color + legend), so any
   screenshot becomes a labeled scene · composable **debug-draw overlays** burned into captures
@@ -489,7 +488,7 @@ unwrapping is post-v1.
   verification. All exposed via `midday shot` flags and the live bridge; the pipeline-as-data
   render graph names these targets, so channels are taps, not forks.
 
-## 13. Gameplay systems: audio, animation, UI, cameras, saves, procgen (v1 scope)
+## 13. Gameplay systems: audio, animation, UI, cameras, saves, procgen
 
 - **Audio**: bus DAG with per-bus effect chains (serializable layout); WAV/Ogg (+ QOA); positional
   3D (attenuation models, doppler); dedicated audio thread; **configurable buffer size from day
@@ -501,8 +500,8 @@ unwrapping is post-v1.
   RmlUi concern; the engine owns the data path.)
 - **Animation**: Animation-as-pure-data resource (value/transform/method/audio tracks, keyframes
   as text); player with queue/sections/capture-blend; **Tween as the primary agent-facing
-  game-feel API**; blend trees + state machines as data (M2 of animation); skeletal + root motion
-  for humanoid showcase needs; glTF animation import. **M2 animation state machines must answer
+  game-feel API**; blend trees + state machines as data; skeletal + root motion
+  for humanoid showcase needs; glTF animation import. **Animation state machines must answer
   Mecanim's transition semantics explicitly** (verified against Unity 6 docs): interruption
   scopes (none / by-source / by-destination / ordered combinations) with priority-ordered rules;
   exit-time triggers on normalized state time (<1.0 = every loop, >1.0 = one-shot after N loops);
@@ -527,14 +526,13 @@ unwrapping is post-v1.
   component via `@field({save: true})` — save slots, versioned migration hooks. Implementation is
   a filtered snapshot + manifest (the replay pillar pays for this twice over).
 - **Quality tiers**: named quality profiles in a per-platform matrix, selecting pipeline-as-data
-  variants + setting bundles. **Async & additive scene loading** with progress events; streaming
-  beyond that is roadmap.
-- **Splines are a v1 scene primitive**: a Spline component (Bézier/Catmull-Rom, control points as
+  variants + setting bundles. **Async & additive scene loading** with progress events; world
+  streaming beyond that is also on the table (§16).
+- **Splines are a scene primitive**: a Spline component (Bézier/Catmull-Rom, control points as
   YAML) that camera rail rigs ride, entities follow (patrol paths, moving platforms), procgen
   scatters along, and sequences animate position-on-spline — one primitive, four consumers.
-- **Runtime rigging/IK lands at animation M2**: constraint components on skeletons — look-at,
-  two-bone limb IK, FABRIK chains, foot placement — as data + hooks, alongside blend trees and
-  state machines. M1 ships root motion + authored clips.
+- **Runtime rigging/IK**: constraint components on skeletons — look-at, two-bone limb IK,
+  FABRIK chains, foot placement — as data + hooks, alongside blend trees and state machines.
 - **Procgen stdlib** (deterministic, seeded from engine RNG streams — replay always holds): noise
   fields (FastNoiseLite — MIT), sampling & scatter (Poisson disk, jittered grids), Wave Function
   Collapse, graph/dungeon/BSP/maze generators, spline-driven placement, weighted tables. Runs at
@@ -553,7 +551,7 @@ complete, fully-functional tool with **no AI configured at all**.
   (pan/zoom = camera), subcanvases are render-to-texture viewports (native engine targets, zero
   streaming), chrome and inspectors are RmlUi, edits flow through the same validation/bridge API.
   Building the editor IS testing the engine. Workspace layout persists as `workspace.yaml`.
-- **Subcanvas types (v1 set)**: live scene viewports (editor camera + gizmos) and running-game
+- **Subcanvas types**: live scene viewports (editor camera + gizmos) and running-game
   viewports · model sheets (ortho/slice/turntable cards, live-updating) and RmlUi previews at
   device resolutions · statechart diagrams (active states highlighted live), event-wiring graphs,
   render-pipeline graphs, scrubbabale replay/sequence timelines · **agent workspace cards** —
@@ -576,21 +574,18 @@ complete, fully-functional tool with **no AI configured at all**.
   wiring, journaling) is OSS engine code; the model is user-configured — Anthropic/OpenAI-
   compatible APIs or local models (Ollama/llama.cpp) through one interface. No key configured →
   Midday idles; the editor is a complete manual tool.
-- **Timing**: the engine and showcase stay CLI/headless through M1; the editor program starts at
-  M2 and **gates v1-done** alongside renderer parity and iOS export.
-- **M2 entry gate — hot-merge design doc**: "external edits hot-merge into the open document" is
-  a concurrent-editing problem, not a feature bullet. Before any editor code: a short design doc
-  deciding the merge policy (external diff → synthetic transactions replayed into the doc model),
-  conflict semantics (per-section file-wins vs doc-wins), and undo-stack behavior across merges.
-  No doc, no editor milestone.
+- **Editor prerequisite — hot-merge design doc**: "external edits hot-merge into the open
+  document" is a concurrent-editing problem, not a feature bullet. Before any editor code: a short
+  design doc deciding the merge policy (external diff → synthetic transactions replayed into the
+  doc model), conflict semantics (per-section file-wins vs doc-wins), and undo-stack behavior
+  across merges. No doc, no editor code.
 
 ## 14. Platforms, distribution, build
 
 - **Five platforms are the contract**: macOS, Windows, Linux, Android, iOS. Everything (RHI,
   input, filesystem, export pipeline) is architected for all five from the first commit — no
-  desktop-only assumptions. Delivery is milestone-gated: desktop ships with renderer M1; Android
-  export (native Vulkan) at M2; iOS export (Metal path) gates v1-done at M3. Headless mode on all
-  desktop platforms (CI = Linux). Post-v1: WASM/WebGPU investigation.
+  desktop-only assumptions. Headless mode on all desktop platforms (CI = Linux). WASM/WebGPU is
+  also on the table (§16).
 - `midday export --platform <p> --profile <release|debug>` → signed artifact + JSON report.
 - Build: CMake + Ninja; tiered so `core` builds are minutes-cold but agents never need one;
   `compile_commands.json` always on; sanitizer + deterministic-replay CI lanes.
@@ -600,10 +595,9 @@ complete, fully-functional tool with **no AI configured at all**.
   suite, determinism suite (replay N ticks twice, byte-compare), API-drift gate (`midday api diff`).
 - **CI strategy (pinned, so the pillars never degrade to "runs on the dev Mac")**: one **pinned
   Linux GPU runner class** is the golden-frame reference (hash-equal there; tolerance elsewhere);
-  a **determinism lane** (dual-run byte-compare of sim journals) runs on every push from the
-  first runnable slice; desktop build lanes from day one; Android/iOS lanes join at their
-  milestones (M2/M3); macOS CI optional until Metal M2. The managed-firewall dev Mac is never a
-  CI dependency.
+  a **determinism lane** (dual-run byte-compare of sim journals) runs on every push once a
+  runnable slice exists; per-platform build lanes accompany their platforms. The managed-firewall
+  dev Mac is never a CI dependency.
 
 ## 15. Constraints (hard)
 
@@ -621,37 +615,35 @@ complete, fully-functional tool with **no AI configured at all**.
 6. Dev environment reality: macOS with managed firewall (no incoming connections/LAN broadcast) —
    local sockets/pipes for the live bridge; nothing requires listening on external interfaces.
 
-## 16. Non-goals (v1) & post-v1 roadmap
+## 16. Non-goals & the wider table
 
-**Non-goals (v1):**
-- Runtime AI features (LLM NPCs, generated content at runtime) — the parked second pillar.
+**Non-goals:**
+- Runtime AI features (LLM NPCs, generated content at runtime) — the parked second pillar (a deliberate product decision, revisitable).
 - Multiplayer/networking beyond the local live-bridge socket.
 - Console/web export. VR/XR. Custom shading DSL (graphs-as-data are in; a text DSL is not).
 - Cloud/live-ops services (ads, analytics, remote build) — Unity treats these as engine surface;
   we explicitly do not.
 
-**Post-v1 roadmap (validated against the Unity 6 research pass):** terrain system (sculpt-as-data
-+ procgen-driven) · 2D/sprite toolchain (tilemaps, sprite animation) · VFX-graph-as-data · video
-playback · GPU-driven rendering (resident-drawer-style batching, GPU occlusion culling) ·
-APV-class GI upgrades (probe streaming for open worlds, lighting-scenario blending, runtime sky
-occlusion) · hardware ray tracing (post-parity) · world streaming beyond additive loading ·
-WASM/WebGPU export · versioned engine-module/package tier (Unity's "Released packages" delivery
-model) · 2D physics (with the 2D toolchain) · Addressables-class remote content delivery ·
-cloth simulation.
+**Also on the table (validated against the Unity 6 research pass; the planning protocol owns
+ordering alongside everything else):** terrain system (sculpt-as-data + procgen-driven) ·
+2D/sprite toolchain (tilemaps, sprite animation) · VFX-graph-as-data · video playback ·
+GPU-driven rendering (resident-drawer-style batching, GPU occlusion culling) · APV-class GI
+upgrades (probe streaming for open worlds, lighting-scenario blending, runtime sky occlusion) ·
+hardware ray tracing · world streaming beyond additive loading · WASM/WebGPU export · versioned
+engine-module/package tier (Unity's "Released packages" delivery model) · 2D physics (with the
+2D toolchain) · Addressables-class remote content delivery · cloth simulation.
 
-**iOS constraint (noted for M3)**: the App Store bans JIT — QuickJS (interpreter) ships as-is;
-a V8 swap must use JIT-less mode on iOS.
+**iOS constraint**: the App Store bans JIT — QuickJS (interpreter) ships as-is; a V8 swap must
+use JIT-less mode on iOS.
 
 ## 17. Risks (acknowledged in consultation)
 
 | Risk | Mitigation |
 |---|---|
-| Renderer parity (M3) is years of work | Showcase gates on M1; parity is the v1 *done* bar, phased; roadmap explicit |
-| C++ core slows engine iteration | Layering contract: agents live entirely in the TS/format tier; core API stabilized early via api.json |
+| C++ core slows engine iteration | Layering contract: agents live entirely in the TS/format tier; core API stabilized via api.json |
 | OCCT kernel weight (heavy API, meshing quality tuning, LGPL care) | Wrap behind the op vocabulary — agents never see OCCT; tessellation-quality golden tests; dynamic linking + LICENSES manifest |
 | Determinism across platforms (FP drift) | Contract is per-build determinism first; cross-platform determinism a stretch goal; pinned flags + CI lanes |
-| Solo maintainer + huge surface | Agents build the engine too; reference spec + this spec keep every subsystem's "done" definition explicit |
-| Editor is a second product (canvas workspace + doc model + agent harness) | It's a Midday app (dogfoods the engine, one stack); starts only after the showcase proves the core; editor_api.json keeps its surface as disciplined as the engine's |
+| Editor concurrent-editing complexity (doc model + hot-merge + agent harness) | It's a Midday app (dogfoods the engine, one stack); hot-merge design doc is a hard prerequisite; editor_api.json keeps its surface as disciplined as the engine's |
 
 ## 18. Open items (to confirm at kickoff)
 
@@ -660,9 +652,9 @@ a V8 swap must use JIT-less mode on iOS.
 
 - Engine license: MIT (recommended) vs Apache-2.0 (patent grant) — pick before first public commit.
 - Engine name: "Midday Engine" (from the project dir) — working title until confirmed.
-- QuickJS vs V8 as the *first* embedded runtime (spec says QuickJS; cheap to revisit at M1).
-- Showcase game concept — deliberately chosen AFTER the M1 toolchain exists, via a one-paragraph
-  prompt, because producing it from a prompt IS the success test.
+- QuickJS vs V8 as the *first* embedded runtime (spec says QuickJS; cheap to revisit).
+- Showcase game concept — deliberately chosen only once the toolchain exists, via a
+  one-paragraph prompt, because producing it from a prompt IS the success test.
 
 ---
 
