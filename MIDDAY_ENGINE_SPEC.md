@@ -31,7 +31,7 @@ Godot 4.8 baseline this spec inherits from and deviates from deliberately).
 | Script tier | Embedded TypeScript (QuickJS first, V8 as later swap) — game logic never recompiles the core |
 | Physics | Jolt Physics (MIT) — deterministic mode for replay, threaded mode for play |
 | Rendering bar | **Full Godot-4 3D parity = v1 definition of done**, phased M1→M3 (showcase gates on M1) |
-| Modeling module | Parametric + CSG op-lists as source of truth; meshes are compiled output |
+| Modeling module | Parametric op-lists (CSG + B-rep features) as source of truth; meshes are compiled output |
 | Modeling perception | Coordinate-gridded ortho views + arbitrary cross-section slices + turntable renders (visual-primary); structured geometry queries live in the testing pillar |
 | AI pillars in v1 | All five: game-testing layer, golden-frame verification, schema + validate-before-write, query/explain over recorded runs, modeling module |
 | Licensing | Everything open source — engine and all dependencies (no proprietary SDKs, ever) |
@@ -86,8 +86,8 @@ midday/
   core/        C++20 · Vulkan RHI · Jolt · data-oriented ECS · statechart entities · event bus · deterministic sim loop
   api/         engine_api.json (generated, canonical) → engine.d.ts, docs, schema manifest
   ts/          embedded TS runtime · engine bindings · hot reload
-  cli/         midday <verb> — the ONLY interface; every verb: JSON output + exit codes
-  model/       CSG kernel · slicer · ortho/turntable renderer · mesh compiler
+  cli/         midday <verb> — the engine's canonical interface; every verb: JSON output + exit codes
+  model/       B-rep kernel (OCCT) · slicer · ortho/turntable renderer · mesh compiler
   testkit/     input playback · tick control · state snapshots/asserts · golden frames · geo queries
   replay/      input log + tick snapshots · bit-identical re-execution · query/explain
   formats/     scene/model/material text formats + validators
@@ -134,8 +134,9 @@ default.
   leaks by surprise.
 - **Lifecycle hooks**: each state may carry one **state script** (the state's brain:
   `onEnter(from)`, `onUpdate(dt)`, `onFixedUpdate(dt)`, `onExit(to)`), and every script-component
-  receives the same hook set around its own activation. Hook firing order is deterministic:
-  exit chain (inside-out) → enter chain (outside-in) → component hooks in attach order.
+  receives the same hook set around its own activation. Hook firing order is deterministic and
+  fixed normatively by Appendix A.2.1 (exit: state script first, then spans/substates deepest-
+  first, then components; enter: the exact mirror, state script last).
 - **Structure is fully composable**: **substates** (nested states stack their ancestors'
   component sets), **parallel states** (independent regions/layers, each with one active state;
   live set = base + union of all active states), and **sequences**.
@@ -262,7 +263,9 @@ mechanism.**
     the long tail of reference spec §3. **The parity bar, precisely: Godot-4 / Unity-URP-class**
     — exactly where the industry is consolidating (Unity retiring Built-in RP, HDRP in
     maintenance). Hardware ray tracing and HDRP-class extras stay post-parity roadmap.
-- **2D**: canvas layer for UI/HUD (batched), not a separate 2D engine in v1.
+- **2D**: a batched screen-space canvas layer exists as the render substrate for UI (RmlUi, §13)
+  and the editor's infinite canvas (§13a) — there is no separate 2D *game* engine in v1 (the 2D
+  toolchain is roadmap, §16).
 - **Shaders**: v1 = parameter-driven materials (PBR uber-shader, Godot StandardMaterial3D model)
   + custom GLSL with engine includes, compiled via glslang (BSD) to SPIR-V. **M2 = shader graphs
   as data**: typed node graphs in validated YAML, compiled through the same SPIR-V pipeline,
@@ -333,8 +336,9 @@ mechanism.**
 - **Lifetime**: `world.spawn(prefab, {at, overrides})` instantiates prefab assets (the same
   instancing + override mechanism as scenes/machines) and returns an immediately usable handle;
   `world.despawn(ref)` marks for removal. Structural changes (spawn/despawn/reparent) queue and
-  apply at defined points between tick phases — never mid-query — keeping iteration safe and
-  replay stable. No code-assembled entities: everything traces to a validated prefab/scene file.
+  apply at the structural-apply phase (Appendix A.1, phase 8) — never mid-query — keeping
+  iteration safe and replay stable. No code-assembled entities: everything traces to a validated
+  prefab/scene file.
 - **Error contract**: an exception in any hook halts dev/headless runs AT the offending tick with
   a structured JSON error (stack, entity, region/state, hook, event cause-chain, tick, replay
   bookmark + nearest snapshot — a ready-to-fix artifact). Shipped builds quarantine the offending
@@ -375,7 +379,7 @@ mechanism.**
 - **Asset hot-reload in dev runs**: changed assets re-import and swap live in running sessions
   (journaled with the swap tick); replay mode never hot-reloads.
 
-## 9. CLI (the entire interface)
+## 9. CLI (the engine's canonical interface)
 
 Every verb: `--json` structured output, meaningful exit codes, headless-first.
 
@@ -471,6 +475,9 @@ unwrapping is post-v1.
 - **Live bridge** (Godot's remote-debugger lesson, kept and formalized): a documented JSON
   protocol over one socket — scene-tree dump, property inspect/mutate, expression eval, spawn/
   free nodes, frame-step, time-scale, screenshot. The perceive→act→verify loop for a running game.
+  (Scope note vs §4.2: bridge property mutation is a dev-time tool and is journaled; **state**
+  changes remain bus-only even over the bridge — the bridge emits events, it never teleports a
+  machine.)
 - Profiling: per-function script timing, engine monitors, frame metadata (draw calls, culled
   counts, pass timings) — all queryable as JSON.
 - **Viewport vision (the agent's eyes — all four channels v1)**: interactive screenshots at any
@@ -512,8 +519,10 @@ unwrapping is post-v1.
   blending, shot cuts driven by bus events, camera shake. The camera has a brain, not just a
   transform.
 - **Scene-level director sequences**: the sequence machinery (§4.1) also runs scene-owned, with
-  tracks referencing MANY entities — activation spans, targeted event triggers, camera track,
-  audio track — Timeline-class cutscenes on the same dope-sheet primitive, same determinism.
+  tracks referencing MANY entities. Same two track types as §4.1 — spans (entity/state activation
+  over a range) and triggers (targeted events at a time) — so camera cuts and audio cues are
+  trigger-track events, not new track kinds. Timeline-class cutscenes on the same dope-sheet
+  primitive, same determinism.
 - **Save/load**: player-facing save games as curated world-state serialization — opt-in per
   component via `@field({save: true})` — save slots, versioned migration hooks. Implementation is
   a filtered snapshot + manifest (the replay pillar pays for this twice over).
@@ -601,8 +610,12 @@ complete, fully-functional tool with **no AI configured at all**.
 1. **Open source everything** — engine license MIT (proposed; confirm), all dependencies
    OSS-licensed (MIT/BSD/Apache/zlib preferred; LGPL acceptable if dynamically linked; no
    proprietary SDKs). A `LICENSES/` manifest tracks every dependency.
-2. **No GUI editor.** The CLI + formats + agent are the editor.
-3. **Headless is the default**, windowed is the special case.
+2. **The editor is never the source of truth, and nothing is editor-only.** Text formats + CLI
+   are canonical; every capability exists headless-first; the Midday Editor (§13a) is a client of
+   the same APIs, persisting to the same files.
+3. **Headless-first**: the engine's every capability works without a window or display; windowed
+   surfaces (games, the editor) are clients of headless-capable systems, never the other way
+   around.
 4. **Every output machine-readable** (JSON) before it is human-readable.
 5. **Determinism is contractual** — a CI-enforced invariant, not a best effort.
 6. Dev environment reality: macOS with managed firewall (no incoming connections/LAN broadcast) —
@@ -614,9 +627,6 @@ complete, fully-functional tool with **no AI configured at all**.
 - Runtime AI features (LLM NPCs, generated content at runtime) — the parked second pillar.
 - Multiplayer/networking beyond the local live-bridge socket.
 - Console/web export. VR/XR. Custom shading DSL (graphs-as-data are in; a text DSL is not).
-- ~~Human-facing GUI editor~~ — **superseded**: the Midday Editor (§13a) is in, starting M2. The
-  surviving principle: the editor is never the source of truth and nothing is editor-only — text
-  formats + CLI remain canonical, the editor is a client.
 - Cloud/live-ops services (ads, analytics, remote build) — Unity treats these as engine surface;
   we explicitly do not.
 
