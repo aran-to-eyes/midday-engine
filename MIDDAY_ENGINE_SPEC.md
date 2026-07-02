@@ -226,7 +226,9 @@ mechanism.**
 - **Math**: real_t single-precision default; deterministic math policy documented (pinned FP flags);
   full vector/transform/geometry library per reference spec §1.
 - **Input**: event hierarchy + named action maps; **synthetic injection is a public, stable API**
-  (the testkit is built on it).
+  (the testkit is built on it). Action maps abstract **touch** (virtual sticks, gesture
+  bindings) so Android/iOS games need no per-platform input code — part of the five-platform
+  contract.
 
 ### Determinism contract (non-negotiable, pillar-supporting)
 - Same build + same input log + same seed ⇒ **bit-identical simulation**, guaranteed, tested in CI.
@@ -368,6 +370,9 @@ mechanism.**
     schema manifest expose complete effective state; validators know every default.
   - **No editor-bookkeeping fields** in agent files; anything regenerable lives in a cache dir.
 - **Model format**: parametric + CSG op-list (see §10), same YAML dialect.
+- **Format versioning policy**: every text format (scene, machine, model, pipeline, events,
+  import sidecars) carries a `format: N` field with a documented migration path — Godot's
+  `config_version` lesson applied uniformly; validators refuse unknown-future versions loudly.
 - **Validate-before-write** (pillar): `midday validate <file>` checks types, required props,
   allowed children, connection signatures, ID references — against the schema manifest generated
   from `engine_api.json`. Warnings-after-the-fact are a fallback, not the contract.
@@ -498,6 +503,8 @@ unwrapping is also on the table.
   one** (Godot's hardcoded-latency wart, fixed); dummy driver clocked by ticks for deterministic
   capture. **Mixer snapshots**: named bus-state presets (volumes, effect params) blendable at
   runtime (combat ↔ explore ducking) — declared as data, switched via events.
+  **Environmental audio zones**: reverb/occlusion as area components (a cave sounds like a cave
+  without per-source configuration) — the Godot area-based audio model, kept.
 - **Input rebinding is data**: action maps live in project config; runtime rebinding writes a
   user-profile overlay; conflict detection in the validator. (The rebinding *UI* is a game's
   RmlUi concern; the engine owns the data path.)
@@ -593,6 +600,10 @@ complete, fully-functional tool with **no AI configured at all**.
   either. Human/AI parity holds by construction.
 - **Midday's perception**: the viewports on the canvas are what Midday sees — the §12 vision
   channels (screenshots, entity-ID buffer, overlays, G-buffer taps) wired to the agent loop.
+- **Midday autonomy config**: a per-project setting declares which `editor_api.json` commands
+  Midday may run unattended and which require human confirmation — run/test/shot free by
+  default, destructive operations (delete, overwrite, export) gated by default. The trust dial
+  is data, visible in the project file, adjustable per project.
 - **Midday's brain is bring-your-own-endpoint**: the agent harness (persona, tools, vision
   wiring, journaling) is OSS engine code; the model is user-configured — Anthropic/OpenAI-
   compatible APIs or local models (Ollama/llama.cpp) through one interface. No key configured →
@@ -624,7 +635,7 @@ complete, fully-functional tool with **no AI configured at all**.
 
 ## 15. Constraints (hard)
 
-1. **Open source everything** — engine license MIT (proposed; confirm), all dependencies
+1. **Open source everything** — engine license **MIT (confirmed)**, all dependencies
    OSS-licensed (MIT/BSD/Apache/zlib preferred; LGPL acceptable if dynamically linked; no
    proprietary SDKs). A `LICENSES/` manifest tracks every dependency.
 2. **The editor is never the source of truth, and nothing is editor-only.** Text formats + CLI
@@ -673,8 +684,8 @@ use JIT-less mode on iOS.
 *(Appendix A below is normative: it fixes the tick order and statechart execution semantics that
 §4.1/§4.2 rules imply, and its worked trace ships as a golden engine test.)*
 
-- Engine license: MIT (recommended) vs Apache-2.0 (patent grant) — pick before first public commit.
-- Engine name: "Midday Engine" (from the project dir) — working title until confirmed.
+- ~~Engine license~~ — **MIT, confirmed** (LICENSE file in repo).
+- ~~Engine name~~ — **Midday Engine, confirmed** (mascot, CLI, editor, and formats all carry it).
 - QuickJS vs V8 as the *first* embedded runtime (spec says QuickJS; cheap to revisit).
 - Showcase game concept — deliberately chosen only once the toolchain exists, via a
   one-paragraph prompt, because producing it from a prompt IS the success test.
