@@ -22,6 +22,7 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_hierarchy_tests>
     $<TARGET_OBJECTS:midday_journal_tests>
     $<TARGET_OBJECTS:midday_bus_tests>
+    $<TARGET_OBJECTS:midday_tick_tests>
     $<TARGET_OBJECTS:midday_api_tests>
     $<TARGET_OBJECTS:midday_codegen_bootstrap_tests>
 )
@@ -36,6 +37,7 @@ target_link_libraries(midday PRIVATE
     midday::hierarchy
     midday::journal
     midday::bus
+    midday::tick
     midday::api
     midday::codegen_bootstrap
     doctest::doctest)
