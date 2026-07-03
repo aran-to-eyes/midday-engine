@@ -6,7 +6,7 @@
 #include "core/base/json.h"
 #include "core/base/log.h"
 #include "core/base/name.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <memory>
 #include <ostream> // MSVC: doctest stringifies string_view via operator<<

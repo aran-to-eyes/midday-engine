@@ -10,7 +10,7 @@
 #include "core/base/hex.h"
 #include "core/base/name.h"
 #include "core/reflect/type_model.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
 #include "testkit/temp_dir.h"
 

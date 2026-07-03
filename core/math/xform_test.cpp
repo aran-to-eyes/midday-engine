@@ -1,7 +1,7 @@
 // math.xform.* — TRS compose order and the deterministic decompose policy.
 
 #include "core/math/xform.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 using namespace midday::math;
 

@@ -3,7 +3,7 @@
 // arenas fed the same allocation sequence agree on every observable.
 
 #include "core/base/arena.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cstddef>
 #include <cstdint>

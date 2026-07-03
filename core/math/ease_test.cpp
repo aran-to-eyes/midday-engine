@@ -2,7 +2,7 @@
 // the reference formulas, in/out reflection symmetry, enum dispatch.
 
 #include "core/math/ease.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <initializer_list>
 

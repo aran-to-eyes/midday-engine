@@ -8,7 +8,7 @@
 #include "core/ecs/world.h"
 #include "core/hierarchy/hierarchy.h"
 #include "core/reflect/registry.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <optional>
 #include <string>

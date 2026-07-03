@@ -4,7 +4,7 @@
 // diagnostics, never runtime surprises.
 
 #include "core/expr/expr.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
 
 #include <ostream> // MSVC: doctest stringifies string_view via operator<<

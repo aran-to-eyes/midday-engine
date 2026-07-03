@@ -12,7 +12,7 @@
 #include "core/bus/entity_listener.h"
 #include "core/bus/test_support.h"
 #include "core/ecs/world.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cstdint>
 #include <optional>

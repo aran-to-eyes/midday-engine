@@ -10,7 +10,7 @@
 
 #include "cli/envelope.h"
 #include "cli/verb.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 using midday::cli::Error;
 using midday::cli::Exit;

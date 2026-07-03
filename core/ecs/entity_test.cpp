@@ -3,7 +3,7 @@
 // the to_bits round trip journals will rely on.
 
 #include "core/ecs/entity.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cstdint>
 

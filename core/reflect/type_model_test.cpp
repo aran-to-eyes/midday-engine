@@ -6,7 +6,7 @@
 
 #include "core/base/json.h"
 #include "core/reflect/type_model.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <optional>
 #include <ostream> // MSVC: doctest stringifies string_view via operator<<

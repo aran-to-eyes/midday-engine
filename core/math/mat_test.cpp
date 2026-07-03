@@ -2,7 +2,7 @@
 // convention once; these tests pin it) plus products, inverses, determinants.
 
 #include "core/math/mat.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 using namespace midday::math;
 

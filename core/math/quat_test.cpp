@@ -2,7 +2,7 @@
 // rotate vs to_mat3, from_mat3 across all four Shepperd branches.
 
 #include "core/math/quat.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cmath>
 

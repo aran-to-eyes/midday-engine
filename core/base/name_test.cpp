@@ -7,7 +7,7 @@
 // goldens would silently rot.
 
 #include "core/base/name.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <algorithm>
 #include <cstdint>

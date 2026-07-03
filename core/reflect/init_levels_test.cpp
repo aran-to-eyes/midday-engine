@@ -7,7 +7,7 @@
 #include "core/base/name.h"
 #include "core/reflect/init_levels.h"
 #include "core/reflect/registry.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <functional>
 #include <ostream> // MSVC: doctest stringifies string_view via operator<<

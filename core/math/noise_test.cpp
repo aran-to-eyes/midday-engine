@@ -4,7 +4,7 @@
 
 #include "core/math/noise.h"
 #include "core/math/vec.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cstdint>
 #include <cstring>

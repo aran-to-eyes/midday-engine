@@ -5,7 +5,7 @@
 #include "cli/help.h"
 #include "cli/verb.h"
 #include "core/expr/diag.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
 
 #include <initializer_list>

@@ -5,7 +5,7 @@
 #include "core/journal/reader.h"
 #include "core/journal/test_support.h"
 #include "core/journal/writer.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <filesystem>
 #include <string>

@@ -6,7 +6,7 @@
 // so CI's determinism lane can byte-compare across hosts.
 
 #include "core/math/fixture.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cstdint>
 

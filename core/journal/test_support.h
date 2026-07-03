@@ -7,7 +7,7 @@
 
 #include "core/base/file_io.h"
 #include "core/journal/writer.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
 #include "testkit/temp_dir.h"
 

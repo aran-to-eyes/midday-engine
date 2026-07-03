@@ -2,7 +2,7 @@
 // host hooks, deterministic gas, memory limits, structured errors, and
 // resolver-only module loading.
 
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
 #include "ts/runtime/script_runtime.h"
 

@@ -4,7 +4,7 @@
 
 #include "core/base/name.h"
 #include "core/math/rng.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cmath>
 #include <cstdint>

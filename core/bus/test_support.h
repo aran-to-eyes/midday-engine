@@ -15,7 +15,7 @@
 #include "core/journal/writer.h"
 #include "core/reflect/builtin_events.h"
 #include "core/reflect/registry.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
 #include "testkit/temp_dir.h"
 

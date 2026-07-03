@@ -9,7 +9,7 @@
 #include "core/base/json.h"
 #include "core/base/name.h"
 #include "core/reflect/registry.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <ostream> // MSVC: doctest stringifies string_view via operator<<
 #include <string>

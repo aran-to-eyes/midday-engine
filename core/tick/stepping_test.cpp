@@ -7,7 +7,7 @@
 #include "core/tick/frame_packet.h"
 #include "core/tick/test_support.h"
 #include "core/tick/tick_loop.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cmath>
 #include <cstdint>

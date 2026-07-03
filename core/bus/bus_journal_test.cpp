@@ -10,7 +10,7 @@
 #include "core/bus/bus.h"
 #include "core/bus/test_support.h"
 #include "core/journal/record.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cstdint>
 #include <string>

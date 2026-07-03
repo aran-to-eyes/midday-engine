@@ -5,7 +5,7 @@
 // (two independent builds compared, never a self-diff).
 
 #include "core/base/file_io.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
 #include "ts/toolchain/toolchain.h"
 

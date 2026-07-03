@@ -4,7 +4,7 @@
 
 #include "core/base/name.h"
 #include "core/ecs/pool.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cstdint>
 #include <vector>

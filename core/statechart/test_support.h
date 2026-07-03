@@ -19,7 +19,7 @@
 #include "core/statechart/machine_desc.h"
 #include "core/statechart/statechart.h"
 #include "core/tick/tick_loop.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
 #include "testkit/temp_dir.h"
 

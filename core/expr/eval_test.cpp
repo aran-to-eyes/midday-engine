@@ -4,7 +4,7 @@
 // vector/quaternion operators, and the compile-once/eval-many contract.
 
 #include "core/expr/expr.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
 
 #include <cstdint>

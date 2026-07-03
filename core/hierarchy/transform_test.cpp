@@ -10,7 +10,7 @@
 #include "core/math/vec.h"
 #include "core/math/xform.h"
 #include "core/reflect/registry.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cmath>
 

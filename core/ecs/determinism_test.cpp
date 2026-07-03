@@ -9,7 +9,7 @@
 #include "core/ecs/world.h"
 #include "core/math/rng.h"
 #include "core/reflect/registry.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #define XXH_INLINE_ALL
 #include "xxhash.h"

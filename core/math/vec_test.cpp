@@ -1,7 +1,7 @@
 // math.vec.* — Vec2/Vec3/Vec4 arithmetic, dot/cross, normalize policy.
 
 #include "core/math/vec.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 using namespace midday::math;
 

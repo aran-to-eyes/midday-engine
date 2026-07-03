@@ -7,7 +7,7 @@
 #include "api/engine_api.h"
 #include "cli/help.h"
 #include "cli/verb.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 #include "testkit/codegen_corpus.h"
 #include "testkit/doctest_unwrap.h"
 #include "tools/codegen_bootstrap/codegen.h"

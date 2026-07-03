@@ -3,7 +3,7 @@
 // deterministic iteration order), and active bits that survive row moves.
 
 #include "core/ecs/sparse_set.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cstdint>
 #include <vector>

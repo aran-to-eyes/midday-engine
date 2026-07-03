@@ -4,7 +4,7 @@
 
 #include "core/journal/record.h"
 #include "core/journal/test_support.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 using midday::journal::Record;
 using midday::journal::record_from_line;

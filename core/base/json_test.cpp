@@ -4,7 +4,7 @@
 // into core/base (D-BUILD-003 planned migration).
 
 #include "core/base/json.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <cstdint>
 #include <limits>

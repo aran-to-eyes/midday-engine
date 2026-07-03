@@ -2,7 +2,7 @@
 // overlap semantics (closed interval), plane classification.
 
 #include "core/math/intersect.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 using namespace midday::math;
 

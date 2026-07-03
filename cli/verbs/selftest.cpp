@@ -6,7 +6,7 @@
 #include "cli/verb.h"
 #include "core/base/hex.h"
 #include "core/math/fixture.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 #include <sstream>
 #include <string>

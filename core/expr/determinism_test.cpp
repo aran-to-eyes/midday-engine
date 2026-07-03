@@ -7,7 +7,7 @@
 
 #include "core/base/name.h"
 #include "core/expr/expr.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
 
 #define XXH_INLINE_ALL

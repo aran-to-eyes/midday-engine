@@ -3,7 +3,7 @@
 
 #include "core/math/spline.h"
 #include "core/math/vec.h"
-#include "doctest/doctest.h"
+#include "testkit/doctest.h"
 
 using namespace midday::math;
 
