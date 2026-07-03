@@ -25,6 +25,7 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_bus_tests>
     $<TARGET_OBJECTS:midday_tick_tests>
     $<TARGET_OBJECTS:midday_statechart_tests>
+    $<TARGET_OBJECTS:midday_physics_tests>
     $<TARGET_OBJECTS:midday_api_tests>
     $<TARGET_OBJECTS:midday_codegen_bootstrap_tests>
     $<TARGET_OBJECTS:midday_codegen_selfhost_tests>
@@ -44,6 +45,7 @@ target_link_libraries(midday PRIVATE
     midday::bus
     midday::tick
     midday::statechart
+    midday::physics
     midday::api
     midday::codegen_bootstrap
     midday::codegen_selfhost

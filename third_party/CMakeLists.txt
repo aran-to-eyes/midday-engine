@@ -71,6 +71,59 @@ if(NOT MSVC)
 endif()
 midday_apply_deterministic_fp(quickjs)
 
+# JoltPhysics 5.5.0 — THE physics engine (spec section 6), minimal
+# deterministic server in M0 (m0-jolt-minimal). Vendored subset: the Jolt/
+# library tree only (no Samples/UnitTests/TestFramework/Assets/Docs), kept
+# byte-pristine like quickjs (D-BUILD-060 ethos). Compiled sources = every
+# Jolt/ TU except ObjectStream/ — upstream's ENABLE_OBJECT_STREAM=OFF shape
+# (Jolt's own scene serialization; our formats own that surface). The
+# Renderer/ TUs compile to nothing without JPH_DEBUG_RENDERER, exactly as
+# upstream builds them.
+#
+# Determinism config (D-BUILD-073, the interplay with DeterministicFP.cmake):
+#   * JPH_CROSS_PLATFORM_DETERMINISTIC (PUBLIC — it changes inline header
+#     code paths, so library and consumers must agree): Jolt substitutes its
+#     own deterministic transcendental implementations and disables every
+#     result-changing fast path. Upstream pairs this option with precise FP
+#     and contraction off (Build/CMakeLists.txt) — here that half is exactly
+#     midday_apply_deterministic_fp (/fp:precise; -fno-fast-math
+#     -ffp-contract=off), the same contract every sim target carries.
+#   * No -m arch flags: x86-64 baseline SSE2, arm64 NEON — Jolt's FMA paths
+#     stay off (upstream: USE_FMADD is forced off when deterministic).
+#   * No JPH_ENABLE_ASSERTS / JPH_PROFILE_ENABLED / JPH_DEBUG_RENDERER /
+#     JPH_FLOATING_POINT_EXCEPTIONS_ENABLED in ANY config: dev and release
+#     run the identical simulation code paths (no debug/release divergence,
+#     the D-BUILD-025 ethos).
+#   * Threading is a RUNTIME knob (core/physics config lock, D-BUILD-074):
+#     M0 always steps through JobSystemSingleThreaded.
+# file(GLOB) over a pinned, immutable vendor drop is deterministic by
+# construction; CONFIGURE_DEPENDS makes a re-vendor self-healing.
+file(GLOB_RECURSE JOLT_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/jolt/Jolt/*.cpp)
+# Upstream's ENABLE_OBJECT_STREAM=OFF set: the ObjectStream* serializers and
+# their TypeDeclarations TU are conditional; SerializableObject.cpp is NOT
+# (the RTTI base every settings class derives from lives there).
+list(FILTER JOLT_SOURCES EXCLUDE REGEX "/ObjectStream/(ObjectStream|TypeDeclarations)")
+add_library(jolt STATIC ${JOLT_SOURCES})
+add_library(jolt::jolt ALIAS jolt)
+target_include_directories(jolt SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/jolt)
+target_compile_definitions(jolt PUBLIC JPH_CROSS_PLATFORM_DETERMINISTIC)
+if(NOT MSVC)
+    # Always optimize the physics engine, even in Debug presets (the quickjs
+    # precedent): a Debug Jolt makes the physics.min dual 1000-tick pile
+    # fixtures dominate selftest, and identical flags across configs means
+    # dev and release produce identical simulation bits. Same-build
+    # determinism never depended on -O level (IEEE semantics are pinned by
+    # the FP contract above); this just makes every preset the SAME build of
+    # Jolt. (MSVC keeps per-config flags: /O2 conflicts with Debug /RTC1.)
+    target_compile_options(jolt PRIVATE -O2)
+endif()
+find_package(Threads QUIET)
+if(TARGET Threads::Threads)
+    target_link_libraries(jolt PUBLIC Threads::Threads)
+endif()
+midday_apply_deterministic_fp(jolt)
+
 # zstd 1.5.7 — journal stream compression (single-file amalgamation from the
 # upstream build/single_file_libs generator, regenerated WITHOUT
 # ZSTD_MULTITHREAD: single-threaded compression is a determinism requirement

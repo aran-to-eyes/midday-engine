@@ -57,6 +57,15 @@
       "source": "https://github.com/microsoft/TypeScript"
     },
     {
+      "name": "JoltPhysics",
+      "version": "5.5.0",
+      "commit": "23dadd0e603f1b321142d4c74df07fce85064989",
+      "license": "MIT",
+      "role": "THE physics engine (spec section 6); minimal deterministic server in M0 (core/physics). Vendored subset: the Jolt/ library tree only, byte-pristine — no samples/tests/viewer; ObjectStream/ is on disk but not compiled (ENABLE_OBJECT_STREAM=OFF shape). Built with JPH_CROSS_PLATFORM_DETERMINISTIC under the repo FP contract (D-BUILD-073)",
+      "path": "third_party/jolt",
+      "source": "https://github.com/jrouwe/JoltPhysics"
+    },
+    {
       "name": "zstd",
       "version": "1.5.7",
       "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
