@@ -4,6 +4,8 @@
 #include "core/math/ease.h"
 #include "doctest/doctest.h"
 
+#include <initializer_list>
+
 using namespace midday::math;
 
 namespace {
