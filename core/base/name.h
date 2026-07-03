@@ -32,13 +32,13 @@ public:
     // Interns `text` (first use per content allocates; later uses are lookups).
     explicit Name(std::string_view text);
 
-    std::uint64_t id() const { return id_; }
+    [[nodiscard]] std::uint64_t id() const { return id_; }
 
-    std::string_view view() const {
+    [[nodiscard]] std::string_view view() const {
         return str_ != nullptr ? std::string_view(*str_) : std::string_view();
     }
 
-    bool empty() const { return id_ == 0; }
+    [[nodiscard]] bool empty() const { return id_ == 0; }
 
     friend bool operator==(const Name& a, const Name& b) { return a.id_ == b.id_; }
 

@@ -7,7 +7,10 @@
 #include "doctest/doctest.h"
 
 #include <cstdint>
+#include <limits>
+#include <ostream> // MSVC: doctest stringifies string_view via operator<<
 #include <string>
+#include <string_view>
 
 using midday::base::Json;
 using midday::base::JsonParseError;
@@ -31,6 +34,52 @@ TEST_CASE("core.json: scalars serialize deterministically") {
     CHECK(Json(std::int64_t{9007199254740993}).dump() == "9007199254740993");
     CHECK(Json(1.5).dump() == "1.5");
     CHECK(Json(0.1).dump() == "0.1"); // shortest round-trip, not 0.1000000000000000055
+}
+
+TEST_CASE("core.json: double emission is byte-pinned across every platform") {
+    // Known-answer corpus for the vendored conversion path (dragonbox emit,
+    // fast_float parse — D-BUILD-015). These exact bytes are the tree-wide
+    // guarantee the golden/drift lanes depend on; any change to the conversion
+    // stack must surface here as a diff. Validated against std::to_chars over
+    // a 64.6M-double cross-check at introduction.
+    struct Pin {
+        double value;
+        std::string_view bytes;
+
+        constexpr Pin(double v, std::string_view b) : value(v), bytes(b) {}
+    };
+
+    const Pin corpus[] = {
+        {0.0, "0"},
+        {-0.0, "-0"},
+        {0.1, "0.1"},
+        {1.5, "1.5"},
+        {-2.5, "-2.5"},
+        {20.0, "20"},
+        {0.001, "0.001"},  // fixed-vs-scientific tie resolves to fixed
+        {0.0001, "1e-04"}, // scientific is one byte shorter
+        {100000.0, "1e+05"},
+        {2.5e-10, "2.5e-10"},
+        // a many-digit decimal literal, not a use of pi
+        {3.14159265358979, "3.14159265358979"},           // NOLINT(modernize-use-std-numbers)
+        {9007199254740991.0, "9007199254740991"},         // 2^53 - 1
+        {9007199254740992.0, "9007199254740992"},         // 2^53
+        {9007199254740993.0, "9007199254740992"},         // 2^53 + 1 rounds to 2^53
+        {123456789012345678.0, "123456789012345680"},     // exact expansion, not
+        {73786976294838206464.0, "73786976294838206464"}, // zero-padded (2^66 > uint64)
+        {6.02214076e23, "6.02214076e+23"},
+        {1e-323, "1e-323"},                                   // subnormal
+        {5e-324, "5e-324"},                                   // smallest positive subnormal
+        {2.2250738585072014e-308, "2.2250738585072014e-308"}, // smallest normal
+        {1.7976931348623157e308, "1.7976931348623157e+308"},  // largest finite
+    };
+    for (const Pin& pin : corpus) {
+        CHECK(Json(pin.value).dump() == pin.bytes);
+        // Every pinned emission parses back to the identical double.
+        Json::ParseResult back = Json::parse(pin.bytes);
+        REQUIRE(back);
+        CHECK(back.value.as_double() == pin.value);
+    }
 }
 
 TEST_CASE("core.json: non-finite doubles serialize as null, never invalid JSON") {

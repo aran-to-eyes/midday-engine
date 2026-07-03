@@ -19,7 +19,7 @@ struct Error {
     Json details = Json::object(); // structured, code-specific diagnostics
 
     // {"code":...,"message":...[,"details":{...}]} — details omitted when empty.
-    Json to_json() const;
+    [[nodiscard]] Json to_json() const;
 
     // Strict inverse of to_json: exactly the keys above, code non-empty,
     // details (if present) an object. Anything else -> nullopt.

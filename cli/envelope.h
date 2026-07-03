@@ -10,6 +10,7 @@
 #include "core/base/error.h"
 #include "core/base/json.h"
 
+#include <cstdint>
 #include <string_view>
 
 namespace midday::cli {
@@ -19,7 +20,7 @@ using Error = base::Error;
 
 // Spec section 9 exit codes (plan m0-cli-framework):
 //   0 ok · 1 failed assertion/build/runtime · 2 usage · 3 validation
-enum class Exit : int {
+enum class Exit : std::uint8_t {
     Ok = 0,
     Failure = 1,
     Usage = 2,

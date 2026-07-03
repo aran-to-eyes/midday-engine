@@ -13,7 +13,7 @@ add_library(midday::base ALIAS midday_base)
 
 target_link_libraries(midday_base
     PUBLIC midday::options
-    PRIVATE xxhash::xxhash)
+    PRIVATE xxhash::xxhash fast_float::fast_float dragonbox::dragonbox)
 
 # Core code is sim code: the deterministic-FP contract applies.
 midday_apply_deterministic_fp(midday_base)

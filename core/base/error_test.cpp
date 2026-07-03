@@ -6,6 +6,10 @@
 #include "core/base/json.h"
 #include "doctest/doctest.h"
 
+#include <optional>
+#include <string>
+#include <string_view>
+
 using midday::base::Error;
 using midday::base::Json;
 

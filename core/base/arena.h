@@ -31,7 +31,7 @@ namespace midday::base {
 
 class Arena {
 public:
-    static constexpr std::size_t kDefaultBlockSize = 64 * 1024;
+    static constexpr std::size_t kDefaultBlockSize = std::size_t{64} * 1024;
 
     explicit Arena(std::size_t block_size = kDefaultBlockSize);
 
@@ -66,9 +66,9 @@ public:
     void reset();
 
     // Observables (the determinism tests diff these across runs).
-    std::size_t bytes_used() const { return bytes_used_; }
+    [[nodiscard]] std::size_t bytes_used() const { return bytes_used_; }
 
-    std::size_t block_count() const { return blocks_.size(); }
+    [[nodiscard]] std::size_t block_count() const { return blocks_.size(); }
 
 private:
     struct Block {

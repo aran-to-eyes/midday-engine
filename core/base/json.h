@@ -6,8 +6,11 @@
 //   * Values: null, bool, int64, double, string (UTF-8), array, object.
 //   * Objects are insertion-ordered pair vectors: serialization order is
 //     authoring order, deterministically — no hash-map iteration anywhere.
-//   * dump() is deterministic (byte-identical across runs and platforms).
-//     Numbers use shortest-round-trip formatting (std::to_chars). Non-finite
+//   * dump() is deterministic (byte-identical across runs, platforms, AND
+//     toolchains). Integers use std::to_chars; doubles go through vendored
+//     dragonbox + a to_chars(general)-style formatter and doubles parse via
+//     vendored fast_float (D-BUILD-015) — standard-library FP conversion is
+//     never used, so the bytes cannot drift with the stdlib. Non-finite
 //     doubles serialize as null: JSON has no NaN/Inf, and sim code must never
 //     produce them (determinism contract, spec section 4.3).
 //   * parse() is strict RFC 8259 plus: duplicate object keys rejected,
@@ -18,6 +21,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -38,7 +42,7 @@ struct JsonParseError {
     int col = 1;
     std::size_t offset = 0; // byte offset of the offending position
 
-    std::string to_string() const; // "origin:line:col: message"
+    [[nodiscard]] std::string to_string() const; // "origin:line:col: message"
 };
 
 struct JsonParseResult; // Json + optional JsonParseError, defined below
@@ -75,42 +79,42 @@ public:
 
     static Json array() { return Json(Array{}); }
 
-    bool is_null() const { return std::holds_alternative<std::nullptr_t>(value_); }
+    [[nodiscard]] bool is_null() const { return std::holds_alternative<std::nullptr_t>(value_); }
 
-    bool is_bool() const { return std::holds_alternative<bool>(value_); }
+    [[nodiscard]] bool is_bool() const { return std::holds_alternative<bool>(value_); }
 
-    bool is_int() const { return std::holds_alternative<std::int64_t>(value_); }
+    [[nodiscard]] bool is_int() const { return std::holds_alternative<std::int64_t>(value_); }
 
-    bool is_double() const { return std::holds_alternative<double>(value_); }
+    [[nodiscard]] bool is_double() const { return std::holds_alternative<double>(value_); }
 
-    bool is_number() const { return is_int() || is_double(); }
+    [[nodiscard]] bool is_number() const { return is_int() || is_double(); }
 
-    bool is_string() const { return std::holds_alternative<std::string>(value_); }
+    [[nodiscard]] bool is_string() const { return std::holds_alternative<std::string>(value_); }
 
-    bool is_array() const { return std::holds_alternative<Array>(value_); }
+    [[nodiscard]] bool is_array() const { return std::holds_alternative<Array>(value_); }
 
-    bool is_object() const { return std::holds_alternative<Object>(value_); }
+    [[nodiscard]] bool is_object() const { return std::holds_alternative<Object>(value_); }
 
     // Typed accessors. Pre: the value holds the requested type (as_double
     // also accepts int); misuse is a programming error, asserted in debug.
-    bool as_bool() const;
-    std::int64_t as_int() const;
-    double as_double() const;
-    const std::string& as_string() const;
+    [[nodiscard]] bool as_bool() const;
+    [[nodiscard]] std::int64_t as_int() const;
+    [[nodiscard]] double as_double() const;
+    [[nodiscard]] const std::string& as_string() const;
 
     // Object: insert or replace in place; insertion order is serialization order.
     Json& set(std::string_view key, Json value);
     // Object: pointer to the value for `key`; nullptr if absent or not an object.
-    const Json* find(std::string_view key) const;
+    [[nodiscard]] const Json* find(std::string_view key) const;
     // Array: append.
     Json& push(Json value);
 
-    const Object& items() const { return std::get<Object>(value_); }
+    [[nodiscard]] const Object& items() const { return std::get<Object>(value_); }
 
-    const Array& elements() const { return std::get<Array>(value_); }
+    [[nodiscard]] const Array& elements() const { return std::get<Array>(value_); }
 
     // Compact, deterministic serialization (byte-identical across runs).
-    std::string dump() const;
+    [[nodiscard]] std::string dump() const;
 
     using ParseResult = JsonParseResult;
 

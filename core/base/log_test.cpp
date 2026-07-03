@@ -9,7 +9,9 @@
 #include "doctest/doctest.h"
 
 #include <memory>
+#include <ostream> // MSVC: doctest stringifies string_view via operator<<
 #include <string>
+#include <string_view>
 #include <vector>
 
 using midday::base::CaptureSink;

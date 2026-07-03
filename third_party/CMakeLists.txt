@@ -11,3 +11,17 @@ target_include_directories(doctest SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/
 add_library(xxhash INTERFACE)
 add_library(xxhash::xxhash ALIAS xxhash)
 target_include_directories(xxhash SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/xxhash)
+
+# fast_float 8.2.9 — correctly-rounded, locale-free double parsing. The JSON
+# parser uses it instead of std::from_chars(double), which old libc++ lacks
+# (D-BUILD-015). Header-only.
+add_library(fast_float INTERFACE)
+add_library(fast_float::fast_float ALIAS fast_float)
+target_include_directories(fast_float SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/fast_float)
+
+# dragonbox 1.1.3 — shortest round-trip decimal digits for double emission;
+# with the writer's formatting rule this makes JSON double bytes identical on
+# every platform/toolchain (D-BUILD-015). Header-only.
+add_library(dragonbox INTERFACE)
+add_library(dragonbox::dragonbox ALIAS dragonbox)
+target_include_directories(dragonbox SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/dragonbox)

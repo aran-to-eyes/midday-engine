@@ -5,7 +5,13 @@
 
 #include "core/base/json.h"
 
+// Vendored fast_float parses doubles: correctly rounded, locale-free, and
+// present on every toolchain — the macos-14 libc++ has no FP from_chars
+// (D-BUILD-015). Integers stay on std::from_chars (universally supported).
+#include "fast_float.h"
+
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 
 namespace midday::base {
@@ -390,7 +396,7 @@ struct Parser {
             // Beyond int64: degrade to double (standard JSON interop).
         }
         double number = 0;
-        const auto [end, ec] = std::from_chars(first, last, number);
+        const auto [end, ec] = fast_float::from_chars(first, last, number);
         if (ec != std::errc{} || end != last)
             return fail(start, "number out of range");
         return {number};

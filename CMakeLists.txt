@@ -22,7 +22,10 @@ include(cmake/DeterministicFP.cmake)
 add_library(midday_options INTERFACE)
 add_library(midday::options ALIAS midday_options)
 if(MSVC)
-    target_compile_options(midday_options INTERFACE /W4 /permissive- /utf-8)
+    # /Zc:preprocessor: the conformant preprocessor. The traditional one
+    # garbles raw string literals stringized inside macros (doctest CHECK),
+    # producing bogus "illegal escape sequence" errors (D-BUILD-016).
+    target_compile_options(midday_options INTERFACE /W4 /permissive- /utf-8 /Zc:preprocessor)
     if(MIDDAY_WERROR)
         target_compile_options(midday_options INTERFACE /WX)
     endif()

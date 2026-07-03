@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <ostream> // MSVC: doctest stringifies string_view via operator<<
+#include <string_view>
 #include <vector>
 
 using midday::base::Name;

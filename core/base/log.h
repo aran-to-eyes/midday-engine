@@ -69,9 +69,9 @@ class CaptureSink final : public LogSink {
 public:
     void write(const LogRecord& record, std::string_view line) override;
 
-    const std::vector<LogRecord>& records() const { return records_; }
+    [[nodiscard]] const std::vector<LogRecord>& records() const { return records_; }
 
-    const std::vector<std::string>& lines() const { return lines_; }
+    [[nodiscard]] const std::vector<std::string>& lines() const { return lines_; }
 
 private:
     std::vector<LogRecord> records_;

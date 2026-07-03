@@ -1,6 +1,9 @@
 # Midday Engine — static analysis gate (pinned clang-tidy via scripts/verify.sh).
 # Philosophy: high-signal checks as hard errors; noisy style checks stay off — formatting
 # is clang-format's job, naming is the reviewer's job.
+# EnumCastOutOfRange is off: analyzer path diagnostics ignore the header exclude filter
+# and fire on vendored fast_float's standard enum-bitmask idiom; the UBSan CI lane covers
+# genuine out-of-range enum casts at runtime (D-BUILD-016).
 Checks: >
   bugprone-*,
   performance-*,
@@ -15,7 +18,12 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -modernize-use-trailing-return-type,
   -modernize-avoid-c-arrays,
-  -performance-avoid-endl
+  -performance-avoid-endl,
+  -clang-analyzer-optin.core.EnumCastOutOfRange
 WarningsAsErrors: '*'
-HeaderFilterRegex: '^(?!.*(third_party|build)/).*$'
+# LLVM regex has no negative lookahead; the include/exclude pair below is the
+# supported way (clang-tidy 19+) to lint first-party headers while keeping
+# vendored/system code out of the gate.
+HeaderFilterRegex: '.*'
+ExcludeHeaderFilterRegex: '.*(third_party|build|\.venv-tools)/.*'
 FormatStyle: file
