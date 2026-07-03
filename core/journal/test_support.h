@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "core/journal/file_io.h"
 #include "core/journal/writer.h"
 #include "doctest/doctest.h"
 
@@ -79,7 +80,7 @@ inline WriterConfig pinned_config() {
 
 // Read a whole file; empty string when unreadable (tests assert on content).
 inline std::string slurp(const std::filesystem::path& path) {
-    FILE* file = std::fopen(path.string().c_str(), "rb");
+    FILE* file = detail::open_file(path, "rb");
     if (file == nullptr)
         return {};
     std::string bytes;
@@ -96,7 +97,7 @@ inline std::string slurp(const std::filesystem::path& path) {
 
 // Overwrite a file (used to tamper bundles for corruption tests).
 inline bool spew(const std::filesystem::path& path, const std::string& bytes) {
-    FILE* file = std::fopen(path.string().c_str(), "wb");
+    FILE* file = detail::open_file(path, "wb");
     if (file == nullptr)
         return false;
     const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
