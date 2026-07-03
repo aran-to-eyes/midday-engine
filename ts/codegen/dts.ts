@@ -1,0 +1,244 @@
+// ts/codegen/dts.ts — engine.d.ts emitter + the structural shape self-check
+// (formats/engine_dts.meta.md). Layout spec: api/CODEGEN.md "engine.d.ts
+// layout"; bytes pinned by the selfhost equivalence harness against the
+// bootstrap goldens.
+
+import { JObject, JValue, findKey } from "./json";
+import { entries, jsdocEscape, pascalCase, str, text, truthy, tsType } from "./model";
+
+// The fixed value-type preamble: one declaration per scalar TypeDesc
+// spelling that is not a TypeScript primitive (mapping table in CODEGEN.md).
+const VALUE_TYPES =
+    '    /** TypeDesc "vec2": 2D float vector. */\n' +
+    "    interface Vec2 {\n        x: number;\n        y: number;\n    }\n" +
+    "\n" +
+    '    /** TypeDesc "vec3": 3D float vector. */\n' +
+    "    interface Vec3 {\n        x: number;\n        y: number;\n        z: number;\n    }\n" +
+    "\n" +
+    '    /** TypeDesc "vec4": 4D float vector. */\n' +
+    "    interface Vec4 {\n        x: number;\n        y: number;\n        z: number;\n" +
+    "        w: number;\n    }\n" +
+    "\n" +
+    '    /** TypeDesc "quat": rotation quaternion; JSON spelling [x, y, z, w]. */\n' +
+    "    interface Quat {\n        x: number;\n        y: number;\n        z: number;\n" +
+    "        w: number;\n    }\n" +
+    "\n" +
+    '    /** TypeDesc "color": linear RGBA; JSON spelling [r, g, b, a]. */\n' +
+    "    interface Color {\n        r: number;\n        g: number;\n        b: number;\n" +
+    "        a: number;\n    }\n" +
+    "\n" +
+    '    /** TypeDesc "entity_ref": generational entity handle; a stale handle reads alive == false. */\n' +
+    "    interface EntityRef {\n        readonly alive: boolean;\n    }\n" +
+    "\n" +
+    '    /** TypeDesc "asset_ref": project-root-relative asset path. */\n' +
+    "    type AssetRef = string;\n";
+
+// One JSDoc line at `indent`, or nothing when the doc is empty.
+function jsdoc(doc: string, indent: string): string {
+    return doc === "" ? "" : indent + "/** " + jsdocEscape(doc) + " */\n";
+}
+
+// `    interface <name> {}` or a full body; body lines are pre-indented.
+function interfaceBlock(doc: string, name: string, body: string): string {
+    const shell = body === "" ? " {}\n" : " {\n" + body + "    }\n";
+    return jsdoc(doc, "    ") + "    interface " + name + shell;
+}
+
+// Interface member names are emitted bare only when they are valid TS
+// identifiers; engine names also allow '.' and '-' (CODEGEN.md "Member
+// quoting"). Function/method PARAMETER names cannot be quoted, stay verbatim.
+function memberName(name: string): string {
+    let bare = name !== "" && !(name[0] >= "0" && name[0] <= "9");
+    for (let i = 0; i < name.length; ++i) {
+        const c = name[i];
+        bare =
+            bare &&
+            ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") ||
+                c === "_" || c === "$");
+    }
+    return bare ? name : '"' + name + '"';
+}
+
+// `name: T;` member line with optional JSDoc, 8-space indent.
+function member(doc: string, declaration: string): string {
+    return jsdoc(doc, "        ") + "        " + declaration + ";\n";
+}
+
+// `a: number, b?: number` — a param with a default becomes optional.
+function paramList(holder: JValue): string {
+    return entries(holder, "params")
+        .map(
+            (param) =>
+                str(param, "name") +
+                (findKey(param, "default") !== null ? "?: " : ": ") +
+                tsType(str(param, "type")),
+        )
+        .join(", ");
+}
+
+// The `"<name>": <Type>;` lookup-map interface (keys always quoted).
+function mapBlock(doc: string, mapName: string, rows: [string, string][]): string {
+    let body = "";
+    for (const [key, type] of rows) body += '        "' + key + '": ' + type + ";\n";
+    return interfaceBlock(doc, mapName, body);
+}
+
+function classBlock(entry: JValue): string {
+    let body = "";
+    for (const property of entries(entry, "properties")) {
+        let declaration = "";
+        const flags = findKey(property, "flags");
+        if (flags !== null && flags.k === "arr")
+            for (const flag of flags.v)
+                if (flag.k === "str" && flag.v === "read_only") declaration += "readonly ";
+        declaration += memberName(str(property, "name")) + ": " + tsType(str(property, "type"));
+        body += member(text(property, "doc"), declaration);
+    }
+    for (const method of entries(entry, "methods"))
+        body += member(
+            text(method, "doc"),
+            str(method, "name") + "(" + paramList(method) + "): " + tsType(str(method, "returns")),
+        );
+    return interfaceBlock(text(entry, "doc"), pascalCase(str(entry, "name")), body);
+}
+
+function eventBlock(entry: JValue): string {
+    let body = "";
+    for (const field of entries(entry, "payload"))
+        body += member(
+            text(field, "doc"),
+            memberName(str(field, "name")) + ": " + tsType(str(field, "type")),
+        );
+    return interfaceBlock(text(entry, "doc"), pascalCase(str(entry, "name")) + "Event", body);
+}
+
+function exprBlock(document: JObject): string {
+    let body = "";
+    for (const entry of entries(document, "functions"))
+        body += member(
+            text(entry, "doc"),
+            "function " + str(entry, "name") + "(" + paramList(entry) + "): " +
+                tsType(str(entry, "returns")),
+        );
+    if (body === "") return "    namespace expr {}\n";
+    return "    namespace expr {\n" + body + "    }\n";
+}
+
+function verbBlock(entry: JValue): string {
+    let body = "";
+    for (const flag of entries(entry, "flags")) {
+        const type = str(flag, "type");
+        let declaration = memberName(str(flag, "name"));
+        if (type === "bool") declaration += "?: boolean";
+        else declaration += (truthy(flag, "required") ? ": " : "?: ") + tsType(type);
+        body += member(text(flag, "doc"), declaration);
+    }
+    for (const positional of entries(entry, "positionals")) {
+        let declaration = memberName(str(positional, "name"));
+        if (truthy(positional, "variadic")) declaration += ": " + tsType(str(positional, "type")) + "[]";
+        else
+            declaration +=
+                (truthy(positional, "required") ? ": " : "?: ") + tsType(str(positional, "type"));
+        body += member(text(positional, "doc"), declaration);
+    }
+    return interfaceBlock(text(entry, "summary"), pascalCase(str(entry, "name")) + "VerbArgs", body);
+}
+
+export function emitDts(document: JObject): string {
+    const blocks: string[] = [];
+    blocks.push(
+        "    // -- Value types (fixed preamble; scalar TypeDesc spellings map per api/CODEGEN.md) --\n",
+    );
+    blocks.push(VALUE_TYPES);
+
+    blocks.push('    // -- Reflected classes (engine_api.json "classes", registration order) --\n');
+    let rows: [string, string][] = [];
+    for (const entry of entries(document, "classes")) {
+        blocks.push(classBlock(entry));
+        rows.push([str(entry, "name"), pascalCase(str(entry, "name"))]);
+    }
+    blocks.push(mapBlock("Class name -> reflected interface.", "Classes", rows));
+
+    blocks.push('    // -- Event payloads (engine_api.json "events", registration order) --\n');
+    rows = [];
+    for (const entry of entries(document, "events")) {
+        blocks.push(eventBlock(entry));
+        rows.push([str(entry, "name"), pascalCase(str(entry, "name")) + "Event"]);
+    }
+    blocks.push(mapBlock("Event name -> payload type.", "EventPayloads", rows));
+
+    blocks.push(
+        '    // -- Expression functions (engine_api.json "functions"): expression-language ' +
+            "signatures for editor tooling, not TS-callable --\n",
+    );
+    blocks.push(exprBlock(document));
+
+    blocks.push(
+        '    // -- CLI verbs (engine_api.json "verbs"): midday argv schemas as types, ' +
+            "manifest order --\n",
+    );
+    rows = [];
+    for (const entry of entries(document, "verbs")) {
+        blocks.push(verbBlock(entry));
+        rows.push([str(entry, "name"), pascalCase(str(entry, "name")) + "VerbArgs"]);
+    }
+    blocks.push(mapBlock("Verb name -> parsed-argument type.", "VerbArgsByName", rows));
+
+    return (
+        "// engine.d.ts -- GENERATED from engine_api.json. " +
+        "DO NOT EDIT.\n// engine_version " +
+        str(document, "engine_version") +
+        ", api_compat_hash " +
+        str(document, "api_compat_hash") +
+        " (signatures only; docs excluded).\n" +
+        "// Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.\n" +
+        "// Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.\n\n" +
+        "declare namespace midday {\n" +
+        blocks.join("\n") +
+        "}\n"
+    );
+}
+
+// Structural d.ts shape check (formats/engine_dts.meta.md): balanced braces
+// on non-comment lines, every declared entry present, no unresolved-
+// generation tokens. Empty result == shape-valid; failure = codegen.selfcheck.
+export function dtsShapeErrors(dts: string, document: JObject): string[] {
+    const errors: string[] = [];
+    const tokens = ["TODO", "FIXME", "XXX", "PLACEHOLDER"];
+    let depth = 0;
+    const lines = dts.split("\n");
+    for (let i = 0; i < lines.length; ++i) {
+        const line = lines[i].replace(/^ +/, "");
+        const comment = line.startsWith("//") || line.startsWith("/*");
+        if (!comment) {
+            for (const c of line) {
+                depth += c === "{" ? 1 : 0;
+                depth -= c === "}" ? 1 : 0;
+                if (depth < 0) errors.push("line " + (i + 1) + ": unbalanced '}'");
+            }
+            for (const token of tokens)
+                if (line.indexOf(token) !== -1)
+                    errors.push("line " + (i + 1) + ": unresolved-generation token '" + token + "'");
+        }
+        if (depth < 0) break;
+    }
+    if (depth > 0) errors.push("unbalanced '{': " + depth + " unclosed");
+
+    const need = (fragment: string): void => {
+        if (dts.indexOf(fragment) === -1) errors.push("missing declaration fragment: " + fragment);
+    };
+    for (const entry of entries(document, "classes")) {
+        need("interface " + pascalCase(str(entry, "name")) + " ");
+        need('"' + str(entry, "name") + '":');
+    }
+    for (const entry of entries(document, "events")) {
+        need("interface " + pascalCase(str(entry, "name")) + "Event ");
+        need('"' + str(entry, "name") + '":');
+    }
+    for (const entry of entries(document, "functions")) need("function " + str(entry, "name") + "(");
+    for (const entry of entries(document, "verbs")) {
+        need("interface " + pascalCase(str(entry, "name")) + "VerbArgs ");
+        need('"' + str(entry, "name") + '":');
+    }
+    return errors;
+}

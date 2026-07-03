@@ -259,7 +259,7 @@ TEST_CASE("api.verb: action usage errors are structured and exit 2") {
     const cli::VerbOutcome unknown = run_api({"frobnicate"});
     CHECK(unknown.exit == cli::Exit::Usage);
     CHECK(unwrap(unknown.error).code == "usage.unknown_action");
-    CHECK(unwrap(unknown.error).details.find("known")->dump() == "[\"dump\",\"diff\"]");
+    CHECK(unwrap(unknown.error).details.find("known")->dump() == "[\"dump\",\"diff\",\"codegen\"]");
 
     const cli::VerbOutcome missing = run_api({"diff"});
     CHECK(missing.exit == cli::Exit::Usage);

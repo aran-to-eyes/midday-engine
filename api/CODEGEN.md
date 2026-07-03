@@ -1,12 +1,14 @@
 # CODEGEN.md — the byte contract of the engine_api.json code generator
 
-This document specifies EVERY formatting rule the bootstrap generator
-(`tools/codegen_bootstrap`, native, TEMPORARY) applies. It is the
-implementation spec for `m0-codegen-selfhost`: the TS-on-QuickJS generator
-re-implements exactly these rules and must produce **byte-identical** output
-on the bootstrap corpus before it becomes authoritative. If a rule is not
-written here, it is a doc defect — fix the doc in the same commit that
-relies on the rule.
+This document specifies EVERY formatting rule the code generator applies.
+Two implementations exist and must produce **byte-identical** output:
+the SELF-HOSTED TS-on-QuickJS generator (`ts/codegen`, **authoritative**
+since `m0-codegen-selfhost` — `midday api codegen`) and the native
+bootstrap (`tools/codegen_bootstrap`, TEMPORARY, kept only as the
+byte-equivalence pin until it retires post-M0). Because the outputs are
+byte-identical, generated headers are generator-neutral — they never name
+which implementation produced them. If a rule is not written here, it is a
+doc defect — fix the doc in the same commit that relies on the rule.
 
 Inputs and outputs:
 
@@ -56,6 +58,11 @@ errors print `{"ok":false,"error":{...}}` on stdout (D-BUILD-038).
   become a single space.
 - Names (events, classes, functions, verbs, fields) are emitted verbatim —
   they are `[a-z0-9._-]` identifiers by convention and never escaped.
+- **Dumped defaults are verbatim**: wherever a `default` value is rendered
+  with the JSON writer (docs signature ` = <dump>`, docs table cells), the
+  dump is emitted as-is inside backticks — it is NOT cell-escaped. A `|`
+  inside a default string therefore lands raw in the markdown cell; both
+  generators reproduce this byte-for-byte.
 - **Member quoting (d.ts only)**: interface MEMBER names (class properties,
   event payload fields, verb flags/positionals) are emitted bare only when
   they are valid TypeScript identifiers (`[A-Za-z_$][A-Za-z0-9_$]*`);
@@ -64,6 +71,33 @@ errors print `{"ok":false,"error":{...}}` on stdout (D-BUILD-038).
   quoted in TypeScript and stay verbatim; a non-identifier param name is a
   registration defect, surfaced by tsc validation of the generated file
   (`midday script check`, m0-quickjs-ts-toolchain).
+
+## Numbers (the writer both generators reproduce)
+
+All JSON output (manifest, bindings, every dumped `default`) goes through
+ONE deterministic number writer — core `base::Json::dump()` natively,
+`ts/codegen/json.ts` self-hosted:
+
+- **Integer tokens** (no `.`/`e`/`E`) parse as int64 and re-emit exactly
+  their canonical decimal digits (JSON already forbids `+`, leading zeros).
+  `-0` is the one exception: it parses as double `-0.0` and dumps as `-0`.
+  Integer tokens beyond int64 range degrade to double (standard JSON
+  interop).
+- **Doubles** emit the unique shortest round-trip digits (vendored
+  dragonbox natively; `toExponential()` — the same shortest-with-even-ties
+  digits by uniqueness — self-hosted) formatted with the
+  `std::to_chars(general)` rule: fixed or scientific, whichever is
+  SHORTER, ties to fixed. Scientific spells `d[.ddd]e±XX` with an exponent
+  of at least two digits (`1e-07`, `1e+21`); fixed forms with no
+  fractional part expand the double's EXACT integer value
+  (`9223372036854775808`, never zero-padded shortest digits). Non-finite
+  doubles serialize as `null` (JSON has no NaN/Inf).
+- Pinned by the number-edge corpus (`testkit/codegen_corpus.h`,
+  `kCodegenNumberDocument`): int64 range ends, a >2^53 int64 JS `Number`
+  cannot hold, `-0`, beyond-int64 degradation, `0.0001` → `1e-04` (the
+  shorter-form tie zone), denormal/max doubles, and exact integer
+  expansion — byte-compared across both generators by
+  `codegen.selfhost.numbers`.
 
 ## TypeDesc → TypeScript mapping (the table)
 
@@ -163,8 +197,8 @@ registered._`. Every entry: `### \`<title>\`` (verbs:
 `name(p: type, ...) -> ret`, with ` = <dump(default)>` after defaulted
 params), then the doc paragraph (omitted when empty), then a `- level:`
 line (classes/events/functions; omitted for verbs, which have no level),
-`- base:` (classes, only when present), `- compat_hash:` — values in
-backticks. Then per kind:
+`- base:` (whenever the entry carries a string `base` — classes in
+practice), `- compat_hash:` — values in backticks. Then per kind:
 
 - Events: `| field | type | doc |` table, or `_No payload._`.
 - Classes: `| property | type | default | flags | doc |` table (default =
@@ -198,10 +232,20 @@ Key order: `format_version` (1), `api_compat_hash`, `expr_functions`,
 
 ## Determinism and drift gates
 
-Same input bytes → byte-identical outputs, every platform. Enforced by:
-`midday selftest --filter 'codegen.*'` (golden-pinned synthetic corpus +
-dual-run equality on the live document), verify.sh (two tool runs cmp'd,
-then cmp against the four committed `api/` artifacts, manifest
-meta-schema-validated), and the CI drift lane (same steps, ci preset).
-The committed artifacts are regenerated by running `build/dev/tools/codegen_bootstrap`
-from the repo root (defaults: input `api/engine_api.json`, out-dir `api`).
+Same input bytes → byte-identical outputs, every platform, BOTH
+generators. Enforced by: `midday selftest --filter 'codegen.*'`
+(golden-pinned synthetic corpus + dual-run equality on the live document +
+the `codegen.selfhost.*` equivalence harness over the whole corpus),
+verify.sh (two selfhost runs cmp'd, cmp against the four committed `api/`
+artifacts, manifest meta-schema-validated, then
+`midday api codegen --verify-equivalence`), and the CI drift lane (same
+steps, ci preset). Byte-equivalence is a standing gate until the bootstrap
+tool retires post-M0. The committed artifacts are regenerated by running
+`build/dev/midday api codegen` from the repo root (defaults: input
+`api/engine_api.json`, out-dir `api`, self-hosted generator).
+
+CLI exit classes (`midday api codegen`): usage.* → 2; the input's fault
+(json.parse, api.malformed, codegen.unknown_type / codegen.malformed /
+codegen.duplicate_symbol, codegen.io read failures) → 3; the generator's
+or toolchain's fault (codegen.selfcheck, codegen.internal,
+codegen.io.write, codegen.equivalence, script.*) → 1.

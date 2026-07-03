@@ -27,8 +27,9 @@ TEMPORARY native bootstrap generator (m0-codegen-bootstrap): parses
 engine_api.json (default: api/engine_api.json; `midday api dump --json`
 envelopes are unwrapped) and emits engine.d.ts, schema_manifest.json,
 api_docs.md, and bindings_spec.json to --out-dir (default: api). Byte
-deterministic and drift-gated; retired to bootstrap duty once
-m0-codegen-selfhost byte-matches it (byte-equivalence-covered).
+deterministic. The SELF-HOSTED generator (`midday api codegen`) is
+authoritative since m0-codegen-selfhost; this tool remains only as the
+byte-equivalence pin until it retires post-M0.
 
 Exit: 0 ok, 1 write/self-check failure, 2 usage, 3 invalid input.
 Formatting contract: api/CODEGEN.md.

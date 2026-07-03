@@ -71,21 +71,30 @@ cmp api/engine_api.json build/dev/engine_api.json
 scripts/validate_envelope.py formats/engine_api.schema.json <api/engine_api.json >/dev/null
 build/dev/midday api diff api/engine_api.json >/dev/null
 
-step "codegen drift (two tool runs byte-compared + committed artifacts + manifest meta-schema)"
-# The bootstrap generator is byte-deterministic: two independent runs are
-# cmp'd (never a self-diff), then the four committed api/ artifacts are
-# byte-compared against a regeneration and schema_manifest.json is validated
-# against its meta-schema. Any drift = rerun build/dev/tools/codegen_bootstrap
-# from the repo root and commit, or you broke the generator contract
-# (api/CODEGEN.md).
+step "codegen drift (selfhost authoritative: dual runs + committed artifacts + meta-schema)"
+# The SELF-HOSTED generator (m0-codegen-selfhost) is authoritative: two
+# independent `midday api codegen` runs are cmp'd (never a self-diff), then
+# the four committed api/ artifacts are byte-compared against a selfhost
+# regeneration and schema_manifest.json is validated against its meta-schema.
+# Any drift = rerun `build/dev/midday api codegen` from the repo root and
+# commit, or you broke the generator contract (api/CODEGEN.md).
 rm -rf build/dev/codegen build/dev/codegen.rerun
-build/dev/tools/codegen_bootstrap api/engine_api.json --out-dir build/dev/codegen >/dev/null
-build/dev/tools/codegen_bootstrap api/engine_api.json --out-dir build/dev/codegen.rerun >/dev/null
+build/dev/midday api codegen api/engine_api.json --out-dir build/dev/codegen \
+    --cache-dir build/dev/ts-cache.codegen >/dev/null
+build/dev/midday api codegen api/engine_api.json --out-dir build/dev/codegen.rerun \
+    --cache-dir build/dev/ts-cache.codegen >/dev/null
 for f in engine.d.ts schema_manifest.json api_docs.md bindings_spec.json; do
     cmp "build/dev/codegen/$f" "build/dev/codegen.rerun/$f"
     cmp "api/$f" "build/dev/codegen/$f"
 done
 scripts/validate_envelope.py formats/schema_manifest.schema.json <api/schema_manifest.json >/dev/null
+
+step "codegen byte-equivalence (selfhost vs TEMPORARY bootstrap, standing gate until retirement)"
+# MILESTONE_0 "Codegen Bootstrap": the self-hosted generator became
+# authoritative only because it byte-matches the native bootstrap; this gate
+# keeps that claim live on the full corpus (doctests cover synthetic +
+# number-edge + live; this covers the committed document through the CLI).
+build/dev/midday api codegen --verify-equivalence --cache-dir build/dev/ts-cache.codegen >/dev/null
 
 step "script toolchain (fixtures through the real CLI: exit classes, cache, lint)"
 # ts_hello: clean check (exit 0); dual INDEPENDENT builds byte-compared

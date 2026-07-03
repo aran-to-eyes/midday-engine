@@ -12,10 +12,14 @@ engine_version are outside every hash). Meta-schema:
   drift lane byte-compare the committed file against a fresh dump.
 - Emitter/differ: `api/engine_api.{h,cpp}` (library `midday::api`).
 
-Derived artifacts (m0-codegen-bootstrap) — generated from `engine_api.json`
-by `tools/codegen_bootstrap` (TEMPORARY native tool; `m0-codegen-selfhost`
-must byte-match it before taking over), committed here and drift-gated the
-same way (two-run cmp + committed-byte cmp in verify.sh and CI's drift lane):
+Derived artifacts — generated from `engine_api.json` by the SELF-HOSTED
+generator (`ts/codegen`, TS-on-QuickJS, **authoritative** since
+`m0-codegen-selfhost`; `midday api codegen`). The TEMPORARY native
+bootstrap (`tools/codegen_bootstrap`) byte-matches it and remains only as
+the equivalence pin (`midday api codegen --verify-equivalence`) until it
+retires post-M0. Committed here and drift-gated the same way (two-run cmp
++ committed-byte cmp + the equivalence gate in verify.sh and CI's drift
+lane):
 
 - `engine.d.ts` — agent-facing TypeScript declarations (value types, event
   payload interfaces + name map, expression function signatures, CLI verb
@@ -27,5 +31,5 @@ same way (two-run cmp + committed-byte cmp in verify.sh and CI's drift lane):
 - `bindings_spec.json` — the glue spec m0-batch-bindings implements
   (call signatures + batch envelope placeholder).
 
-Regenerate all four: `build/dev/tools/codegen_bootstrap` from the repo root.
-Every formatting rule (the selfhost byte contract): `CODEGEN.md`.
+Regenerate all four: `build/dev/midday api codegen` from the repo root.
+Every formatting rule (the byte contract both generators obey): `CODEGEN.md`.

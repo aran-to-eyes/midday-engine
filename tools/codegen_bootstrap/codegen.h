@@ -2,10 +2,10 @@
 // library (m0-codegen-bootstrap): engine_api.json -> engine.d.ts +
 // schema_manifest.json + api_docs.md + bindings_spec.json.
 //
-// Every formatting rule is specified in api/CODEGEN.md — that document is
-// the byte contract m0-codegen-selfhost re-implements in TS-on-QuickJS and
-// must match byte-for-byte on the bootstrap corpus. Keep this deliberately
-// small and free of cleverness that is painful to mirror in TS.
+// Every formatting rule is specified in api/CODEGEN.md — the byte contract
+// the self-hosted TS-on-QuickJS generator (ts/codegen, AUTHORITATIVE since
+// m0-codegen-selfhost) reproduces byte-for-byte; this tool survives only as
+// the equivalence pin. Keep it deliberately small and cleverness-free.
 //
 // All functions are pure: same document -> byte-identical strings, every
 // platform (pinned by codegen.* selftests, verify.sh, and the CI drift lane).

@@ -27,6 +27,7 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_statechart_tests>
     $<TARGET_OBJECTS:midday_api_tests>
     $<TARGET_OBJECTS:midday_codegen_bootstrap_tests>
+    $<TARGET_OBJECTS:midday_codegen_selfhost_tests>
     $<TARGET_OBJECTS:midday_script_runtime_tests>
     $<TARGET_OBJECTS:midday_ts_toolchain_tests>
 )
@@ -45,6 +46,7 @@ target_link_libraries(midday PRIVATE
     midday::statechart
     midday::api
     midday::codegen_bootstrap
+    midday::codegen_selfhost
     midday::script_runtime
     midday::ts_toolchain
     doctest::doctest)

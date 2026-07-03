@@ -4,3 +4,4 @@
 
 add_subdirectory(runtime)
 add_subdirectory(toolchain)
+add_subdirectory(codegen)

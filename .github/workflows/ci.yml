@@ -63,11 +63,13 @@ jobs:
           ASAN_OPTIONS: strict_string_checks=1:detect_stack_use_after_return=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 
-  # The drift lane (m0-api-json + m0-codegen-bootstrap): the committed
+  # The drift lane (m0-api-json + m0-codegen-selfhost): the committed
   # api/engine_api.json must be byte-identical to a fresh `midday api dump`
   # and valid against its meta-schema; the four committed codegen artifacts
   # (engine.d.ts, schema_manifest.json, api_docs.md, bindings_spec.json)
-  # must be byte-identical to a fresh codegen_bootstrap regeneration.
+  # must be byte-identical to a fresh SELF-HOSTED regeneration, and the
+  # self-hosted generator must stay byte-equivalent to the TEMPORARY native
+  # bootstrap (standing gate until the bootstrap tool retires post-M0).
   drift:
     runs-on: ubuntu-24.04
     steps:
@@ -89,14 +91,16 @@ jobs:
           python3 scripts/validate_envelope.py formats/engine_api.schema.json < api/engine_api.json
           build/ci/midday api dump --json | jq -e '.ok and (.api.api_compat_hash | test("^[0-9a-f]{16}$"))'
           build/ci/midday api diff api/engine_api.json
-      - name: codegen drift (two tool runs byte-compared + committed artifacts)
+      - name: codegen drift (selfhost dual runs byte-compared + committed artifacts)
         run: |
-          build/ci/tools/codegen_bootstrap api/engine_api.json --out-dir build/ci/codegen
-          build/ci/tools/codegen_bootstrap api/engine_api.json --out-dir build/ci/codegen.rerun
+          build/ci/midday api codegen api/engine_api.json --out-dir build/ci/codegen --cache-dir build/ci/ts-cache.codegen
+          build/ci/midday api codegen api/engine_api.json --out-dir build/ci/codegen.rerun --cache-dir build/ci/ts-cache.codegen
           for f in engine.d.ts schema_manifest.json api_docs.md bindings_spec.json; do
             cmp "build/ci/codegen/$f" "build/ci/codegen.rerun/$f"
             cmp "api/$f" "build/ci/codegen/$f"
           done
+      - name: codegen byte-equivalence (selfhost vs bootstrap, standing gate)
+        run: build/ci/midday api codegen --verify-equivalence --cache-dir build/ci/ts-cache.codegen
       - name: schema_manifest.json meta-schema
         run: python3 scripts/validate_envelope.py formats/schema_manifest.schema.json < api/schema_manifest.json
 
