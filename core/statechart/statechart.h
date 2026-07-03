@@ -33,6 +33,29 @@
 //     deep target), script onEnter LAST. Net observable order for a nested
 //     chain: scripts fire outer->inner on exit and inner->outer on enter;
 //     deactivation completes deepest-first (the no-zombie-hitbox rule).
+//   * SEQUENCES (dope-sheet states, m0-sequences) advance in A.1 PHASE 4:
+//     machines in tree order, sheets in state flatten order (region
+//     declaration order then document order). Keyframe seconds tick-lock at
+//     instantiate via time_to_tick (below) — the runtime is pure integer
+//     arithmetic, playhead model documented at instance.h RtSheet. Per due
+//     tick, items fire in timeline order (triggers, span openings, span
+//     closings; declaration order within a kind): trigger tracks fire bus
+//     events on the host channel (cause = the phase marker), span
+//     boundaries journal sequence.span_open/span_close and trigger
+//     "<span>.opened"/"<span>.closed" (cause = the span record). A playhead
+//     reaching the end fires "<state>.finished" through finish_state
+//     (kFinish), wraps and journals sequence.loop (kLoop, loop_count total
+//     passes; 0 = forever), or pins silently (kHold). INTERRUPTION (A.2.1):
+//     open spans close INSIDE the exit chain — after the state script's
+//     onExit, before the active substate exits, in reverse open order (exit
+//     step 2) — and the playhead resets, or saves under the owning state's
+//     history flag (exit step 5); re-entry resumes the saved position with
+//     covering spans re-opening inside the enter chain (enter step 3, the
+//     exact mirror). Phase-4 cost model: one reused (tree-order, machine)
+//     sort + O(1) per sheet + O(1) per due item — names and ticks are
+//     precomputed at instantiate, so steady state does no hashing and
+//     allocates nothing beyond the journal/bus payloads of items that
+//     actually fire.
 //   * `when:` WATCHERS run in A.1 phase 3 via a tick hook: compiled boolean
 //     expressions over the machine environment, evaluated for ACTIVE owning
 //     states in hierarchy tree order then declaration order. Edge semantics:
@@ -55,6 +78,11 @@
 //                           "region_already_transitioned"
 //   statechart.hook        {machine, entity, region, state, hook[, peer]}
 //   statechart.filter_fault{machine, entity, region, source, event, error}
+//   sequence.span_open     {machine, entity, region, state, span, playhead,
+//                           via}   via: "playhead" | "resume"
+//   sequence.span_close    {machine, entity, region, state, span, playhead,
+//                           via}   via: "playhead" | "exit"
+//   sequence.loop          {machine, entity, region, state, pass}
 // Enter/exit hook records cite the transition record; the transition cites
 // the trigger; watcher-fired triggers cite the phase marker — the A.3 cause
 // chain reconstructs mechanically. Enter/exit/transition/voided records are
@@ -112,6 +140,17 @@ struct MachineInstance; // internal runtime representation (instance.h)
 
 using MachineId = std::uint32_t;
 inline constexpr MachineId kInvalidMachine = 0xFFFFFFFFU;
+
+// THE tick-locking rule (MILESTONE_0 item 19, pinned by sequence.tick_lock):
+//   tick = llround(seconds * ticks_per_second)
+// One correctly-rounded IEEE-754 double multiply, then round to the nearest
+// integer with ties AWAY FROM ZERO (std::llround — independent of the FP
+// rounding mode). Applied exactly once per keyframe at instantiate; no dt
+// accumulation ever. KATs: 0.30 @ 60 -> 18, 0.40 @ 60 -> 24, 0.80 @ 60 -> 48,
+// 1.2 @ 60 -> 72, tie 0.025 @ 60 (product exactly 1.5) -> 2, 0.30 @ 30 -> 9.
+// Callers validate range/finiteness BEFORE converting (instantiate refuses
+// non-finite or negative times with statechart.bad_sequence).
+[[nodiscard]] std::int64_t time_to_tick(double seconds, std::uint32_t ticks_per_second);
 
 // What every state hook invocation receives.
 struct StateHookContext {
@@ -182,6 +221,12 @@ struct StatechartStats {
     std::uint64_t watcher_fires = 0; // rising-edge watcher triggers
     std::uint64_t hook_calls = 0;    // hook invocations (all four kinds)
     std::uint64_t filter_faults = 0; // runtime eval faults (journaled, pair skipped)
+    // Sequences (m0-sequences).
+    std::uint64_t sequence_triggers = 0; // trigger-track keyframes fired
+    std::uint64_t span_opens = 0;        // span openings (incl. resume re-opens)
+    std::uint64_t span_closes = 0;       // span closings (incl. exit-chain closes)
+    std::uint64_t sequence_loops = 0;    // playhead wraps journaled
+    std::uint64_t sequence_finishes = 0; // "<state>.finished" emissions
 };
 
 class Statechart final : public tick::PhaseHook {
@@ -240,7 +285,8 @@ public:
 
     [[nodiscard]] const StatechartStats& stats() const { return stats_; }
 
-    // tick::PhaseHook — watchers (A.1 phase 3) and update (phase 5).
+    // tick::PhaseHook — watchers (A.1 phase 3), sequences (phase 4), and
+    // update (phase 5).
     void on_phase(tick::TickLoop& loop, const tick::PhaseContext& context) override;
 
 private:
@@ -304,6 +350,37 @@ private:
     // watchers.cpp — A.1 phase 3.
     void run_watchers(const tick::PhaseContext& context);
 
+    // sequences.cpp — A.1 phase 4 + the A.2.1 sequence steps + compilation.
+    std::optional<base::Error> compile_sequence(const SequenceDesc& desc,
+                                                std::uint32_t state_index,
+                                                MachineInstance& staged,
+                                                const std::string& origin) const;
+    void run_sequences(const tick::PhaseContext& context);
+    void advance_sheet(MachineInstance& instance,
+                       std::uint32_t sheet_index,
+                       const tick::PhaseContext& context);
+    // Fires items due at or before the playhead, from the cursor, in
+    // timeline order; stops when a cascade exits or re-enters the state.
+    void
+    fire_due_items(MachineInstance& instance, std::uint32_t sheet_index, std::uint64_t cause_id);
+    // A.2.1 enter 3 (sequence half): playhead 0 (tick-0 items fire) or the
+    // saved position (covering spans re-open). Called from enter_state.
+    void sheet_start(MachineInstance& instance, std::uint32_t state_index, std::uint64_t cause_id);
+    // A.2.1 exit 2: open spans close, reverse open order. From exit_state.
+    void sheet_close_open_spans(MachineInstance& instance,
+                                std::uint32_t state_index,
+                                std::uint64_t cause_id);
+    // A.2.1 exit 5: playhead resets, or saves under history. From exit_state.
+    void sheet_settle_exit(MachineInstance& instance, std::uint32_t state_index);
+    // Journals sequence.span_open/span_close, flips the flag, triggers the
+    // "<span>.opened"/"<span>.closed" event (cause = the span record).
+    void emit_span(MachineInstance& instance,
+                   std::uint32_t sheet_index,
+                   std::uint32_t span_index,
+                   bool open,
+                   std::string_view via,
+                   std::uint64_t cause_id);
+
     // hooks.cpp — phase 5 fixed update + the frame-side flavor + shared
     // hook-invocation plumbing.
     void run_update_hooks(bool fixed, double dt, std::uint64_t cause_id);
@@ -334,7 +411,8 @@ private:
     // Reused phase-order buffers: {sort key, machine id}. Watcher keys pack
     // (owning-state tree order << 32) | watcher index — tree order then
     // declaration order, the A.1 phase-3 order; machine keys are the root's
-    // tree order (phase-5 scene order).
+    // tree order (the phase-4 AND phase-5 scene order — the two phases never
+    // overlap, so they share the buffer).
     std::vector<std::pair<std::uint64_t, std::uint32_t>> watcher_order_;
     std::vector<std::pair<std::uint64_t, std::uint32_t>> machine_order_;
     StatechartStats stats_;

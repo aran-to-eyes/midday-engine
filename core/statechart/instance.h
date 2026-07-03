@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include "core/base/json.h"
 #include "core/base/name.h"
 #include "core/bus/bus.h"
 #include "core/ecs/entity.h"
@@ -46,6 +47,70 @@ struct RtWatcher {
     bool armed_value = false;            // last observed value (false = armed)
 };
 
+// One trigger-track keyframe, tick-locked (statechart.h time_to_tick).
+struct RtTrigger {
+    base::Name event;
+    base::Json payload; // always an object (null normalized at instantiate)
+};
+
+// One span track, tick-locked; opened/closed event names interned once.
+struct RtSpan {
+    base::Name name;
+    base::Name opened_event; // "<name>.opened"
+    base::Name closed_event; // "<name>.closed"
+    std::uint32_t begin_tick = 0;
+    std::uint32_t end_tick = 0;
+    bool open = false; // runtime: open fired, close not yet
+};
+
+enum class SheetItemKind : std::uint8_t {
+    kTrigger = 0,   // same-tick batch order (A.1 phase 4, normative):
+    kSpanOpen = 1,  // triggers, then span openings, then span closings;
+    kSpanClose = 2, // within a kind, track declaration order.
+};
+
+// One due-able timeline item. Per sheet, items sort by (tick, kind,
+// declaration) at instantiate — the item slice IS the fire order, and the
+// reverse of its kSpanOpen entries IS reverse span-open order (the A.2.1
+// exit-2 interruption order). The per-tick path walks this array with zero
+// hashing and zero allocation.
+struct RtSheetItem {
+    std::uint32_t tick = 0; // local sheet tick
+    SheetItemKind kind = SheetItemKind::kTrigger;
+    std::uint32_t ref = 0; // index into sheet_triggers / sheet_spans
+};
+
+// The compiled dope sheet of one state (spec 4.1 sequences). PLAYHEAD MODEL:
+// local tick L fires at global tick E + L (E = the tick the state entered) —
+// the playhead advances by exactly one at each sequences phase the owning
+// state is active and non-dormant for; entry initializes it (0, or the saved
+// position under history) inside the enter chain, where items at exactly the
+// starting tick fire (fresh) or covering spans re-open (resume); the entry
+// tick's own phase 4 is skipped (entered_tick). Dormancy pauses the sheet.
+struct RtSheet {
+    std::uint32_t state = kInvalidIndex; // owning state index
+    std::uint32_t duration = 0;          // sheet length in ticks (>= 1)
+    SequenceEnd end = SequenceEnd::kFinish;
+    std::uint32_t loop_count = 0; // kLoop: total passes; 0 = forever
+    // Slices (machine tables).
+    std::uint32_t first_item = 0;
+    std::uint32_t item_count = 0;
+    std::uint32_t first_span = 0;
+    std::uint32_t span_count = 0;
+    // Runtime.
+    std::int64_t playhead = 0;      // local tick last advanced to
+    std::uint32_t cursor = 0;       // absolute index of the next unfired item
+    std::uint32_t pass = 0;         // completed loop passes
+    std::uint32_t epoch = 0;        // bumped on enter/exit: stops stale batches
+    std::uint64_t entered_tick = 0; // the tick the owning state entered
+    bool done = false;              // reached the end (finished emitted / holding)
+    // History save (A.2.1 exit 5, owning state's history flag).
+    bool saved = false;
+    bool saved_done = false;
+    std::int64_t saved_playhead = 0;
+    std::uint32_t saved_pass = 0;
+};
+
 struct RtState {
     base::Name name;
     base::Name finished_event; // "<name>.finished", interned at instantiate
@@ -53,6 +118,7 @@ struct RtState {
     std::uint32_t region = 0;
     std::uint32_t parent = kInvalidIndex;        // parent state (kInvalid = top-level)
     std::uint32_t initial_child = kInvalidIndex; // kInvalid = leaf
+    std::uint32_t sheet = kInvalidIndex;         // this state's RtSheet, if any
     bool history = false;
     // Transition/watcher slices (into the machine tables).
     std::uint32_t first_transition = 0;
@@ -94,6 +160,10 @@ struct MachineInstance {
     std::vector<RtState> states;
     std::vector<RtTransition> transitions;
     std::vector<RtWatcher> watchers;
+    std::vector<RtSheet> sheets; // state flatten order = A.1 phase-4 order
+    std::vector<RtSheetItem> sheet_items;
+    std::vector<RtTrigger> sheet_triggers;
+    std::vector<RtSpan> sheet_spans;
     std::vector<bus::EventKey> keys; // subscribed channels (unsubscribe list)
     bool retired = false;            // host died; lazily detached
 };

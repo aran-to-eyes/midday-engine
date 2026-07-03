@@ -212,6 +212,11 @@ public:
 
     [[nodiscard]] double dt_seconds() const { return dt_; }
 
+    // The configured fixed rate — the tick-locking base for sequence
+    // keyframes (statechart::time_to_tick) and every other seconds->tick
+    // conversion; never re-derive it from dt.
+    [[nodiscard]] std::uint32_t ticks_per_second() const { return config_.ticks_per_second; }
+
     [[nodiscard]] bool ticking() const { return in_tick_; }
 
     [[nodiscard]] double interpolation_alpha() const { return accumulator_ / dt_; }

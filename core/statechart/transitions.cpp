@@ -232,8 +232,11 @@ void Statechart::exit_state(MachineInstance& instance,
         stats_.hook_calls += 1;
         state.hooks->on_exit(*this, hook_context(instance, state_index, to, 0.0, record_id));
     }
-    // A.2.1 exit 2 — the active substate exits (recursively, deepest
-    // completing first). Open sequence spans close here at m0-sequences.
+    // A.2.1 exit 2 — open sequence spans close (reverse open order — spans
+    // opened after the entry-time substate chain, so they close before it;
+    // the no-zombie-hitbox rule), then the active substate exits
+    // (recursively, deepest completing first).
+    sheet_close_open_spans(instance, state_index, cause_id);
     if (state.active_child != kInvalidIndex) {
         if (state.history)
             state.history_child = state.active_child; // resume point (spec 4.1)
@@ -250,7 +253,9 @@ void Statechart::exit_state(MachineInstance& instance,
     // capture, D-BUILD-030). An inactive state ALWAYS owns one scope.
     detail::fatal_if("deactivate exited state", hierarchy_->deactivate(state.entity));
     state.active = false;
-    // A.2.1 exit 5 — sequence playhead reset/save: m0-sequences attaches.
+    // A.2.1 exit 5 — the sequence playhead resets (at the next entry) or
+    // saves, under the state's history flag.
+    sheet_settle_exit(instance, state_index);
 }
 
 void Statechart::enter_state(MachineInstance& instance,
@@ -282,6 +287,10 @@ void Statechart::enter_state(MachineInstance& instance,
         next = state.initial_child;
     if (next != kInvalidIndex)
         enter_state(instance, next, path, path_pos + 1, from, cause_id, initial_entry);
+    // A.2.1 enter 3 (sequence half) — the playhead starts at 0 (items at
+    // local tick 0 fire here) or resumes the saved position under history
+    // (covering spans re-open here) — the exact mirror of exit 2/5.
+    sheet_start(instance, state_index, cause_id);
     // A.2.1 enter 4 — the state script, LAST, when its parts are live.
     if (state.hooks != nullptr) {
         const std::uint64_t record_id =

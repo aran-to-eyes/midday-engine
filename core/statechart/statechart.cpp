@@ -120,6 +120,7 @@ Statechart::Statechart(ecs::World& world,
                         "State identity on every state entity: machine/region/state names "
                         "for introspection (written only by statechart::Statechart)."));
     detail::fatal_if("add watchers hook", loop_->add_hook(tick::Phase::kWatchers, *this));
+    detail::fatal_if("add sequences hook", loop_->add_hook(tick::Phase::kSequences, *this));
     detail::fatal_if("add update hook", loop_->add_hook(tick::Phase::kUpdate, *this));
     // Frames for every legal nesting level (bus cap + phase-level frame 0):
     // sized ONCE so nested dispatch never reallocates under an outer frame.
@@ -130,6 +131,7 @@ Statechart::~Statechart() {
     // Boot-locked hook surface: destruction mid-tick is a contract violation
     // and surfaces here as a loud abort rather than a dangling hook pointer.
     detail::fatal_if("remove watchers hook", loop_->remove_hook(tick::Phase::kWatchers, *this));
+    detail::fatal_if("remove sequences hook", loop_->remove_hook(tick::Phase::kSequences, *this));
     detail::fatal_if("remove update hook", loop_->remove_hook(tick::Phase::kUpdate, *this));
     for (const std::unique_ptr<MachineInstance>& instance : machines_) {
         if (instance->retired)
@@ -142,6 +144,8 @@ Statechart::~Statechart() {
 void Statechart::on_phase(tick::TickLoop&, const tick::PhaseContext& context) {
     if (context.phase == tick::Phase::kWatchers)
         run_watchers(context);
+    else if (context.phase == tick::Phase::kSequences)
+        run_sequences(context);
     else if (context.phase == tick::Phase::kUpdate)
         run_update_hooks(true, context.dt, context.phase_record_id);
 }

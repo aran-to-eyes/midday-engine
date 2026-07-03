@@ -285,6 +285,12 @@ std::optional<base::Error> Statechart::validate_and_compile(const MachineDesc& d
             }
             state.watcher_count =
                 static_cast<std::uint32_t>(staged.watchers.size()) - state.first_watcher;
+
+            // The state's dope sheet (spec 4.1 sequences): tick-locked and
+            // table-compiled at instantiate (sequences.cpp).
+            if (source.sequence.has_value())
+                if (auto error = compile_sequence(*source.sequence, s, staged, origin))
+                    return error;
         }
         region.transitions_end = static_cast<std::uint32_t>(staged.transitions.size());
     }
