@@ -5,10 +5,14 @@
 add_executable(midday
     main.cpp
     envelope.cpp
-    verb.cpp
+    parse.cpp
+    help.cpp
+    verbs/registry.cpp
     verbs/version.cpp
     verbs/selftest.cpp
+    verbs/help.cpp
     verbs/envelope_test.cpp
+    verbs/framework_test.cpp
     $<TARGET_OBJECTS:midday_base_tests>
     $<TARGET_OBJECTS:midday_math_tests>
     $<TARGET_OBJECTS:midday_reflect_tests>

@@ -65,15 +65,9 @@ TEST_CASE("cli.envelope: envelope invariants hold even for careless callers") {
 TEST_CASE("cli.version: payload declares name midday and a version") {
     midday::cli::VerbArgs args;
     args.json = true;
-    midday::cli::VerbOutcome out = midday::cli::verb_version(args);
+    midday::cli::VerbOutcome out = midday::cli::version_spec().run(args);
     CHECK(out.exit == Exit::Ok);
     REQUIRE(out.payload.find("name") != nullptr);
     CHECK(out.payload.find("name")->dump() == "\"midday\"");
     REQUIRE(out.payload.find("version") != nullptr);
-}
-
-TEST_CASE("cli.verbs: registry resolves version and selftest, rejects unknown") {
-    CHECK(midday::cli::find_verb("version") != nullptr);
-    CHECK(midday::cli::find_verb("selftest") != nullptr);
-    CHECK(midday::cli::find_verb("frobnicate") == nullptr);
 }

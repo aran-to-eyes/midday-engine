@@ -60,18 +60,9 @@ struct CountingListener : doctest::IReporter {
 
 REGISTER_LISTENER("midday-count", 1, CountingListener);
 
-} // namespace
-
 VerbOutcome verb_selftest(const VerbArgs& args) {
-    std::string filter;
-    for (size_t i = 0; i < args.rest.size(); ++i) {
-        std::string_view arg = args.rest[i];
-        if (arg == "--filter" && i + 1 < args.rest.size()) {
-            filter = std::string(args.rest[++i]);
-        } else if (arg.starts_with("--filter=")) {
-            filter = std::string(arg.substr(9));
-        }
-    }
+    // The framework parsed and validated --filter; typed access only.
+    const std::string filter = args.present("filter") ? args.get_string("filter") : std::string();
 
     doctest::Context context;
     context.setOption("no-intro", true);
@@ -114,6 +105,22 @@ VerbOutcome verb_selftest(const VerbArgs& args) {
     out.human = "selftest: " + std::to_string(g_totals.cases - g_totals.cases_failed) + "/" +
                 std::to_string(g_totals.cases) + " cases passed";
     return out;
+}
+
+} // namespace
+
+const VerbSpec& selftest_spec() {
+    static constexpr FlagSpec kFlags[] = {
+        {.name = "filter",
+         .type = "string",
+         .doc = "doctest test-case filter pattern (e.g. 'cli.*')"},
+    };
+    static constexpr VerbSpec kSpec{.name = "selftest",
+                                    .summary =
+                                        "run the doctest registry embedded in the engine binary",
+                                    .flags = kFlags,
+                                    .run = &verb_selftest};
+    return kSpec;
 }
 
 } // namespace midday::cli
