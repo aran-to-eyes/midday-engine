@@ -1,9 +1,13 @@
 // ts/codegen/bindings.ts — bindings_spec.json emitter: the glue spec
 // m0-batch-bindings implements. Shape spec: api/CODEGEN.md
 // "bindings_spec.json layout". No subsystem ever gets hand-written bindings.
+//
+// The batch envelope here is SELF-HOST ONLY (D-BUILD-069): the retired-in-
+// place bootstrap emitter stays frozen on the version-0 placeholder, and the
+// byte-equivalence gate compares bindings_spec.json modulo this one member.
 
 import { JObject, JValue, dumpJson, findKey, jArr, jInt, jObj, jStr } from "./json";
-import { str } from "./model";
+import { entries, str } from "./model";
 
 // Deep copy minus every doc/summary key: signatures stay verbatim (level,
 // defaults, flags, compat hashes IN), prose stays out of the glue contract.
@@ -18,11 +22,52 @@ function stripDocs(value: JValue): JValue {
     return value;
 }
 
-const ENVELOPE_DOC =
-    "Reserved: m0-batch-bindings designs the real batch envelope (per-query SoA " +
-    "views backed by typed arrays, one segment per component column, pooled math " +
-    "slots, per-tick crossing/GC counters). views stays empty and envelope_version " +
-    "stays 0 until then; refuse envelope_version 0 for actual batching.";
+// Batchable columns: TypeDesc spelling -> [buffer element kind, width]
+// (api/CODEGEN.md "bindings_spec.json layout"). Reference and composite
+// types (string, name, entity_ref, asset_ref, array, map) never batch —
+// they stay on the structured seam.
+const BATCH_COLUMNS = new Map<string, [buffer: string, width: number]>([
+    ["bool", ["u8", 1]],
+    ["int", ["f64", 1]],
+    ["float", ["f32", 1]],
+    ["vec2", ["f32", 2]],
+    ["vec3", ["f32", 3]],
+    ["vec4", ["f32", 4]],
+    ["quat", ["f32", 4]],
+    ["color", ["f32", 4]],
+]);
+
+// One view template per class, input order; fields keep property declaration
+// order and drop non-batchable types. writable = the read_only flag is
+// absent (the runtime never scatters read_only columns back).
+function batchViews(document: JObject): JValue {
+    return jArr(
+        entries(document, "classes").map((cls) => {
+            const fields: JValue[] = [];
+            for (const property of entries(cls, "properties")) {
+                const spelling = str(property, "type");
+                const column = BATCH_COLUMNS.get(spelling);
+                if (column === undefined) continue;
+                const readOnly = entries(property, "flags").some(
+                    (flag) => flag.k === "str" && flag.v === "read_only",
+                );
+                fields.push(
+                    jObj([
+                        ["name", jStr(str(property, "name"))],
+                        ["type", jStr(spelling)],
+                        ["buffer", jStr(column[0])],
+                        ["width", jInt(column[1])],
+                        ["writable", { k: "bool", v: !readOnly }],
+                    ]),
+                );
+            }
+            return jObj([
+                ["component", jStr(str(cls, "name"))],
+                ["fields", jArr(fields)],
+            ]);
+        }),
+    );
+}
 
 export function emitBindings(document: JObject): string {
     const section = (key: string): JValue => {
@@ -38,10 +83,8 @@ export function emitBindings(document: JObject): string {
         [
             "batch_envelope",
             jObj([
-                ["envelope_version", jInt(0)],
-                ["status", jStr("placeholder")],
-                ["doc", jStr(ENVELOPE_DOC)],
-                ["views", jArr([])],
+                ["envelope_version", jInt(1)],
+                ["views", batchViews(document)],
             ]),
         ],
     ]);

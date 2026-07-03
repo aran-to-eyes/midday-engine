@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `bc1d6422fde95a12`
+- api_compat_hash: `266244ca65c75293`
 
 ## Classes
 
@@ -381,9 +381,9 @@ Positionals:
 
 ### `midday script`
 
-typecheck, lint, and transpile TypeScript on the embedded toolchain
+typecheck, lint, transpile, and benchmark TypeScript on the embedded runtime
 
-- compat_hash: `7ecd41f0d75dacb9`
+- compat_hash: `892089cc9ae1e6c8`
 
 Flags:
 
@@ -391,10 +391,14 @@ Flags:
 | --- | --- | --- | --- | --- |
 | `--cache-dir` | `string` | no | `".midday-cache/ts"` | content-hash cache directory (regenerable, never committed) |
 | `--stats` | `bool` | no |  | build: report {transpiled, cache_hits} counters in the payload |
+| `--entities` | `int` | no | `1000` | bench: entity count for the budget sweep |
+| `--ticks` | `int` | no | `60` | bench: measured ticks (after warmup) |
+| `--warmup` | `int` | no | `5` | bench: unmeasured warmup ticks before the window |
+| `--naive` | `bool` | no |  | bench: per-field host-hook accessors (the chatty comparison mode) |
 
 Positionals:
 
 | positional | type | required | variadic | doc |
 | --- | --- | --- | --- | --- |
-| `action` | `name` | yes | no | check \| build |
-| `path` | `string` | yes | no | TypeScript source file |
+| `action` | `name` | yes | no | check \| build \| bench |
+| `path` | `string` | no | no | TypeScript source file (bench: overrides the committed fixture) |

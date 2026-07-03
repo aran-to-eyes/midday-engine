@@ -126,6 +126,26 @@ echo "$SCRIPT_OUT" | jq -e '.error.code == "script.lint"
     and ([.diagnostics[].code] | unique) == ["no-timer","no-unseeded-random","no-wall-clock"]
     and ([.diagnostics[] | select(.line > 0 and .col > 0)] | length) == 6' >/dev/null
 
+step "batch-binding budgets (1k/10k/100k sweep + naive ratio, m0-batch-bindings exit tests)"
+# Crossings stay <= 8 * pool_count AND constant across the sweep (O(pools),
+# never O(entities)); steady-state pooled-math ticks allocate ZERO GC bytes.
+# Naive per-field mode must cross >= 10x more (per tick, tick-invariant).
+BATCH_CROSSINGS=""
+for N in 1000 10000 100000; do
+    BENCH_OUT=$(build/dev/midday script bench --entities "$N" --ticks 60 \
+        --cache-dir build/dev/ts-cache.a --json)
+    echo "$BENCH_OUT" | jq -e '.ok and .mode=="batched" and .crossings_constant
+        and .boundary_crossings_per_tick <= 8*.pool_count
+        and .gc_alloc_bytes_per_tick==0' >/dev/null
+    N_CROSSINGS=$(echo "$BENCH_OUT" | jq '.boundary_crossings_per_tick')
+    if [ -z "$BATCH_CROSSINGS" ]; then BATCH_CROSSINGS="$N_CROSSINGS"; fi
+    [ "$N_CROSSINGS" -eq "$BATCH_CROSSINGS" ]
+done
+build/dev/midday script bench --naive --entities 1000 --ticks 10 \
+    --cache-dir build/dev/ts-cache.a --json \
+    | jq -e ".ok and .mode==\"naive\" and .crossings_constant
+        and .boundary_crossings_per_tick >= 10*$BATCH_CROSSINGS" >/dev/null
+
 step "license scan (+ negative fixture)"
 scripts/license_scan.py >/dev/null
 scripts/test_license_scan.py >/dev/null

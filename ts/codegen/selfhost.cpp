@@ -48,6 +48,14 @@ Error error_from_response(const Json* error_json) {
 
 } // namespace
 
+std::string bindings_equivalence_view(std::string_view bindings_bytes) {
+    Json::ParseResult parsed = Json::parse(bindings_bytes, "<bindings_spec>");
+    if (parsed.error || !parsed.value.is_object() || parsed.value.find("batch_envelope") == nullptr)
+        return std::string(bindings_bytes);
+    parsed.value.set("batch_envelope", Json());
+    return parsed.value.dump() + "\n";
+}
+
 RunResult run_generator(std::string_view input_bytes, const Config& config) {
     RunResult out;
 

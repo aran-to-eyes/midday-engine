@@ -8,11 +8,14 @@ QuickJS. No Node anywhere (Aurora D-11).
   every check also tsc-validates the generated declarations) + the engine
   lint pack; `build` = check + transpile + content-hash cache; `load_module`
   = build through the cache and evaluate on a `ScriptRuntime` (relative
-  imports resolve through the same cache; bare specifiers wait for the
-  bindings).
+  imports resolve through the same cache; bare `midday/<name>` specifiers
+  are the engine module surface — `ts/lib/<name>.ts`, mirrored by the
+  canonical tsc `paths` mapping (D-BUILD-072); every other bare specifier
+  refuses).
 - **Cache**: XXH3-128 over length-prefixed segments — fingerprint(schema +
   lint pack version, canonical options JSON, typescript.js, driver.js,
-  engine.d.ts) then key(fingerprint, source). Content-addressed, path-free,
+  engine.d.ts, every `ts/lib/*.ts` path+bytes) then key(fingerprint,
+  source). Content-addressed, path-free,
   byte-stable across platforms; only clean builds populate it, so a hit
   soundly skips compile AND check. `midday script build --stats` reports
   `{transpiled, cache_hits}`; the second run is zero re-transpiles.
@@ -24,4 +27,5 @@ QuickJS. No Node anywhere (Aurora D-11).
   none.
 - CLI: `midday script check|build <path>` — exit 3 for type errors AND lint
   hits (structured diagnostics in the payload), 1 for infrastructure
-  failures, 2 for usage.
+  failures, 2 for usage. `midday script bench` (the batch-binding budget
+  harness) lives in ts/runtime and drives fixtures through this toolchain.

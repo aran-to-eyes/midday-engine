@@ -46,6 +46,14 @@ struct ToolchainConfig {
     std::string engine_dts = "api/engine.d.ts";
     std::string driver_js = "ts/toolchain/driver.js";
     std::string cache_dir = ".midday-cache/ts"; // regenerable, gitignored, never drift-gated
+    // The engine-side TS library: bare "midday/<name>" specifiers resolve to
+    // "<lib_ts_dir>/<name>.ts" (typecheck via the canonical paths mapping,
+    // runtime via load_module's resolver — D-BUILD-072). Every *.ts here is
+    // part of the toolchain fingerprint: editing the engine library soundly
+    // invalidates every cached script build. NOTE: the tsc paths mapping is
+    // canonical (part of the cache key), so this stays "ts/lib" in practice;
+    // it is configurable only for toolchain doctests.
+    std::string lib_ts_dir = "ts/lib";
 };
 
 // One diagnostic, structured: kind "type" (tsc, code "TS<n>") or "lint"

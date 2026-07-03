@@ -74,7 +74,13 @@ void check_equivalence(std::string_view input) {
     check_pair("engine.d.ts", native.dts, ts.files.dts);
     check_pair("schema_manifest.json", native.manifest, ts.files.manifest);
     check_pair("api_docs.md", native.docs, ts.files.docs);
-    check_pair("bindings_spec.json", native.bindings, ts.files.bindings);
+    // bindings_spec.json compares modulo the batch envelope: self-host-only
+    // glue the frozen bootstrap never emits (D-BUILD-069). The envelope
+    // itself is pinned against literal bytes below — never bootstrap-vs-
+    // selfhost — so dual-wrong agreement cannot pass.
+    check_pair("bindings_spec.json",
+               selfhost::bindings_equivalence_view(native.bindings),
+               selfhost::bindings_equivalence_view(ts.files.bindings));
     CHECK(ts.files.api_compat_hash == loaded.document.find("api_compat_hash")->as_string());
 }
 
@@ -136,6 +142,39 @@ TEST_CASE("codegen.selfhost.live: byte-equal on the live document and its CLI en
     envelope.set("exit_code", 0);
     envelope.set("api", document);
     check_equivalence(envelope.dump());
+}
+
+TEST_CASE("codegen.selfhost.batch_envelope: version-1 views derive from classes, byte-pinned") {
+    // Literal-byte pins (never a two-generator diff): the synthetic corpus
+    // class 'health' — float columns batch as f32, array<name> is excluded,
+    // and 'writable' follows the read_only flag (absent here -> true).
+    selfhost::RunResult synthetic =
+        selfhost::run_generator(testkit::kCodegenSyntheticDocument, corpus_config());
+    REQUIRE_FALSE(synthetic.error.has_value());
+    CHECK(synthetic.files.bindings.find(
+              "\"batch_envelope\":{\"envelope_version\":1,\"views\":[{\"component\":\"health\","
+              "\"fields\":[{\"name\":\"max\",\"type\":\"float\",\"buffer\":\"f32\",\"width\":1,"
+              "\"writable\":true},{\"name\":\"current\",\"type\":\"float\",\"buffer\":\"f32\","
+              "\"width\":1,\"writable\":true}]}]}}") != std::string::npos);
+
+    // Number corpus: int -> f64 (2^53-exact contract), vec3 -> f32 width 3,
+    // string/map columns excluded.
+    selfhost::RunResult numbers =
+        selfhost::run_generator(testkit::kCodegenNumberDocument, corpus_config());
+    REQUIRE_FALSE(numbers.error.has_value());
+    const std::string& bindings = numbers.files.bindings;
+    CHECK(bindings.find("{\"name\":\"exact_int\",\"type\":\"int\",\"buffer\":\"f64\",\"width\":1,"
+                        "\"writable\":true}") != std::string::npos);
+    CHECK(bindings.find("{\"name\":\"tuple\",\"type\":\"vec3\",\"buffer\":\"f32\",\"width\":3,"
+                        "\"writable\":true}") != std::string::npos);
+    CHECK(bindings.find("\"name\":\"label\",\"buffer\"") == std::string::npos);
+    CHECK(bindings.find("\"name\":\"table\",\"buffer\"") == std::string::npos);
+
+    // The equivalence view really blanks the envelope and nothing else.
+    const std::string scoped = selfhost::bindings_equivalence_view(bindings);
+    CHECK(scoped.find("\"batch_envelope\":null") != std::string::npos);
+    CHECK(scoped.find("\"envelope_version\"") == std::string::npos);
+    CHECK(scoped.find("\"expr_functions\"") != std::string::npos);
 }
 
 TEST_CASE("codegen.selfhost.errors: validation failures carry the bootstrap error codes") {

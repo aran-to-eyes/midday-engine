@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash bc1d6422fde95a12 (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash 266244ca65c75293 (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -247,16 +247,24 @@ declare namespace midday {
         input?: string;
     }
 
-    /** typecheck, lint, and transpile TypeScript on the embedded toolchain */
+    /** typecheck, lint, transpile, and benchmark TypeScript on the embedded runtime */
     interface ScriptVerbArgs {
         /** content-hash cache directory (regenerable, never committed) */
         "cache-dir"?: string;
         /** build: report {transpiled, cache_hits} counters in the payload */
         stats?: boolean;
-        /** check | build */
+        /** bench: entity count for the budget sweep */
+        entities?: number;
+        /** bench: measured ticks (after warmup) */
+        ticks?: number;
+        /** bench: unmeasured warmup ticks before the window */
+        warmup?: number;
+        /** bench: per-field host-hook accessors (the chatty comparison mode) */
+        naive?: boolean;
+        /** check | build | bench */
         action: string;
-        /** TypeScript source file */
-        path: string;
+        /** TypeScript source file (bench: overrides the committed fixture) */
+        path?: string;
     }
 
     /** Verb name -> parsed-argument type. */

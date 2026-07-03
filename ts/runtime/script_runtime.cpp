@@ -4,6 +4,8 @@
 
 #include "ts/runtime/script_runtime.h"
 
+#include "ts/runtime/counting_alloc.h" // alloc_bytes()'s meter (internal)
+
 #include <cstring>
 #include <quickjs.h>
 #include <string>
@@ -121,9 +123,11 @@ base::Json js_to_json(JSContext* ctx, JSValueConst value) {
 
 struct ScriptRuntime::Impl {
     RuntimeConfig config;
+    detail::AllocMeter alloc; // must outlive rt: the malloc functions hold &alloc
     JSRuntime* rt = nullptr;
     JSContext* ctx = nullptr;
     std::uint64_t gas_used = 0;
+    std::uint64_t host_calls = 0;
     bool interrupted = false;
     ModuleResolver resolver;
     std::vector<std::pair<std::string, HostFn>> hooks;
@@ -275,6 +279,7 @@ struct RuntimeBridge {
     static JSValue
     host_call(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv, int magic) {
         auto* impl = static_cast<ScriptRuntime::Impl*>(JS_GetContextOpaque(ctx));
+        ++impl->host_calls;
         const auto& [name, fn] = impl->hooks[static_cast<std::size_t>(magic)];
         base::Json::Array args;
         args.reserve(static_cast<std::size_t>(argc));
@@ -290,7 +295,7 @@ struct RuntimeBridge {
 
 ScriptRuntime::ScriptRuntime(RuntimeConfig config) : impl_(std::make_unique<Impl>()) {
     impl_->config = config;
-    impl_->rt = JS_NewRuntime();
+    impl_->rt = JS_NewRuntime2(&detail::kCountingAlloc, &impl_->alloc);
     JS_SetMemoryLimit(impl_->rt, config.memory_limit_bytes);
     JS_SetMaxStackSize(impl_->rt, config.stack_size_bytes);
     JS_SetRuntimeOpaque(impl_->rt, impl_.get());
@@ -425,6 +430,26 @@ ScriptRuntime::LoadedModule ScriptRuntime::load_module(std::string_view specifie
 std::uint64_t ScriptRuntime::gas_used() const {
     return impl_->gas_used;
 }
+
+std::uint64_t ScriptRuntime::alloc_bytes() const {
+    return impl_->alloc.bytes;
+}
+
+std::uint64_t ScriptRuntime::host_calls() const {
+    return impl_->host_calls;
+}
+
+namespace detail {
+
+JSContext* runtime_context(ScriptRuntime& runtime) {
+    return runtime.impl_->ctx;
+}
+
+base::Error runtime_take_exception(ScriptRuntime& runtime) {
+    return runtime.impl_->take_exception();
+}
+
+} // namespace detail
 
 void annotate_sim_context(base::Error& error,
                           std::uint64_t tick,

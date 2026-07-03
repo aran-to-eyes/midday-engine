@@ -5,10 +5,13 @@ Two implementations exist and must produce **byte-identical** output:
 the SELF-HOSTED TS-on-QuickJS generator (`ts/codegen`, **authoritative**
 since `m0-codegen-selfhost` — `midday api codegen`) and the native
 bootstrap (`tools/codegen_bootstrap`, TEMPORARY, kept only as the
-byte-equivalence pin until it retires post-M0). Because the outputs are
-byte-identical, generated headers are generator-neutral — they never name
-which implementation produced them. If a rule is not written here, it is a
-doc defect — fix the doc in the same commit that relies on the rule.
+byte-equivalence pin until it retires post-M0). ONE scoped exception: the
+`bindings_spec.json` `batch_envelope` member is self-host-only glue
+(D-BUILD-069, see its section) — the equivalence gate compares that file
+modulo this member. Because the outputs are otherwise byte-identical,
+generated headers are generator-neutral — they never name which
+implementation produced them. If a rule is not written here, it is a doc
+defect — fix the doc in the same commit that relies on the rule.
 
 Inputs and outputs:
 
@@ -222,13 +225,36 @@ Key order: `format_version` (1), `api_compat_hash`, `expr_functions`,
   verbatim in input order. These are the per-function call signatures and
   payload decode/encode specs the C++ ⇄ QuickJS glue implements; the hashes
   make glue staleness detectable. `classes` is empty until classes register.
-- `batch_envelope`: `{"envelope_version":0,"status":"placeholder","doc":
-  <fixed string>,"views":[]}` — reserves the shape `m0-batch-bindings`
-  designs: per-query SoA views backed by typed arrays (one segment per
-  component column, TypeDesc-mapped), pooled math slots, and per-tick
-  crossing/GC counters. `envelope_version` stays 0 and `views` stays `[]`
-  until that node lands; consumers must refuse `envelope_version` 0 for
-  actual batching.
+- `batch_envelope` (SELF-HOST ONLY, D-BUILD-069):
+  `{"envelope_version":1,"views":[...]}` — the finalized batch-binding glue
+  spec (`m0-batch-bindings`; runtime in `ts/runtime/batch_views.h`,
+  script surface `midday/batch`). One entry per class, input order:
+  `{"component":<name>,"fields":[...]}` where `fields` keeps property
+  declaration order and contains only BATCHABLE columns, each
+  `{"name","type",<TypeDesc spelling>,"buffer","width","writable"}`:
+
+  | TypeDesc | buffer | width |
+  |---|---|---|
+  | `bool` | `u8` | 1 |
+  | `int` | `f64` (2^53-exact, the JSON number contract) | 1 |
+  | `float` | `f32` | 1 |
+  | `vec2` / `vec3` / `vec4` / `quat` / `color` | `f32` | 2 / 3 / 4 / 4 / 4 |
+
+  Reference and composite types (`string`, `name`, `entity_ref`,
+  `asset_ref`, `array<>`, `map<>`) never batch — they stay on the
+  structured seam. `writable` is false exactly when the property carries
+  the `read_only` flag (the runtime never scatters such columns back). At
+  runtime each view additionally carries `count` and `buffers` (live typed
+  arrays), and the envelope carries `tick`; consumers must refuse
+  `envelope_version` 0 (the old placeholder) for actual batching.
+
+  The TEMPORARY bootstrap emitter stays frozen on the version-0 placeholder
+  — batch glue is post-bootstrap surface. The byte-equivalence gate
+  therefore compares `bindings_spec.json` with the `batch_envelope` member
+  nulled on both sides (`selfhost::bindings_equivalence_view`); every other
+  byte of the artifact, and the other three artifacts, remain full-byte.
+  The envelope derivation itself is pinned against LITERAL bytes by
+  `codegen.selfhost.batch_envelope`.
 
 ## Determinism and drift gates
 

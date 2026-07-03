@@ -48,6 +48,7 @@ target_link_libraries(midday PRIVATE
     midday::codegen_bootstrap
     midday::codegen_selfhost
     midday::script_runtime
+    midday::batch_bench
     midday::ts_toolchain
     doctest::doctest)
 target_compile_definitions(midday PRIVATE MIDDAY_VERSION="${PROJECT_VERSION}")

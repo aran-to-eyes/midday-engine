@@ -30,9 +30,13 @@ constexpr std::string_view kCacheSchema = "midday.ts.cache/1 midday-lint/1";
 // LF newlines, no source maps, no timestamps. skipLibCheck stays OFF on
 // purpose: every check also tsc-validates api/engine.d.ts and the vendored
 // libs — the toolchain tier of formats/engine_dts.meta.md's contract.
+// The paths mapping IS the engine module surface (D-BUILD-072): bare
+// "midday/*" specifiers resolve into ts/lib — reserved by D-BUILD-065,
+// defined here; every other bare specifier keeps refusing.
 constexpr std::string_view kCompilerOptionsJson =
     R"({"lib":["es2020"],"module":"esnext","moduleResolution":"bundler",)"
-    R"("newLine":"lf","strict":true,"target":"es2020","types":[]})";
+    R"("newLine":"lf","paths":{"midday/*":["./ts/lib/*.ts"]},)"
+    R"("strict":true,"target":"es2020","types":[]})";
 
 std::string generic(const std::filesystem::path& path) {
     return path.generic_string();
@@ -118,7 +122,20 @@ struct Toolchain::Impl {
             return std::filesystem::weakly_canonical(p, inner);
         };
         return canon == canon_of(config.engine_dts) || within(canon, canon_of(config.lib_dir)) ||
+               within(canon, canon_of(config.lib_ts_dir)) ||
                (!entry_root.empty() && within(canon, entry_root));
+    }
+
+    // The engine library's sources, sorted by filename — fingerprint
+    // segments AND the bare-specifier surface ("midday/<stem>").
+    [[nodiscard]] std::vector<std::filesystem::path> lib_ts_sources() const {
+        std::vector<std::filesystem::path> sources;
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::directory_iterator(config.lib_ts_dir, ec))
+            if (entry.path().extension() == ".ts")
+                sources.push_back(entry.path());
+        std::ranges::sort(sources);
+        return sources;
     }
 
     std::optional<base::Error> ensure_runtime() {
@@ -164,16 +181,31 @@ struct Toolchain::Impl {
     std::optional<base::Error> ensure_fingerprint() {
         if (!fingerprint.empty())
             return std::nullopt;
-        std::string blobs[3];
-        const std::string* files[] = {&config.typescript_js, &config.driver_js, &config.engine_dts};
-        for (std::size_t i = 0; i < 3; ++i) {
-            base::ReadFileResult file = base::read_file(*files[i], kIoCode);
+        // The engine TS library is toolchain surface: (path, bytes) of every
+        // ts/lib module joins the fingerprint, sorted, so editing the
+        // library soundly invalidates every dependent cached build
+        // (D-BUILD-072; same rationale as hashing engine.d.ts).
+        const std::vector<std::filesystem::path> lib_sources = lib_ts_sources();
+        std::vector<std::filesystem::path> files = {
+            config.typescript_js, config.driver_js, config.engine_dts};
+        files.insert(files.end(), lib_sources.begin(), lib_sources.end());
+        std::vector<std::string> blobs;
+        blobs.reserve(files.size() + lib_sources.size());
+        for (const std::filesystem::path& path : files) {
+            base::ReadFileResult file = base::read_file(path, kIoCode);
             if (file.error)
                 return std::move(file.error);
-            blobs[i] = std::move(file.bytes);
+            blobs.push_back(std::move(file.bytes));
         }
-        const std::string_view segments[] = {
+        for (const std::filesystem::path& lib_source : lib_sources)
+            blobs.push_back(generic(lib_source));
+        // Views are taken only after every push (no reallocation dangles).
+        std::vector<std::string_view> segments = {
             kCacheSchema, kCompilerOptionsJson, blobs[0], blobs[1], blobs[2]};
+        for (std::size_t i = 0; i < lib_sources.size(); ++i) {
+            segments.push_back(blobs[files.size() + i]); // module path
+            segments.push_back(blobs[3 + i]);            // module bytes
+        }
         fingerprint = content_key_hex(segments);
         return std::nullopt;
     }
@@ -294,8 +326,14 @@ Toolchain::LoadOutcome Toolchain::load_module(ScriptRuntime& runtime, const std:
             target = std::filesystem::path(specifier); // top-level load: a real path
         } else if (specifier.starts_with("./") || specifier.starts_with("../")) {
             target = std::filesystem::path(referrer).parent_path() / specifier;
+        } else if (specifier.starts_with("midday/")) {
+            // The engine module surface (D-BUILD-072): "midday/<name>" is
+            // "<lib_ts_dir>/<name>.ts", mirroring the canonical tsc paths
+            // mapping so typecheck and runtime resolve identically.
+            target = std::filesystem::path(impl_->config.lib_ts_dir) /
+                     specifier.substr(std::string_view("midday/").size());
         } else {
-            return std::nullopt; // bare specifiers: batch bindings territory
+            return std::nullopt; // other bare specifiers keep refusing
         }
         if (!target.has_extension())
             target += ".ts";

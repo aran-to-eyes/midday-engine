@@ -222,11 +222,19 @@ run_equivalence(const std::string& input, std::string_view bytes, const std::str
     for (std::size_t i = 0; i < kArtifactNames.size(); ++i) {
         Json entry = Json::object();
         entry.set("file", kArtifactNames[i]);
-        const bool equal = native.files[i] == hosted.files[i];
+        // bindings_spec.json compares modulo the batch envelope: it is
+        // self-host-only glue the frozen bootstrap never emits (D-BUILD-069;
+        // selfhost::bindings_equivalence_view documents the scope).
+        const bool bindings = kArtifactNames[i] == "bindings_spec.json";
+        const std::string left =
+            bindings ? selfhost::bindings_equivalence_view(native.files[i]) : native.files[i];
+        const std::string right =
+            bindings ? selfhost::bindings_equivalence_view(hosted.files[i]) : hosted.files[i];
+        const bool equal = left == right;
         entry.set("equal", equal);
         if (!equal) {
             ++divergent;
-            entry.set("diff", diff_location(native.files[i], hosted.files[i]));
+            entry.set("diff", diff_location(left, right));
         }
         report.push(std::move(entry));
     }

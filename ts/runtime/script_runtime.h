@@ -36,7 +36,19 @@
 #include <string_view>
 #include <vector>
 
+struct JSContext; // quickjs.h's own tag — the batch seam below hands it out
+
 namespace midday::script {
+
+class ScriptRuntime;
+
+namespace detail {
+// Internal seam for ts/runtime/batch_views.cpp ONLY: the batch bindings are
+// the one consumer allowed to speak QuickJS directly (typed arrays cannot
+// cross the JSON hook seam). Everything else keeps talking base::Json.
+JSContext* runtime_context(ScriptRuntime& runtime);
+base::Error runtime_take_exception(ScriptRuntime& runtime);
+} // namespace detail
 
 struct RuntimeConfig {
     // Hard heap cap enforced by QuickJS's allocator; exceeding it surfaces
@@ -128,8 +140,21 @@ public:
     // Interrupt-handler invocations consumed since construction.
     [[nodiscard]] std::uint64_t gas_used() const;
 
+    // Cumulative JS-heap bytes ALLOCATED since construction (counting
+    // allocator; frees never decrement — this measures churn, not
+    // residency). The batch bindings' GC budget: a steady-state tick that
+    // allocates zero bytes cannot trigger GC pauses, ever.
+    [[nodiscard]] std::uint64_t alloc_bytes() const;
+
+    // Cumulative host-hook invocations (the JSON seam) — one boundary
+    // crossing each. The batch bindings' crossing budget counts these
+    // alongside its own buffer publishes.
+    [[nodiscard]] std::uint64_t host_calls() const;
+
 private:
     friend struct RuntimeBridge; // QuickJS callback trampolines (script_runtime.cpp)
+    friend JSContext* detail::runtime_context(ScriptRuntime&);
+    friend base::Error detail::runtime_take_exception(ScriptRuntime&);
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
