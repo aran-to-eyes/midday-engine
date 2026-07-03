@@ -9,6 +9,6 @@
 
 #pragma once
 
-#include <ostream> // IWYU pragma: keep
-
 #include "doctest/doctest.h" // IWYU pragma: export
+
+#include <ostream> // IWYU pragma: keep
