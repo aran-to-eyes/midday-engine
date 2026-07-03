@@ -23,6 +23,7 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_journal_tests>
     $<TARGET_OBJECTS:midday_bus_tests>
     $<TARGET_OBJECTS:midday_tick_tests>
+    $<TARGET_OBJECTS:midday_statechart_tests>
     $<TARGET_OBJECTS:midday_api_tests>
     $<TARGET_OBJECTS:midday_codegen_bootstrap_tests>
 )
@@ -38,6 +39,7 @@ target_link_libraries(midday PRIVATE
     midday::journal
     midday::bus
     midday::tick
+    midday::statechart
     midday::api
     midday::codegen_bootstrap
     doctest::doctest)
