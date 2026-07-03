@@ -9,16 +9,6 @@
 #include <string>
 #include <utility>
 
-// gcc 13 -O3 misfires -Wmaybe-uninitialized deep inside std::variant's move
-// machinery when ParamDesc{..., Json} temporaries are built for registration
-// (a long-standing gcc false positive on variant-heavy code; clang and MSVC
-// are clean, and the sanitizer lane covers real uninitialized reads). TU-
-// scoped because the diagnostic is attributed to inlined libstdc++ internals,
-// out of reach of any narrower region.
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
-#endif
-
 namespace midday::expr {
 namespace {
 

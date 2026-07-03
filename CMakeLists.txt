@@ -31,6 +31,15 @@ if(MSVC)
     endif()
 else()
     target_compile_options(midday_options INTERFACE -Wall -Wextra -Wpedantic)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # gcc's -Wmaybe-uninitialized misfires at -O3 inside std::variant move
+        # machinery whenever reflect descriptors are built with Json defaults
+        # (hit core/expr and api/ within two nodes; a per-TU pragma does not
+        # scale to a pattern every registration TU repeats). Known-unreliable
+        # diagnostic on variant-heavy code; clang, MSVC, ASan/UBSan still
+        # cover real uninitialized reads (D-BUILD-043).
+        target_compile_options(midday_options INTERFACE -Wno-maybe-uninitialized)
+    endif()
     if(MIDDAY_WERROR)
         target_compile_options(midday_options INTERFACE -Werror)
     endif()
