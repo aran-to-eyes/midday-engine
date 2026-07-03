@@ -9,6 +9,7 @@
 #include "testkit/doctest_unwrap.h"
 
 #include <initializer_list>
+#include <ostream>
 #include <string_view>
 
 using midday::cli::Error;
