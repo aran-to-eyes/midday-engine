@@ -137,6 +137,18 @@ struct ScriptRuntime::Impl {
         return nullptr;
     }
 
+    // True when a configured memory cap exists and live usage sits close
+    // enough to it (>= 7/8) that an allocation failure is the only plausible
+    // cause of the exception in hand. Error path only — the walk is not free.
+    [[nodiscard]] bool near_memory_limit() const {
+        if (config.memory_limit_bytes == 0)
+            return false;
+        JSMemoryUsage usage;
+        JS_ComputeMemoryUsage(rt, &usage);
+        const auto limit = static_cast<std::int64_t>(config.memory_limit_bytes);
+        return usage.malloc_size >= limit - limit / 8;
+    }
+
     // The thrown JS value -> structured error. Frees `exception`.
     base::Error error_from_value(JSValue exception) {
         base::Error error;
@@ -161,12 +173,17 @@ struct ScriptRuntime::Impl {
         }
         if (message.empty())
             message = to_std_string(ctx, exception);
-        if (message == "out of memory")
+        if (message == "out of memory" || near_memory_limit()) {
+            // Under genuine OOM the message extraction above may itself fail
+            // to allocate (empty message, glibc more than macOS malloc), so
+            // the string match alone under-classifies; measured usage against
+            // the configured limit is the reliable signal.
             error.code = "script.out_of_memory";
-        else if (name == "SyntaxError")
+        } else if (name == "SyntaxError") {
             error.code = "script.syntax";
-        else
+        } else {
             error.code = "script.exception";
+        }
         std::string file;
         std::int64_t line = 0;
         std::int64_t col = 0;
