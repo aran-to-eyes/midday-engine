@@ -25,6 +25,9 @@ Primitives every other subsystem stands on (m0-core-primitives):
 - `arena.h` — frame/bump allocator: offset-aligned (layout is a pure function of the
   allocation sequence), block-retaining reset, no destructors by contract. Consumers:
   tick-loop frame packets (m0-tick-loop), loader scratch (m0-yaml-loader-run).
+- `hex.h` — the canonical hash spelling: 16-digit lowercase hex for 64-bit values,
+  used wherever a hash reaches JSON output or CI byte-compares (selftest's
+  math_fixture_hash, reflection compat hashes).
 - `log.h` — machine-readable logging: one JSONL line per record conforming to
   `formats/log_record.schema.json`; `ts` is a monotonic counter or sim tick, never
   wall clock; sinks = stderr + capture-for-tests. The only sanctioned logging path.
