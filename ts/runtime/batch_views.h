@@ -52,6 +52,8 @@
 #include "core/reflect/registry.h"
 #include "ts/runtime/script_runtime.h"
 
+#include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -156,8 +158,15 @@ template <typename M> void load_elem(M& dst, const typename ColumnTraits<M>::Ele
         dst = *src != 0;
     else if constexpr (std::is_same_v<M, std::int64_t>)
         dst = static_cast<std::int64_t>(*src);
-    else
-        std::memcpy(&dst, src, sizeof(M));
+    else {
+        // Not memcpy-into-&dst: gcc's -Wclass-memaccess rejects raw byte
+        // writes into NSDMI classes (Vec3 et al). bit_cast states the same
+        // intent type-safely — M is trivially copyable by construction.
+        using Elem = typename ColumnTraits<M>::Elem;
+        std::array<Elem, sizeof(M) / sizeof(Elem)> tmp;
+        std::memcpy(tmp.data(), src, sizeof(M));
+        dst = std::bit_cast<M>(tmp);
+    }
 }
 
 template <typename T, auto Member>
