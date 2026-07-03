@@ -1,6 +1,7 @@
 #include "core/journal/writer.h"
 
 #include "core/base/platform.h"
+#include "core/journal/file_io.h"
 #include "zstd.h"
 
 #include <cstdio>
@@ -22,17 +23,7 @@ base::Error make_error(std::string_view code, std::string message) {
     return error;
 }
 
-std::optional<base::Error> write_file(const fs::path& path, std::string_view bytes) {
-    FILE* file = std::fopen(path.string().c_str(), "wb");
-    if (file == nullptr)
-        return make_error("journal.io", "cannot open " + path.string() + " for writing");
-    const bool ok =
-        bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
-    const bool closed = std::fclose(file) == 0;
-    if (!ok || !closed)
-        return make_error("journal.io", "short write to " + path.string());
-    return std::nullopt;
-}
+using detail::write_file;
 
 } // namespace
 
@@ -152,7 +143,7 @@ WriterOpenResult Writer::create(std::string_view bundle_dir, const WriterConfig&
         return {std::nullopt, std::move(error)};
 
     const fs::path journal_path = state->dir / kJournalFile;
-    state->file = std::fopen(journal_path.string().c_str(), "wb");
+    state->file = detail::open_file(journal_path, "wb");
     if (state->file == nullptr)
         return {std::nullopt,
                 make_error("journal.io", "cannot open " + journal_path.string() + " for writing")};

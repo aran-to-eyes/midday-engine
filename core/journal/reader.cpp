@@ -1,5 +1,6 @@
 #include "core/journal/reader.h"
 
+#include "core/journal/file_io.h"
 #include "zstd.h"
 
 #include <cstdio>
@@ -21,29 +22,8 @@ base::Error make_error(std::string_view code, std::string message) {
     return error;
 }
 
-struct ReadFileResult {
-    std::string bytes;
-    std::optional<base::Error> error;
-};
-
-ReadFileResult read_file(const fs::path& path) {
-    FILE* file = std::fopen(path.string().c_str(), "rb");
-    if (file == nullptr)
-        return {{}, make_error("journal.io", "cannot open " + path.string() + " for reading")};
-    std::string bytes;
-    char chunk[65536];
-    while (true) {
-        const std::size_t got = std::fread(chunk, 1, sizeof chunk, file);
-        bytes.append(chunk, got);
-        if (got < sizeof chunk)
-            break; // EOF or error; ferror() decides below
-    }
-    const bool failed = std::ferror(file) != 0;
-    std::fclose(file);
-    if (failed)
-        return {{}, make_error("journal.io", "read failed on " + path.string())};
-    return {std::move(bytes), std::nullopt};
-}
+using detail::read_file;
+using detail::ReadFileResult;
 
 // 64-bit-safe absolute seek (plain fseek takes a 32-bit long on Windows).
 int seek_absolute(FILE* file, std::uint64_t offset) {
@@ -157,7 +137,7 @@ ReaderOpenResult Reader::open(std::string_view bundle_dir, const Expectations& e
                 make_error("journal.index_corrupt", "index stride disagrees with header")};
 
     const fs::path journal_path = state->dir / kJournalFile;
-    state->file = std::fopen(journal_path.string().c_str(), "rb");
+    state->file = detail::open_file(journal_path, "rb");
     if (state->file == nullptr)
         return {std::nullopt,
                 make_error("journal.io", "cannot open " + journal_path.string() + " for reading")};
