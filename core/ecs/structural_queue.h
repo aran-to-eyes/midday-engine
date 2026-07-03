@@ -53,4 +53,9 @@ struct FlushStats {
 // for commands whose entity (and non-null parent) is alive.
 using ReparentHandler = std::function<void(EntityRef child, EntityRef new_parent)>;
 
+// Installed by m0-scene-hierarchy next to the reparent handler; invoked at
+// the start of every despawn (before rows drop) so tree topology can unlink
+// and cascade. See World::set_despawn_observer.
+using DespawnObserver = std::function<void(EntityRef entity)>;
+
 } // namespace midday::ecs

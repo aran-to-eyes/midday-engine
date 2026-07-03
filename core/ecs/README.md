@@ -22,8 +22,11 @@ activity constantly, and here a toggle is one bit write instead of a table move
 - `structural_queue.h` / `world.h` — deferred spawn/despawn/reparent commands, applied at
   one flush point in queue order; direct structural mutation during iteration is a
   structured error (`ecs.structural_during_iteration`). `queue_spawn` reserves the handle
-  immediately (pending state), live at flush. Reparent is the slot m0-scene-hierarchy
-  fills via `set_reparent_handler` — tree topology lives in core/hierarchy, not here.
+  immediately (pending state), live at flush. Reparent is the slot core/hierarchy fills
+  via `set_reparent_handler` — tree topology lives there, not here. Two sibling sockets
+  serve it: `set_despawn_observer` (called before rows drop; may cascade despawns,
+  D-BUILD-029) and `pools_in_registration_order` (the deterministic all-pool walk, used
+  by subtree activation to capture/toggle active bits generically).
 - Registration bridge: `World::register_component<T>(ClassDesc)` — one call registers the
   class in core/reflect (engine_api.json sees every component) and creates the pool.
 

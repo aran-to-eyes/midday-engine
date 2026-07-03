@@ -123,6 +123,11 @@ std::optional<base::Error> World::despawn(EntityRef ref) {
 }
 
 void World::despawn_now(EntityRef ref) {
+    // Observer first, rows still intact: hierarchy unlinks topology and may
+    // re-enter despawn for children (cascade) — each nested despawn passes
+    // through here itself, so the whole cascade stays in this one code path.
+    if (despawn_observer_)
+        despawn_observer_(ref);
     for (PoolBase* pool : pool_order_)
         pool->erase(ref.index);
     table_.release(ref);

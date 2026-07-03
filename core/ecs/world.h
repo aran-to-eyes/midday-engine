@@ -37,8 +37,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -177,6 +179,22 @@ public:
 
     void set_reparent_handler(ReparentHandler handler) { reparent_handler_ = std::move(handler); }
 
+    // Observer invoked at the START of every despawn (direct or flushed),
+    // BEFORE the entity's rows drop — the socket core/hierarchy uses to
+    // unlink tree topology and cascade-despawn subtrees. The observer may
+    // re-enter World::despawn for OTHER entities (children); it must never
+    // despawn the entity it was invoked for (that despawn is already in
+    // flight). Installed at boot next to the reparent handler.
+    void set_despawn_observer(DespawnObserver observer) { despawn_observer_ = std::move(observer); }
+
+    // Every pool in per-World REGISTRATION order — THE deterministic
+    // all-pool walk order (never component_type_id order). For subsystems
+    // that operate uniformly across component types without knowing T
+    // (core/hierarchy subtree activation captures/toggles active bits
+    // through PoolBase). Registration order is stable for the World's
+    // lifetime; the span is invalidated by register_component.
+    [[nodiscard]] std::span<PoolBase* const> pools_in_registration_order() { return pool_order_; }
+
     [[nodiscard]] std::size_t pending_command_count() const { return commands_.size(); }
 
     // Applies all queued commands in queue order at ONE deterministic point
@@ -208,6 +226,7 @@ private:
     std::vector<PoolBase*> pool_order_;            // registration order: THE all-pool walk order
     std::vector<StructuralCommand> commands_;
     ReparentHandler reparent_handler_;
+    DespawnObserver despawn_observer_;
     std::uint32_t iteration_depth_ = 0;
 };
 
