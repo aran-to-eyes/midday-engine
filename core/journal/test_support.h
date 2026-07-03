@@ -5,13 +5,12 @@
 
 #pragma once
 
-#include "core/journal/file_io.h"
+#include "core/base/file_io.h"
 #include "core/journal/writer.h"
 #include "doctest/doctest.h"
 #include "testkit/doctest_unwrap.h"
+#include "testkit/temp_dir.h"
 
-#include <atomic>
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -22,35 +21,12 @@ namespace midday::journal::test {
 // Assert-and-access for optional results (shared testkit helper).
 using testkit::unwrap;
 
-// A unique, self-deleting bundle-parent directory per test.
-struct TempDir {
-    std::filesystem::path path;
+// A unique, self-deleting bundle-parent directory per test (shared testkit
+// helper plus the journal's bundle-path spelling).
+struct TempDir : testkit::TempDir {
+    explicit TempDir(const std::string& label) : testkit::TempDir("journal-" + label) {}
 
-    explicit TempDir(const std::string& label) {
-        static std::atomic<int> counter{0};
-        // ASLR of a static's address distinguishes concurrent test processes.
-        const auto process_tag =
-            static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(&counter));
-        const std::string name = "midday-journal-" + label + "-" + std::to_string(process_tag) +
-                                 "-" + std::to_string(counter.fetch_add(1));
-        path = std::filesystem::temp_directory_path() / name;
-        std::error_code ec;
-        std::filesystem::remove_all(path, ec);
-    }
-
-    TempDir(const TempDir&) = delete;
-    TempDir& operator=(const TempDir&) = delete;
-    TempDir(TempDir&&) = delete;
-    TempDir& operator=(TempDir&&) = delete;
-
-    ~TempDir() {
-        std::error_code ec;
-        std::filesystem::remove_all(path, ec);
-    }
-
-    [[nodiscard]] std::string bundle(const std::string& name) const {
-        return (path / (name + ".mrj")).string();
-    }
+    [[nodiscard]] std::string bundle(const std::string& name) const { return file(name + ".mrj"); }
 };
 
 // The canonical test config: fully pinned, so bundle bytes are identical on
@@ -66,7 +42,7 @@ inline WriterConfig pinned_config() {
 
 // Read a whole file; empty string when unreadable (tests assert on content).
 inline std::string slurp(const std::filesystem::path& path) {
-    FILE* file = detail::open_file(path, "rb");
+    FILE* file = base::open_file(path, "rb");
     if (file == nullptr)
         return {};
     std::string bytes;
@@ -83,7 +59,7 @@ inline std::string slurp(const std::filesystem::path& path) {
 
 // Overwrite a file (used to tamper bundles for corruption tests).
 inline bool spew(const std::filesystem::path& path, const std::string& bytes) {
-    FILE* file = detail::open_file(path, "wb");
+    FILE* file = base::open_file(path, "wb");
     if (file == nullptr)
         return false;
     const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();

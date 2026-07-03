@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://midday-engine.org/formats/engine_api.schema.json",
+  "title": "Midday engine_api.json (format 1)",
+  "description": "The canonical generated API document (`midday api dump`): every reflected class, event, and expression function plus every CLI verb schema, each with an XXH3-64 compat hash over its signature-only JSON (docs excluded, D-BUILD-021). `api_compat_hash` covers format_version plus every section's ordered (name, compat_hash) list — engine_version and all doc/summary strings are outside every hash. The committed api/engine_api.json is drift-gated: CI regenerates and byte-compares it. Validated by scripts/validate_envelope.py (dependency-free keyword subset).",
+  "type": "object",
+  "required": ["format_version", "engine_version", "api_compat_hash", "classes", "events", "functions", "verbs"],
+  "additionalProperties": false,
+  "properties": {
+    "format_version": {
+      "const": 1,
+      "description": "Document shape version; bumped only with a documented migration (spec section 8 versioning policy)."
+    },
+    "engine_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The emitting engine's version. Informational: outside every compat hash."
+    },
+    "api_compat_hash": {
+      "$ref": "#/$defs/hash64",
+      "description": "Top-level drift primitive: XXH3-64 over {format_version, per-section ordered (name, compat_hash) lists}."
+    },
+    "classes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/class" },
+      "description": "Reflected component classes, init-level-major registration order."
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" },
+      "description": "First-class events with typed payload schemas, init-level-major registration order."
+    },
+    "functions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/function" },
+      "description": "Free functions — the expression-language inventory (one name = one signature, D-BUILD-034)."
+    },
+    "verbs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/verb" },
+      "description": "CLI verb schemas (cli::verb_schema shape), manifest order."
+    }
+  },
+  "$defs": {
+    "hash64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "XXH3-64 of the entry's signature-only JSON dump bytes, 16-digit lowercase hex (core/base/hex.h spelling)."
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type_spelling": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Canonical reflect TypeDesc spelling: \"float\", \"entity_ref\", \"array<vec3>\", \"map<string>\", ..."
+    },
+    "init_level": {
+      "enum": ["core", "servers", "scene", "tools"],
+      "description": "The init level that registered (and owns the lifetime of) this entry."
+    },
+    "param": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "type": { "$ref": "#/$defs/type_spelling" },
+        "default": { "description": "Typed default; present iff the parameter is optional." }
+      }
+    },
+    "property": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "type": { "$ref": "#/$defs/type_spelling" },
+        "default": { "description": "Typed default; omitted when the property has none." },
+        "flags": {
+          "type": "array",
+          "items": { "enum": ["save", "replicated", "read_only"] },
+          "description": "Property flag names in fixed bit order; omitted when no flags are set."
+        },
+        "doc": { "type": "string" }
+      }
+    },
+    "method": {
+      "type": "object",
+      "required": ["name", "params", "returns", "compat_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "params": { "type": "array", "items": { "$ref": "#/$defs/param" } },
+        "returns": { "$ref": "#/$defs/type_spelling" },
+        "doc": { "type": "string" },
+        "compat_hash": { "$ref": "#/$defs/hash64" }
+      }
+    },
+    "class": {
+      "type": "object",
+      "required": ["name", "level", "properties", "methods", "compat_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "level": { "$ref": "#/$defs/init_level" },
+        "doc": { "type": "string" },
+        "base": { "$ref": "#/$defs/identifier" },
+        "properties": { "type": "array", "items": { "$ref": "#/$defs/property" } },
+        "methods": { "type": "array", "items": { "$ref": "#/$defs/method" } },
+        "compat_hash": { "$ref": "#/$defs/hash64" }
+      }
+    },
+    "event_field": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "type": { "$ref": "#/$defs/type_spelling" },
+        "doc": { "type": "string" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": ["name", "level", "payload", "compat_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "level": { "$ref": "#/$defs/init_level" },
+        "doc": { "type": "string" },
+        "payload": { "type": "array", "items": { "$ref": "#/$defs/event_field" } },
+        "compat_hash": { "$ref": "#/$defs/hash64" }
+      }
+    },
+    "function": {
+      "type": "object",
+      "required": ["name", "level", "params", "returns", "compat_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "level": { "$ref": "#/$defs/init_level" },
+        "params": { "type": "array", "items": { "$ref": "#/$defs/param" } },
+        "returns": { "$ref": "#/$defs/type_spelling" },
+        "doc": { "type": "string" },
+        "compat_hash": { "$ref": "#/$defs/hash64" }
+      }
+    },
+    "verb_flag": {
+      "type": "object",
+      "required": ["name", "type", "required", "doc"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "type": { "enum": ["bool", "int", "float", "string", "name"] },
+        "required": { "type": "boolean" },
+        "default": { "description": "Typed default; present iff the flag declares one." },
+        "doc": { "type": "string" }
+      }
+    },
+    "verb_positional": {
+      "type": "object",
+      "required": ["name", "type", "required", "variadic", "doc"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "type": { "enum": ["int", "float", "string", "name"] },
+        "required": { "type": "boolean" },
+        "variadic": { "type": "boolean" },
+        "doc": { "type": "string" }
+      }
+    },
+    "verb": {
+      "type": "object",
+      "required": ["name", "summary", "flags", "positionals", "compat_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "summary": { "type": "string", "minLength": 1 },
+        "flags": { "type": "array", "items": { "$ref": "#/$defs/verb_flag" } },
+        "positionals": { "type": "array", "items": { "$ref": "#/$defs/verb_positional" } },
+        "compat_hash": { "$ref": "#/$defs/hash64" }
+      }
+    }
+  }
+}

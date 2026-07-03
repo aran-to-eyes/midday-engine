@@ -1,6 +1,6 @@
 #include "core/journal/reader.h"
 
-#include "core/journal/file_io.h"
+#include "core/base/file_io.h"
 #include "zstd.h"
 
 #include <cstdio>
@@ -22,8 +22,10 @@ base::Error make_error(std::string_view code, std::string message) {
     return error;
 }
 
-using detail::read_file;
-using detail::ReadFileResult;
+// The journal's stable IO error code, passed to the shared file seam.
+constexpr std::string_view kIoCode = "journal.io";
+
+using base::ReadFileResult;
 
 // 64-bit-safe absolute seek (plain fseek takes a 32-bit long on Windows).
 int seek_absolute(FILE* file, std::uint64_t offset) {
@@ -106,7 +108,7 @@ ReaderOpenResult Reader::open(std::string_view bundle_dir, const Expectations& e
     state->dir = fs::path(std::string(bundle_dir));
 
     // header.json: parse, integrity-check, compare against expectations.
-    ReadFileResult header_file = read_file(state->dir / kHeaderFile);
+    ReadFileResult header_file = base::read_file(state->dir / kHeaderFile, kIoCode);
     if (header_file.error)
         return {std::nullopt, std::move(header_file.error)};
     base::Json::ParseResult header_json =
@@ -121,7 +123,7 @@ ReaderOpenResult Reader::open(std::string_view bundle_dir, const Expectations& e
         return {std::nullopt, std::move(refused)};
 
     // index.json: parse and cross-check against the header.
-    ReadFileResult index_file = read_file(state->dir / kIndexFile);
+    ReadFileResult index_file = base::read_file(state->dir / kIndexFile, kIoCode);
     if (index_file.error)
         return {std::nullopt, std::move(index_file.error)};
     base::Json::ParseResult index_json =
@@ -137,7 +139,7 @@ ReaderOpenResult Reader::open(std::string_view bundle_dir, const Expectations& e
                 make_error("journal.index_corrupt", "index stride disagrees with header")};
 
     const fs::path journal_path = state->dir / kJournalFile;
-    state->file = detail::open_file(journal_path, "rb");
+    state->file = base::open_file(journal_path, "rb");
     if (state->file == nullptr)
         return {std::nullopt,
                 make_error("journal.io", "cannot open " + journal_path.string() + " for reading")};

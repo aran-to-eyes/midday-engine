@@ -137,5 +137,6 @@ std::optional<Json> arg_value_from_text(std::string_view type, std::string_view 
 const VerbSpec& version_spec();
 const VerbSpec& selftest_spec();
 const VerbSpec& help_spec();
+const VerbSpec& api_spec();
 
 } // namespace midday::cli

@@ -1,6 +1,6 @@
 # Midday Engine CI — M0 lanes that exist today (MILESTONE_0.md "M0 CI lanes"):
-#   build-linux (+ sanitizer job), build-macos, build-windows.
-# golden-software / determinism / drift / boundaries lanes arrive with their
+#   build-linux (+ sanitizer job), build-macos, build-windows, drift.
+# golden-software / determinism / boundaries lanes arrive with their
 # owning nodes — they are deliberately NOT stubbed as passing no-ops.
 #
 # Declared host tools (Aurora D-22): cmake, ninja, python3, git, jq, zstd,
@@ -62,6 +62,31 @@ jobs:
         env:
           ASAN_OPTIONS: strict_string_checks=1:detect_stack_use_after_return=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+
+  # The drift lane (m0-api-json): the committed api/engine_api.json must be
+  # byte-identical to a fresh `midday api dump` and valid against its
+  # meta-schema. Codegen regen diffs join at m0-codegen-bootstrap.
+  drift:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure
+        run: cmake --preset ci
+      - name: Build
+        run: ninja -C build/ci midday
+      - name: engine_api.json drift (dump twice, byte-compare, committed diff)
+        run: |
+          build/ci/midday api dump --out build/ci/engine_api.json
+          build/ci/midday api dump --out build/ci/engine_api.rerun.json
+          cmp build/ci/engine_api.json build/ci/engine_api.rerun.json
+          cmp api/engine_api.json build/ci/engine_api.json
+      - name: engine_api.json meta-schema + envelope shape
+        run: |
+          python3 scripts/validate_envelope.py formats/engine_api.schema.json < api/engine_api.json
+          build/ci/midday api dump --json | jq -e '.ok and (.api.api_compat_hash | test("^[0-9a-f]{16}$"))'
+          build/ci/midday api diff api/engine_api.json
 
   build-macos:
     # Hosted macOS arm64 — never the managed-firewall dev Mac (Zenith D027).

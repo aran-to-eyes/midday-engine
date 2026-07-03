@@ -59,6 +59,18 @@ for f in header.json index.json journal.jsonl.zst; do
 done
 zstdcat testkit/fixtures/journal/greppable.mrj/journal.jsonl.zst | grep -q known_event
 
+step "engine_api drift (two dumps byte-compared + committed artifact + meta-schema)"
+# Determinism is proven by two independent dumps diffed (never a self-diff),
+# then the committed artifact is byte-compared against a regeneration and
+# schema-validated; `api diff` against the committed file must report
+# identical (exit 0). Any drift = regenerate + commit, or you broke the API.
+build/dev/midday api dump --out build/dev/engine_api.json >/dev/null
+build/dev/midday api dump --out build/dev/engine_api.rerun.json >/dev/null
+cmp build/dev/engine_api.json build/dev/engine_api.rerun.json
+cmp api/engine_api.json build/dev/engine_api.json
+scripts/validate_envelope.py formats/engine_api.schema.json <api/engine_api.json >/dev/null
+build/dev/midday api diff api/engine_api.json >/dev/null
+
 step "license scan (+ negative fixture)"
 scripts/license_scan.py >/dev/null
 scripts/test_license_scan.py >/dev/null

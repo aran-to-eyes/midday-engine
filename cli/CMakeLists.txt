@@ -11,6 +11,7 @@ add_executable(midday
     verbs/version.cpp
     verbs/selftest.cpp
     verbs/help.cpp
+    verbs/api.cpp
     verbs/envelope_test.cpp
     verbs/framework_test.cpp
     $<TARGET_OBJECTS:midday_base_tests>
@@ -20,6 +21,7 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_ecs_tests>
     $<TARGET_OBJECTS:midday_hierarchy_tests>
     $<TARGET_OBJECTS:midday_journal_tests>
+    $<TARGET_OBJECTS:midday_api_tests>
 )
 
 target_link_libraries(midday PRIVATE
@@ -31,6 +33,7 @@ target_link_libraries(midday PRIVATE
     midday::ecs
     midday::hierarchy
     midday::journal
+    midday::api
     doctest::doctest)
 target_compile_definitions(midday PRIVATE MIDDAY_VERSION="${PROJECT_VERSION}")
 

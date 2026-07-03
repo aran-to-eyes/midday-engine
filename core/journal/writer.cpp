@@ -1,7 +1,7 @@
 #include "core/journal/writer.h"
 
+#include "core/base/file_io.h"
 #include "core/base/platform.h"
-#include "core/journal/file_io.h"
 #include "zstd.h"
 
 #include <cstdio>
@@ -23,7 +23,8 @@ base::Error make_error(std::string_view code, std::string message) {
     return error;
 }
 
-using detail::write_file;
+// The journal's stable IO error code, passed to the shared file seam.
+constexpr std::string_view kIoCode = "journal.io";
 
 } // namespace
 
@@ -139,11 +140,12 @@ WriterOpenResult Writer::create(std::string_view bundle_dir, const WriterConfig&
     state->header.platform = config.platform.empty() ? base::platform_triple() : config.platform;
     state->header.created_at = config.created_at;
 
-    if (auto error = write_file(state->dir / kHeaderFile, state->header.to_json().dump() + "\n"))
+    if (auto error = base::write_file(
+            state->dir / kHeaderFile, state->header.to_json().dump() + "\n", kIoCode))
         return {std::nullopt, std::move(error)};
 
     const fs::path journal_path = state->dir / kJournalFile;
-    state->file = detail::open_file(journal_path, "wb");
+    state->file = base::open_file(journal_path, "wb");
     if (state->file == nullptr)
         return {std::nullopt,
                 make_error("journal.io", "cannot open " + journal_path.string() + " for writing")};
@@ -262,7 +264,7 @@ std::optional<base::Error> Writer::close() {
     index.records = s.written;
     index.journal_bytes = s.plain_bytes;
     index.entries = s.entries;
-    if (auto error = write_file(s.dir / kIndexFile, index.to_json().dump() + "\n"))
+    if (auto error = base::write_file(s.dir / kIndexFile, index.to_json().dump() + "\n", kIoCode))
         s.error = std::move(error);
     return s.error;
 }
