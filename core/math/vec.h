@@ -50,9 +50,14 @@ struct Vec2 {
     [[nodiscard]] float length() const { return std::sqrt(length_squared()); }
 
     // Zero vector in -> zero vector out (no NaN escape hatch into sim state).
+    // if-form guard (not a ternary): MSVC /O2 raises C4723 on ternary-guarded
+    // division because both arms are considered before the select.
     [[nodiscard]] Vec2 normalized() const {
         const float len = length();
-        return len > 0.0f ? *this / len : Vec2{};
+        if (len == 0.0f) {
+            return Vec2{};
+        }
+        return *this / len;
     }
 };
 
@@ -96,15 +101,22 @@ struct Vec3 {
 
     [[nodiscard]] float length() const { return std::sqrt(length_squared()); }
 
+    // Zero->zero policy; if-form guard for MSVC C4723 (see Vec2::normalized).
     [[nodiscard]] Vec3 normalized() const {
         const float len = length();
-        return len > 0.0f ? *this / len : Vec3{};
+        if (len == 0.0f) {
+            return Vec3{};
+        }
+        return *this / len;
     }
 
     // For directions that MUST be unit: degenerate input falls back to `fallback`.
     [[nodiscard]] Vec3 normalized_or(Vec3 fallback) const {
         const float len = length();
-        return len > 0.0f ? *this / len : fallback;
+        if (len == 0.0f) {
+            return fallback;
+        }
+        return *this / len;
     }
 };
 
