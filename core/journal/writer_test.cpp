@@ -194,12 +194,17 @@ TEST_CASE("journal.greppability") {
     // against a fresh regeneration (set MIDDAY_JOURNAL_FIXTURE_DIR).
     TempDir tmp("grep");
     // std::getenv is standard and read-only; MSVC's C4996 wants _dupenv_s,
-    // whose allocation dance buys nothing in a test. Frontend warning ->
-    // statement-level suppress works (unlike backend C4723, D-BUILD-020).
+    // whose allocation dance buys nothing in a test. push/disable/pop, not
+    // warning(suppress): suppress spends itself on the very next LINE, and
+    // inside an #if block that line is the #endif.
 #if defined(_MSC_VER)
-#pragma warning(suppress : 4996)
+#pragma warning(push)
+#pragma warning(disable : 4996)
 #endif
     const char* fixture_dir = std::getenv("MIDDAY_JOURNAL_FIXTURE_DIR");
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
     const std::string bundle =
         fixture_dir != nullptr ? std::string(fixture_dir) : tmp.bundle("greppable");
 
