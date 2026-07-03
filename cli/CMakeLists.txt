@@ -12,6 +12,7 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_base_tests>
     $<TARGET_OBJECTS:midday_math_tests>
     $<TARGET_OBJECTS:midday_reflect_tests>
+    $<TARGET_OBJECTS:midday_expr_tests>
     $<TARGET_OBJECTS:midday_ecs_tests>
     $<TARGET_OBJECTS:midday_hierarchy_tests>
     $<TARGET_OBJECTS:midday_journal_tests>
@@ -22,6 +23,7 @@ target_link_libraries(midday PRIVATE
     midday::base
     midday::math
     midday::reflect
+    midday::expr
     midday::ecs
     midday::hierarchy
     midday::journal

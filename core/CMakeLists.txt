@@ -4,6 +4,7 @@
 add_subdirectory(base)
 add_subdirectory(math)
 add_subdirectory(reflect)
+add_subdirectory(expr)
 add_subdirectory(ecs)
 add_subdirectory(hierarchy)
 add_subdirectory(journal)

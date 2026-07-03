@@ -8,33 +8,19 @@
 #include "core/journal/file_io.h"
 #include "core/journal/writer.h"
 #include "doctest/doctest.h"
+#include "testkit/doctest_unwrap.h"
 
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <optional>
 #include <string>
 
 namespace midday::journal::test {
 
-// Assert-and-access for optional results: REQUIRE aborts the test case when
-// empty; the (unreachable) abort() makes every subsequent access provably
-// checked for the bugprone-unchecked-optional-access dataflow.
-template <typename T> T& unwrap(std::optional<T>& opt) {
-    REQUIRE(opt.has_value());
-    if (!opt.has_value())
-        std::abort(); // unreachable: REQUIRE threw
-    return *opt;
-}
-
-template <typename T> const T& unwrap(const std::optional<T>& opt) {
-    REQUIRE(opt.has_value());
-    if (!opt.has_value())
-        std::abort(); // unreachable: REQUIRE threw
-    return *opt;
-}
+// Assert-and-access for optional results (shared testkit helper).
+using testkit::unwrap;
 
 // A unique, self-deleting bundle-parent directory per test.
 struct TempDir {
