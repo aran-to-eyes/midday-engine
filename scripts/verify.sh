@@ -71,6 +71,22 @@ cmp api/engine_api.json build/dev/engine_api.json
 scripts/validate_envelope.py formats/engine_api.schema.json <api/engine_api.json >/dev/null
 build/dev/midday api diff api/engine_api.json >/dev/null
 
+step "codegen drift (two tool runs byte-compared + committed artifacts + manifest meta-schema)"
+# The bootstrap generator is byte-deterministic: two independent runs are
+# cmp'd (never a self-diff), then the four committed api/ artifacts are
+# byte-compared against a regeneration and schema_manifest.json is validated
+# against its meta-schema. Any drift = rerun build/dev/tools/codegen_bootstrap
+# from the repo root and commit, or you broke the generator contract
+# (api/CODEGEN.md).
+rm -rf build/dev/codegen build/dev/codegen.rerun
+build/dev/tools/codegen_bootstrap api/engine_api.json --out-dir build/dev/codegen >/dev/null
+build/dev/tools/codegen_bootstrap api/engine_api.json --out-dir build/dev/codegen.rerun >/dev/null
+for f in engine.d.ts schema_manifest.json api_docs.md bindings_spec.json; do
+    cmp "build/dev/codegen/$f" "build/dev/codegen.rerun/$f"
+    cmp "api/$f" "build/dev/codegen/$f"
+done
+scripts/validate_envelope.py formats/schema_manifest.schema.json <api/schema_manifest.json >/dev/null
+
 step "license scan (+ negative fixture)"
 scripts/license_scan.py >/dev/null
 scripts/test_license_scan.py >/dev/null

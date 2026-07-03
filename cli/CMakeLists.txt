@@ -22,6 +22,7 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_hierarchy_tests>
     $<TARGET_OBJECTS:midday_journal_tests>
     $<TARGET_OBJECTS:midday_api_tests>
+    $<TARGET_OBJECTS:midday_codegen_bootstrap_tests>
 )
 
 target_link_libraries(midday PRIVATE
@@ -34,6 +35,7 @@ target_link_libraries(midday PRIVATE
     midday::hierarchy
     midday::journal
     midday::api
+    midday::codegen_bootstrap
     doctest::doctest)
 target_compile_definitions(midday PRIVATE MIDDAY_VERSION="${PROJECT_VERSION}")
 

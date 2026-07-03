@@ -12,5 +12,20 @@ engine_version are outside every hash). Meta-schema:
   drift lane byte-compare the committed file against a fresh dump.
 - Emitter/differ: `api/engine_api.{h,cpp}` (library `midday::api`).
 
-`engine.d.ts`, `schema_manifest.json`, and docs derive from this document at
-m0-codegen-bootstrap.
+Derived artifacts (m0-codegen-bootstrap) — generated from `engine_api.json`
+by `tools/codegen_bootstrap` (TEMPORARY native tool; `m0-codegen-selfhost`
+must byte-match it before taking over), committed here and drift-gated the
+same way (two-run cmp + committed-byte cmp in verify.sh and CI's drift lane):
+
+- `engine.d.ts` — agent-facing TypeScript declarations (value types, event
+  payload interfaces + name map, expression function signatures, CLI verb
+  argument types). Structural validation: `formats/engine_dts.meta.md`.
+- `schema_manifest.json` — the validate-before-write source (value-type wire
+  shapes, event payload schemas, expression signatures; scene/machine formats
+  join at m1). Meta-schema: `formats/schema_manifest.schema.json`.
+- `api_docs.md` — generated reference: every entry with docs + compat hash.
+- `bindings_spec.json` — the glue spec m0-batch-bindings implements
+  (call signatures + batch envelope placeholder).
+
+Regenerate all four: `build/dev/tools/codegen_bootstrap` from the repo root.
+Every formatting rule (the selfhost byte contract): `CODEGEN.md`.

@@ -63,9 +63,11 @@ jobs:
           ASAN_OPTIONS: strict_string_checks=1:detect_stack_use_after_return=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 
-  # The drift lane (m0-api-json): the committed api/engine_api.json must be
-  # byte-identical to a fresh `midday api dump` and valid against its
-  # meta-schema. Codegen regen diffs join at m0-codegen-bootstrap.
+  # The drift lane (m0-api-json + m0-codegen-bootstrap): the committed
+  # api/engine_api.json must be byte-identical to a fresh `midday api dump`
+  # and valid against its meta-schema; the four committed codegen artifacts
+  # (engine.d.ts, schema_manifest.json, api_docs.md, bindings_spec.json)
+  # must be byte-identical to a fresh codegen_bootstrap regeneration.
   drift:
     runs-on: ubuntu-24.04
     steps:
@@ -75,7 +77,7 @@ jobs:
       - name: Configure
         run: cmake --preset ci
       - name: Build
-        run: ninja -C build/ci midday
+        run: ninja -C build/ci midday codegen_bootstrap
       - name: engine_api.json drift (dump twice, byte-compare, committed diff)
         run: |
           build/ci/midday api dump --out build/ci/engine_api.json
@@ -87,6 +89,16 @@ jobs:
           python3 scripts/validate_envelope.py formats/engine_api.schema.json < api/engine_api.json
           build/ci/midday api dump --json | jq -e '.ok and (.api.api_compat_hash | test("^[0-9a-f]{16}$"))'
           build/ci/midday api diff api/engine_api.json
+      - name: codegen drift (two tool runs byte-compared + committed artifacts)
+        run: |
+          build/ci/tools/codegen_bootstrap api/engine_api.json --out-dir build/ci/codegen
+          build/ci/tools/codegen_bootstrap api/engine_api.json --out-dir build/ci/codegen.rerun
+          for f in engine.d.ts schema_manifest.json api_docs.md bindings_spec.json; do
+            cmp "build/ci/codegen/$f" "build/ci/codegen.rerun/$f"
+            cmp "api/$f" "build/ci/codegen/$f"
+          done
+      - name: schema_manifest.json meta-schema
+        run: python3 scripts/validate_envelope.py formats/schema_manifest.schema.json < api/schema_manifest.json
 
   build-macos:
     # Hosted macOS arm64 — never the managed-firewall dev Mac (Zenith D027).

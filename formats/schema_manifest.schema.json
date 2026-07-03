@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://midday-engine.org/formats/schema_manifest.schema.json",
+  "title": "Midday schema_manifest.json (format 1)",
+  "description": "The validate-before-write source, generated from engine_api.json by the codegen chain (api/CODEGEN.md): the reflected value-type table (mirroring reflect::TypeDesc::accepts JSON shapes), event payload schemas, and expression function signatures. Per-format validation schemas (scene/machine) append under `formats` at m1-scene-format. Validated by scripts/validate_envelope.py (dependency-free keyword subset).",
+  "type": "object",
+  "required": ["format_version", "api_compat_hash", "value_types", "events", "expr_functions", "formats"],
+  "additionalProperties": false,
+  "properties": {
+    "format_version": {
+      "const": 1,
+      "description": "Manifest shape version; bumped only with a documented migration (spec section 8 versioning policy)."
+    },
+    "api_compat_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "The api_compat_hash of the engine_api.json this manifest derives from."
+    },
+    "value_types": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/value_type" },
+      "description": "The fixed TypeDesc spelling table, TypeKind declaration order."
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" },
+      "description": "Event payload schemas (docs stripped), engine_api.json order."
+    },
+    "expr_functions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/expr_function" },
+      "description": "Expression function signatures as positional type spellings."
+    },
+    "formats": {
+      "type": "array",
+      "description": "Per-format validation schemas; empty until m1-scene-format appends scene/machine entries."
+    }
+  },
+  "$defs": {
+    "type_spelling": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Canonical reflect TypeDesc spelling: \"float\", \"entity_ref\", \"array<vec3>\", \"map<string>\", ..."
+    },
+    "value_type": {
+      "type": "object",
+      "required": ["spelling", "json"],
+      "additionalProperties": false,
+      "properties": {
+        "spelling": { "type": "string", "minLength": 1 },
+        "json": {
+          "enum": ["boolean", "integer", "number", "string", "number_tuple", "array_of_element", "object_of_element"],
+          "description": "The JSON wire shape reflect::TypeDesc::accepts enforces for this spelling."
+        },
+        "size": {
+          "type": "integer",
+          "description": "Tuple arity; present iff json is number_tuple."
+        }
+      }
+    },
+    "payload_field": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "$ref": "#/$defs/type_spelling" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": ["name", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "payload": { "type": "array", "items": { "$ref": "#/$defs/payload_field" } }
+      }
+    },
+    "expr_function": {
+      "type": "object",
+      "required": ["name", "params", "returns"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "params": { "type": "array", "items": { "$ref": "#/$defs/type_spelling" } },
+        "returns": { "$ref": "#/$defs/type_spelling" }
+      }
+    }
+  }
+}
