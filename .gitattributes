@@ -1,0 +1,3 @@
+# Byte-pinned fixtures must never be EOL-normalized: verify.sh cmp-compares
+# them against freshly generated bundles byte-for-byte on every platform.
+testkit/fixtures/journal/greppable.mrj/** -text

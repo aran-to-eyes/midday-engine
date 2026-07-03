@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://midday-engine.org/formats/mrj_header.schema.json",
+  "title": "Midday run.mrj bundle header (header.json)",
+  "description": "Identity/info split (formats/run_mrj.md, D-BUILD-033): `identity` is the deterministic subset and `replay_identity` is hex64(XXH3-64(dump(identity))) over its canonical serialized bytes; `info` is informational only and excluded from every hash and byte-compare. `info.created_at` is the single sanctioned wall-clock slot in a bundle — record content never contains wall-clock time (D-BUILD-013). C++ counterpart: core/journal/bundle.h (change together).",
+  "type": "object",
+  "required": ["schema", "identity", "replay_identity", "info"],
+  "properties": {
+    "schema": {
+      "const": "midday.mrj.header/1"
+    },
+    "identity": {
+      "type": "object",
+      "required": [
+        "engine_version",
+        "api_compat_hash",
+        "seed",
+        "tiers",
+        "compression",
+        "index_stride_ticks"
+      ],
+      "properties": {
+        "engine_version": {
+          "type": "string",
+          "description": "Engine version that recorded the run; replay refuses on mismatch."
+        },
+        "api_compat_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$",
+          "description": "Registry compat hash (16-digit lowercase hex); a zero slot until m0-api-json wires it."
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The run's master seed."
+        },
+        "tiers": {
+          "type": "object",
+          "required": ["flight", "snapshot", "trace"],
+          "properties": {
+            "flight": {
+              "const": true,
+              "description": "FLIGHT is always on, by construction (Zenith D026)."
+            },
+            "snapshot": { "type": "boolean" },
+            "trace": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "compression": {
+          "type": "object",
+          "required": ["codec", "version", "level", "checksum", "single_thread"],
+          "properties": {
+            "codec": { "const": "zstd" },
+            "version": { "type": "string" },
+            "level": { "type": "integer" },
+            "checksum": { "type": "boolean" },
+            "single_thread": { "const": true }
+          },
+          "additionalProperties": false,
+          "description": "Pinned parameters that make the compressed bytes deterministic (D-BUILD-031)."
+        },
+        "index_stride_ticks": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Index granularity: one seek entry (= one zstd frame) per stride of ticks."
+        }
+      },
+      "additionalProperties": false
+    },
+    "replay_identity": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "hex64(XXH3-64(dump(identity))). Readers recompute; mismatch = journal.header_corrupt."
+    },
+    "info": {
+      "type": "object",
+      "required": ["platform"],
+      "properties": {
+        "platform": {
+          "type": "string",
+          "description": "Build platform triple (os-arch-compiler). Informational only."
+        },
+        "created_at": {
+          "type": "string",
+          "description": "Optional wall-clock stamp supplied by the recording verb. Informational only — excluded from all hashes and byte-compares; omitted by default."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

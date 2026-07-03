@@ -14,6 +14,7 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_reflect_tests>
     $<TARGET_OBJECTS:midday_ecs_tests>
     $<TARGET_OBJECTS:midday_hierarchy_tests>
+    $<TARGET_OBJECTS:midday_journal_tests>
 )
 
 target_link_libraries(midday PRIVATE
@@ -23,6 +24,7 @@ target_link_libraries(midday PRIVATE
     midday::reflect
     midday::ecs
     midday::hierarchy
+    midday::journal
     doctest::doctest)
 target_compile_definitions(midday PRIVATE MIDDAY_VERSION="${PROJECT_VERSION}")
 

@@ -37,6 +37,15 @@
       "role": "shortest round-trip double digits (core JSON emission, byte-identical on every platform)",
       "path": "third_party/dragonbox",
       "source": "https://github.com/jk-jeon/dragonbox"
+    },
+    {
+      "name": "zstd",
+      "version": "1.5.7",
+      "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+      "license": "BSD-3-Clause",
+      "role": "journal stream compression (run.mrj journal.jsonl.zst; single-file amalgamation from upstream build/single_file_libs, regenerated with ZSTD_MULTITHREAD removed for deterministic single-threaded output, D-BUILD-031)",
+      "path": "third_party/zstd",
+      "source": "https://github.com/facebook/zstd"
     }
   ]
 }

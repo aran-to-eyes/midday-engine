@@ -1,0 +1,1 @@
+{"schema":"midday.mrj.header/1","identity":{"engine_version":"0.0.0-fixture","api_compat_hash":"0000000000000000","seed":7,"tiers":{"flight":true,"snapshot":false,"trace":false},"compression":{"codec":"zstd","version":"1.5.7","level":3,"checksum":true,"single_thread":true},"index_stride_ticks":256},"replay_identity":"e8d3b5e1efa29d66","info":{"platform":"fixture-neutral"}}

@@ -46,6 +46,19 @@ build/dev/midday selftest
 step "cli envelope schema"
 build/dev/midday version --json | scripts/validate_envelope.py >/dev/null
 
+step "journal fixture (byte-pinned bundle + real zstdcat greppability)"
+# Regenerate the greppable bundle from scratch and byte-compare it against the
+# committed fixture (journal writer determinism, pinned across platforms),
+# then run the actual zstdcat|grep the spec promises (zstd is a declared host
+# tool, Aurora D-22).
+rm -rf build/dev/journal_fixture.mrj
+MIDDAY_JOURNAL_FIXTURE_DIR=build/dev/journal_fixture.mrj \
+    build/dev/midday selftest --filter 'journal.greppability' >/dev/null
+for f in header.json index.json journal.jsonl.zst; do
+    cmp "testkit/fixtures/journal/greppable.mrj/$f" "build/dev/journal_fixture.mrj/$f"
+done
+zstdcat testkit/fixtures/journal/greppable.mrj/journal.jsonl.zst | grep -q known_event
+
 step "license scan (+ negative fixture)"
 scripts/license_scan.py >/dev/null
 scripts/test_license_scan.py >/dev/null

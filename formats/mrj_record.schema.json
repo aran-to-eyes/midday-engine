@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://midday-engine.org/formats/mrj_record.schema.json",
+  "title": "Midday journal record (one JSONL line inside journal.jsonl.zst)",
+  "description": "One record per journaled effect, one JSON object per line (JSONL) inside standard zstd frames — `zstdcat journal.jsonl.zst | grep <kind>` always works. Key order is fixed: tick, tier, kind, cause_id, id[, payload]. `tick` is the sim tick and ids are per-run monotonic counters — record content NEVER contains wall-clock time (D-BUILD-013). Every submission consumes an id, including tier-filtered ones, so FLIGHT bytes are invariant under snapshot/trace enablement and id gaps mark filtered records (D-BUILD-032). C++ counterpart: core/journal/record.h; the journal.record.* selftests pin the byte shape (change together).",
+  "type": "object",
+  "required": ["tick", "tier", "kind", "cause_id", "id"],
+  "properties": {
+    "tick": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Sim tick of the effect; non-decreasing over the stream."
+    },
+    "tier": {
+      "enum": ["flight", "snapshot", "trace"],
+      "description": "Record tier: flight = always-on causality skeleton; snapshot = state captures; trace = high-volume diagnostics (spec section 12)."
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable dotted identifier of what happened, e.g. \"input.key\", \"bus.trigger\", \"state.enter\"."
+    },
+    "cause_id": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The id of the record that caused this one; 0 = external/root. Chains reconstruct causality mechanically."
+    },
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Per-run monotonic record id (0 is reserved as the external/root sentinel)."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Kind-specific structured payload. Omitted entirely when empty."
+    }
+  },
+  "additionalProperties": false
+}

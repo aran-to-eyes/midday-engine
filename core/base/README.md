@@ -31,6 +31,9 @@ Primitives every other subsystem stands on (m0-core-primitives):
 - `log.h` — machine-readable logging: one JSONL line per record conforming to
   `formats/log_record.schema.json`; `ts` is a monotonic counter or sim tick, never
   wall clock; sinks = stderr + capture-for-tests. The only sanctioned logging path.
+- `platform.h` — compile-time platform identity (os/arch/compiler + triple), one
+  spelling tree-wide (`midday version` payloads, journal header info). Informational
+  only: never enters a deterministic hash or byte-compare.
 
 Deliberately absent (no concrete consumer yet — add with the first one):
 small-vector (`std::vector` suffices for every current M0 consumer; revisit at

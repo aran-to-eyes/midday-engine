@@ -25,3 +25,13 @@ target_include_directories(fast_float SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DI
 add_library(dragonbox INTERFACE)
 add_library(dragonbox::dragonbox ALIAS dragonbox)
 target_include_directories(dragonbox SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/dragonbox)
+
+# zstd 1.5.7 — journal stream compression (single-file amalgamation from the
+# upstream build/single_file_libs generator, regenerated WITHOUT
+# ZSTD_MULTITHREAD: single-threaded compression is a determinism requirement
+# for journal bytes and drops the pthread/Win32-thread dependency entirely
+# (D-BUILD-031). C source; compiles clean on gcc/clang/AppleClang/MSVC.
+enable_language(C)
+add_library(zstd STATIC ${CMAKE_CURRENT_SOURCE_DIR}/zstd/zstd.c)
+add_library(zstd::zstd ALIAS zstd)
+target_include_directories(zstd SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/zstd)
