@@ -4,8 +4,10 @@
 
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "cli/verb.h"
+#include "core/math/fixture.h"
 #include "doctest/doctest.h"
 
+#include <cstdint>
 #include <sstream>
 #include <string>
 
@@ -58,6 +60,18 @@ struct CountingListener : doctest::IReporter {
 
 REGISTER_LISTENER("midday-count", 1, CountingListener);
 
+// Fixed-width lowercase hex (16 digits) — the canonical hash spelling for
+// CI byte-compares.
+std::string hex64(std::uint64_t value) {
+    static constexpr char kDigits[] = "0123456789abcdef";
+    std::string out(16, '0');
+    for (int i = 15; i >= 0; --i) {
+        out[static_cast<size_t>(i)] = kDigits[value & 0xF];
+        value >>= 4;
+    }
+    return out;
+}
+
 } // namespace
 
 VerbOutcome verb_selftest(const VerbArgs& args) {
@@ -94,6 +108,9 @@ VerbOutcome verb_selftest(const VerbArgs& args) {
     out.payload.set("asserts_failed", g_totals.asserts_failed);
     if (!filter.empty())
         out.payload.set("filter", filter);
+    // The m0-math-stdlib determinism fixture digest: CI's determinism lane
+    // byte-compares this field across independent runs/hosts.
+    out.payload.set("math_fixture_hash", hex64(midday::math::determinism_fixture_hash()));
 
     if (failed != 0) {
         out.exit = Exit::Failure;

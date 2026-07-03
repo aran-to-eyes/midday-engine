@@ -2,3 +2,4 @@
 # Subsystems arrive with their plan nodes; only what exists is listed.
 
 add_subdirectory(base)
+add_subdirectory(math)

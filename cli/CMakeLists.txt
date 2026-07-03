@@ -10,11 +10,13 @@ add_executable(midday
     verbs/selftest.cpp
     verbs/envelope_test.cpp
     $<TARGET_OBJECTS:midday_base_tests>
+    $<TARGET_OBJECTS:midday_math_tests>
 )
 
 target_link_libraries(midday PRIVATE
     midday::options
     midday::base
+    midday::math
     doctest::doctest)
 target_compile_definitions(midday PRIVATE MIDDAY_VERSION="${PROJECT_VERSION}")
 

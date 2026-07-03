@@ -4,6 +4,10 @@
 # EnumCastOutOfRange is off: analyzer path diagnostics ignore the header exclude filter
 # and fire on vendored fast_float's standard enum-bitmask idiom; the UBSan CI lane covers
 # genuine out-of-range enum casts at runtime (D-BUILD-016).
+# use-designated-initializers is off: positional {x, y, z} literals are the domain
+# convention for math aggregates (Vec/Quat/Mat columns — as in GLM/Godot/DirectXMath);
+# designating every component would bury core/math in noise. Field-heavy config structs
+# still SHOULD designate (reviewer's job, per the philosophy above). (D-BUILD-018)
 Checks: >
   bugprone-*,
   performance-*,
@@ -16,6 +20,7 @@ Checks: >
   readability-redundant-smartptr-get,
   readability-static-definition-in-anonymous-namespace,
   -bugprone-easily-swappable-parameters,
+  -modernize-use-designated-initializers,
   -modernize-use-trailing-return-type,
   -modernize-avoid-c-arrays,
   -performance-avoid-endl,
