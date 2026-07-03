@@ -1,17 +1,21 @@
 # midday — the engine binary. Verbs live one-per-file under verbs/; the
 # doctest registry is compiled in (spec section 14) and run via `midday selftest`.
+# Core tests link in as OBJECT libraries so their self-registration survives.
 
 add_executable(midday
     main.cpp
-    json.cpp
     envelope.cpp
     verb.cpp
     verbs/version.cpp
     verbs/selftest.cpp
     verbs/envelope_test.cpp
+    $<TARGET_OBJECTS:midday_base_tests>
 )
 
-target_link_libraries(midday PRIVATE midday::options doctest::doctest)
+target_link_libraries(midday PRIVATE
+    midday::options
+    midday::base
+    doctest::doctest)
 target_compile_definitions(midday PRIVATE MIDDAY_VERSION="${PROJECT_VERSION}")
 
 # The CLI hosts the deterministic sim (midday run) from m0-yaml-loader-run on;

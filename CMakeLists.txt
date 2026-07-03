@@ -47,4 +47,5 @@ endif()
 target_include_directories(midday_options INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(third_party)
+add_subdirectory(core)
 add_subdirectory(cli)

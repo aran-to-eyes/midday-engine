@@ -1,15 +1,21 @@
 // The CLI JSON envelope — the single C++ counterpart of
 // formats/cli_envelope.schema.json. Every verb's --json output goes through
 // make_envelope(); no verb hand-rolls envelope fields.
+//
+// JSON and the structured Error live in core/base (m0-core-primitives);
+// the CLI adapts them — it defines only the envelope layout and exit codes.
 
 #pragma once
 
-#include "cli/json.h"
+#include "core/base/error.h"
+#include "core/base/json.h"
 
-#include <string>
 #include <string_view>
 
 namespace midday::cli {
+
+using Json = base::Json;
+using Error = base::Error;
 
 // Spec section 9 exit codes (plan m0-cli-framework):
 //   0 ok · 1 failed assertion/build/runtime · 2 usage · 3 validation
@@ -18,12 +24,6 @@ enum class Exit : int {
     Failure = 1,
     Usage = 2,
     Validation = 3,
-};
-
-struct Error {
-    std::string code;    // stable dotted identifier, e.g. "usage.unknown_verb"
-    std::string message; // one-line human summary
-    Json details = Json::object();
 };
 
 // Builds a schema-valid envelope:

@@ -10,6 +10,15 @@
       "role": "in-binary test framework (midday selftest)",
       "path": "third_party/doctest",
       "source": "https://github.com/doctest/doctest"
+    },
+    {
+      "name": "xxhash",
+      "version": "0.8.3",
+      "commit": "e626a72bc2321cd320e953a0ccf1584cad60f363",
+      "license": "BSD-2-Clause",
+      "role": "content hashing (interned Name ids; journal/golden hashes later)",
+      "path": "third_party/xxhash",
+      "source": "https://github.com/Cyan4973/xxHash"
     }
   ]
 }

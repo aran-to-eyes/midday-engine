@@ -1,5 +1,7 @@
 // Tests for the CLI JSON envelope — written FIRST (test-first), the envelope
-// implementation in cli/json.* and cli/envelope.* exists to make these pass.
+// implementation in cli/envelope.* exists to make these pass. JSON itself is
+// core/base/json.* (tested under core.json.*); these cases cover only what
+// the CLI adds: the envelope layout and its invariants.
 //
 // The envelope contract is defined once, in formats/cli_envelope.schema.json:
 //   required: ok (bool), verb (string), exit_code (0|1|2|3)
@@ -7,49 +9,12 @@
 //   verb payload fields live at the top level next to the envelope fields.
 
 #include "cli/envelope.h"
-#include "cli/json.h"
 #include "cli/verb.h"
 #include "doctest/doctest.h"
 
 using midday::cli::Error;
 using midday::cli::Exit;
 using midday::cli::Json;
-
-TEST_CASE("cli.envelope.json: scalars serialize deterministically") {
-    CHECK(Json(nullptr).dump() == "null");
-    CHECK(Json(true).dump() == "true");
-    CHECK(Json(false).dump() == "false");
-    CHECK(Json(0).dump() == "0");
-    CHECK(Json(-42).dump() == "-42");
-    CHECK(Json(std::int64_t{9007199254740993}).dump() == "9007199254740993");
-    CHECK(Json(1.5).dump() == "1.5");
-    CHECK(Json(0.1).dump() == "0.1"); // shortest round-trip, not 0.1000000000000000055
-}
-
-TEST_CASE("cli.envelope.json: strings escape control, quote, backslash; UTF-8 passes through") {
-    CHECK(Json("plain").dump() == "\"plain\"");
-    CHECK(Json("a\"b\\c").dump() == "\"a\\\"b\\\\c\"");
-    CHECK(Json("line\nbreak\ttab\rret").dump() == "\"line\\nbreak\\ttab\\rret\"");
-    CHECK(Json(std::string("\x01\x1f")).dump() == "\"\\u0001\\u001f\"");
-    CHECK(Json("smörgås — 日本").dump() == "\"smörgås — 日本\"");
-}
-
-TEST_CASE("cli.envelope.json: objects preserve insertion order and round out arrays") {
-    Json obj = Json::object();
-    obj.set("zeta", 1);
-    obj.set("alpha", 2);
-    obj.set("zeta", 3); // replace in place, order kept
-    CHECK(obj.dump() == "{\"zeta\":3,\"alpha\":2}");
-
-    Json arr = Json::array();
-    arr.push(1);
-    arr.push("two");
-    arr.push(Json::object());
-    CHECK(arr.dump() == "[1,\"two\",{}]");
-
-    // Determinism: dumping twice is byte-identical.
-    CHECK(obj.dump() == obj.dump());
-}
 
 TEST_CASE("cli.envelope: success envelope has ok/verb/exit_code first, payload merged after") {
     Json payload = Json::object();

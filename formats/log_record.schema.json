@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://midday-engine.org/formats/log_record.schema.json",
+  "title": "Midday log record (JSONL)",
+  "description": "Every engine log record is exactly one JSON object per line (JSONL), emitted by core/base/log.* — the single sanctioned logging path. Key order is fixed: ts, level, subsystem, code, message, fields. `ts` is a deterministic monotonic counter (or the sim tick once the tick loop exists) — NEVER wall clock; same build + same inputs must produce byte-identical log streams (determinism contract, spec section 4.3). The core.log.* selftests mirror this schema field-for-field; change both together.",
+  "type": "object",
+  "required": ["ts", "level", "subsystem", "code", "message"],
+  "properties": {
+    "ts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic record counter or sim tick — deterministic, never wall clock."
+    },
+    "level": {
+      "enum": ["debug", "info", "warn", "error"],
+      "description": "Severity."
+    },
+    "subsystem": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Dotted origin of the record, e.g. \"core.loader\", \"core.statechart\"."
+    },
+    "code": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable machine-readable event identifier, dotted lowercase, e.g. \"json.parse\", \"state.voided\"."
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable one-line summary; may be empty."
+    },
+    "fields": {
+      "type": "object",
+      "description": "Structured, code-specific payload. Omitted entirely when empty."
+    }
+  },
+  "additionalProperties": false
+}

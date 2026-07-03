@@ -5,7 +5,6 @@
 #pragma once
 
 #include "cli/envelope.h"
-#include "cli/json.h"
 
 #include <optional>
 #include <span>

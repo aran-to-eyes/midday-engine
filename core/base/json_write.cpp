@@ -1,9 +1,13 @@
-#include "cli/json.h"
+// Deterministic JSON serialization (see contract in json.h). Migrated from
+// cli/json.cpp at m0-core-primitives — the one writer in the tree.
+
+#include "core/base/json.h"
 
 #include <cassert>
 #include <charconv>
+#include <cmath>
 
-namespace midday::cli {
+namespace midday::base {
 namespace {
 
 void write_escaped(std::string& out, std::string_view s) {
@@ -54,6 +58,28 @@ template <typename T> void write_number(std::string& out, T value) {
 
 } // namespace
 
+bool Json::as_bool() const {
+    assert(is_bool());
+    return std::get<bool>(value_);
+}
+
+std::int64_t Json::as_int() const {
+    assert(is_int());
+    return std::get<std::int64_t>(value_);
+}
+
+double Json::as_double() const {
+    assert(is_number());
+    if (const auto* i = std::get_if<std::int64_t>(&value_))
+        return static_cast<double>(*i);
+    return std::get<double>(value_);
+}
+
+const std::string& Json::as_string() const {
+    assert(is_string());
+    return std::get<std::string>(value_);
+}
+
 Json& Json::set(std::string_view key, Json value) {
     assert(is_object());
     auto& object = std::get<Object>(value_);
@@ -99,7 +125,13 @@ void Json::write(std::string& out) const {
 
         void operator()(std::int64_t n) const { write_number(out, n); }
 
-        void operator()(double d) const { write_number(out, d); }
+        void operator()(double d) const {
+            if (std::isfinite(d)) {
+                write_number(out, d);
+            } else {
+                out += "null"; // JSON has no NaN/Inf (contract in json.h)
+            }
+        }
 
         void operator()(const std::string& s) const { write_escaped(out, s); }
 
@@ -131,4 +163,4 @@ void Json::write(std::string& out) const {
     std::visit(Writer{out}, value_);
 }
 
-} // namespace midday::cli
+} // namespace midday::base
