@@ -130,6 +130,13 @@ inline bool ray_aabb(const Ray& ray, const Aabb& box, float& t_out_min, float& t
     float t_min = 0.0f;
     float t_max = std::numeric_limits<float>::infinity();
     for (int axis = 0; axis < 3; ++axis) {
+        // The divide-by-zero is the algorithm: axis-parallel rays yield +/-inf
+        // slabs by IEEE 754 division, which the min/max lattice below handles
+        // exactly. MSVC's C4723 cannot express "intentional"; suppress it here
+        // and nowhere else.
+#if defined(_MSC_VER)
+#pragma warning(suppress : 4723)
+#endif
         const float inv = 1.0f / ray.dir[axis];
         float t0 = (box.min[axis] - ray.origin[axis]) * inv;
         float t1 = (box.max[axis] - ray.origin[axis]) * inv;
