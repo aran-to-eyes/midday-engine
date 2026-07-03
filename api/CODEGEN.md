@@ -56,6 +56,14 @@ errors print `{"ok":false,"error":{...}}` on stdout (D-BUILD-038).
   become a single space.
 - Names (events, classes, functions, verbs, fields) are emitted verbatim —
   they are `[a-z0-9._-]` identifiers by convention and never escaped.
+- **Member quoting (d.ts only)**: interface MEMBER names (class properties,
+  event payload fields, verb flags/positionals) are emitted bare only when
+  they are valid TypeScript identifiers (`[A-Za-z_$][A-Za-z0-9_$]*`);
+  otherwise they are double-quoted — `"dry-run"?: boolean;`. Lookup-map keys
+  are always quoted (unchanged). Function/method PARAMETER names cannot be
+  quoted in TypeScript and stay verbatim; a non-identifier param name is a
+  registration defect, surfaced by tsc validation of the generated file
+  (`midday script check`, m0-quickjs-ts-toolchain).
 
 ## TypeDesc → TypeScript mapping (the table)
 

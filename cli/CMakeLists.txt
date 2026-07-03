@@ -12,6 +12,7 @@ add_executable(midday
     verbs/selftest.cpp
     verbs/help.cpp
     verbs/api.cpp
+    verbs/script.cpp
     verbs/envelope_test.cpp
     verbs/framework_test.cpp
     $<TARGET_OBJECTS:midday_base_tests>
@@ -26,6 +27,8 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_statechart_tests>
     $<TARGET_OBJECTS:midday_api_tests>
     $<TARGET_OBJECTS:midday_codegen_bootstrap_tests>
+    $<TARGET_OBJECTS:midday_script_runtime_tests>
+    $<TARGET_OBJECTS:midday_ts_toolchain_tests>
 )
 
 target_link_libraries(midday PRIVATE
@@ -42,12 +45,21 @@ target_link_libraries(midday PRIVATE
     midday::statechart
     midday::api
     midday::codegen_bootstrap
+    midday::script_runtime
+    midday::ts_toolchain
     doctest::doctest)
 target_compile_definitions(midday PRIVATE MIDDAY_VERSION="${PROJECT_VERSION}")
 
 # The CLI hosts the deterministic sim (midday run) from m0-yaml-loader-run on;
 # the FP contract applies from commit 1.
 midday_apply_deterministic_fp(midday)
+
+# Windows reserves 1 MiB of thread stack by default; the TS toolchain gives
+# QuickJS a 6 MiB budget for the vendored compiler (ts/toolchain), so the
+# binary must actually have that stack. POSIX main threads default to 8 MiB.
+if(MSVC)
+    target_link_options(midday PRIVATE /STACK:8388608)
+endif()
 
 # The exit-test contract addresses the binary as build/<preset>/midday.
 set_target_properties(midday PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

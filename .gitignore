@@ -7,6 +7,9 @@ godot/
 # Build output (all CMake presets configure into build/<preset>)
 build/
 
+# TS toolchain content-hash cache (regenerable; never drift-gated)
+.midday-cache/
+
 # Local tooling & agent contract files (no agent traces in git)
 .venv-tools/
 node_modules/

@@ -39,6 +39,24 @@
       "source": "https://github.com/jk-jeon/dragonbox"
     },
     {
+      "name": "quickjs-ng",
+      "version": "0.15.1",
+      "commit": "fd0a0210b7be00957751871e7e01b8291268fc29",
+      "license": "MIT",
+      "role": "embedded JS engine for the TypeScript script tier (spec section 7; JIT-less by design for iOS; core library only — quickjs-libc is deliberately NOT vendored, so scripts have no OS/filesystem/timer surface)",
+      "path": "third_party/quickjs",
+      "source": "https://github.com/quickjs-ng/quickjs"
+    },
+    {
+      "name": "typescript",
+      "version": "6.0.3",
+      "commit": "050880ce59e30b356b686bd3144efe24f875ebc8",
+      "license": "Apache-2.0",
+      "role": "TypeScript compiler vendored AS DATA (typescript.js runs on the embedded QuickJS — no Node anywhere, Aurora D-11) + the lib.es2020 d.ts closure it typechecks against; never compiled or linked",
+      "path": "third_party/typescript",
+      "source": "https://github.com/microsoft/TypeScript"
+    },
+    {
       "name": "zstd",
       "version": "1.5.7",
       "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",

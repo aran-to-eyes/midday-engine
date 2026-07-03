@@ -23,5 +23,8 @@ Formatting rules and the TypeDesc → TypeScript mapping table:
 `api/CODEGEN.md` (the byte contract the self-hosted generator must match).
 
 **tsc-level validation** (the declarations actually compile under
-`tsc --strict`) lands with `m0-quickjs-ts-toolchain` and becomes part of its
-gate; this structural check remains as the fast, toolchain-free tier.
+`tsc --strict`): in place since `m0-quickjs-ts-toolchain` — the TS toolchain
+compiles every program against `api/engine.d.ts` with `skipLibCheck` OFF, so
+`midday script check <any .ts>` (and the `script.toolchain` selftests, which
+verify.sh runs) tsc-validates the generated declarations on every check.
+This structural check remains as the fast, toolchain-free tier.

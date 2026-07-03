@@ -88,6 +88,18 @@ std::string interface_block(std::string_view doc, std::string_view name, std::st
     return out;
 }
 
+// Interface member names are emitted bare only when they are valid TS
+// identifiers; engine names also allow '.' and '-' (e.g. the --cache-dir
+// flag), which TypeScript must spell quoted (CODEGEN.md "member quoting").
+// Function/method PARAMETER names cannot be quoted and stay verbatim.
+std::string member_name(const std::string& name) {
+    bool bare = !name.empty() && !(name[0] >= '0' && name[0] <= '9');
+    for (const char c : name)
+        bare = bare && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '_' || c == '$');
+    return bare ? name : "\"" + name + "\"";
+}
+
 // `name: T;` member line with optional JSDoc, 8-space indent.
 std::string member(std::string_view doc, std::string_view declaration) {
     std::string out = jsdoc(doc, "        ");
@@ -134,7 +146,7 @@ std::string class_block(const Json& entry) {
             for (const Json& flag : flags->elements())
                 if (flag.as_string() == "read_only")
                     declaration += "readonly ";
-        declaration += str(property, "name") + ": " + ts_type(str(property, "type"));
+        declaration += member_name(str(property, "name")) + ": " + ts_type(str(property, "type"));
         body += member(text(property, "doc"), declaration);
     }
     for (const Json& method : entries(entry, "methods"))
@@ -147,7 +159,8 @@ std::string class_block(const Json& entry) {
 std::string event_block(const Json& entry) {
     std::string body;
     for (const Json& field : entries(entry, "payload"))
-        body += member(text(field, "doc"), str(field, "name") + ": " + ts_type(str(field, "type")));
+        body += member(text(field, "doc"),
+                       member_name(str(field, "name")) + ": " + ts_type(str(field, "type")));
     return interface_block(text(entry, "doc"), pascal_case(str(entry, "name")) + "Event", body);
 }
 
@@ -166,7 +179,7 @@ std::string verb_block(const Json& entry) {
     std::string body;
     for (const Json& flag : entries(entry, "flags")) {
         const std::string& type = str(flag, "type");
-        std::string declaration = str(flag, "name");
+        std::string declaration = member_name(str(flag, "name"));
         if (type == "bool")
             declaration += "?: boolean";
         else
@@ -174,7 +187,7 @@ std::string verb_block(const Json& entry) {
         body += member(text(flag, "doc"), declaration);
     }
     for (const Json& positional : entries(entry, "positionals")) {
-        std::string declaration = str(positional, "name");
+        std::string declaration = member_name(str(positional, "name"));
         if (truthy(positional, "variadic"))
             declaration += ": " + ts_type(str(positional, "type")) + "[]";
         else

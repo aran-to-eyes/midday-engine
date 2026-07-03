@@ -17,7 +17,7 @@ if [ ! -x "$VENV/bin/clang-format" ] || [ ! -x "$VENV/bin/clang-tidy" ]; then
     "$VENV/bin/pip" install --quiet "$CLANG_FORMAT_PIN" "$CLANG_TIDY_PIN"
 fi
 
-FIRST_PARTY_CXX=$(find core cli api formats testkit replay model editor tools \
+FIRST_PARTY_CXX=$(find core cli api ts formats testkit replay model editor tools \
     \( -name '*.cpp' -o -name '*.h' \) -not -path '*/third_party/*' 2>/dev/null || true)
 
 step "configure + build (dev preset)"
@@ -86,6 +86,36 @@ for f in engine.d.ts schema_manifest.json api_docs.md bindings_spec.json; do
     cmp "api/$f" "build/dev/codegen/$f"
 done
 scripts/validate_envelope.py formats/schema_manifest.schema.json <api/schema_manifest.json >/dev/null
+
+step "script toolchain (fixtures through the real CLI: exit classes, cache, lint)"
+# ts_hello: clean check (exit 0); dual INDEPENDENT builds byte-compared
+# (never a self-diff); second run reports zero re-transpiles. Cache dirs are
+# regenerable build output — never drift-gated (.midday-cache/ is gitignored
+# for ad-hoc runs; verify uses build/dev).
+rm -rf build/dev/ts-cache.a build/dev/ts-cache.b
+build/dev/midday script check testkit/fixtures/ts/hello.ts --cache-dir build/dev/ts-cache.a --json \
+    | jq -e '.ok and .diagnostics == []' >/dev/null
+build/dev/midday script build testkit/fixtures/ts/hello.ts --cache-dir build/dev/ts-cache.a --stats --json \
+    | jq -e '.ok and .cache_hit == false and .stats.transpiled == 1' >/dev/null
+build/dev/midday script build testkit/fixtures/ts/hello.ts --cache-dir build/dev/ts-cache.a --stats --json \
+    | jq -e '.ok and .cache_hit == true and .stats == {"transpiled":0,"cache_hits":1}' >/dev/null
+build/dev/midday script build testkit/fixtures/ts/hello.ts --cache-dir build/dev/ts-cache.b --json >/dev/null
+cmp build/dev/ts-cache.a/*.js build/dev/ts-cache.b/*.js
+# type_error: exit 3 with a structured file:line diagnostic
+SCRIPT_STATUS=0
+SCRIPT_OUT=$(build/dev/midday script check testkit/fixtures/ts/type_error.ts \
+    --cache-dir build/dev/ts-cache.a --json) || SCRIPT_STATUS=$?
+[ "$SCRIPT_STATUS" -eq 3 ]
+echo "$SCRIPT_OUT" | jq -e '.error.code == "script.type_error"
+    and .diagnostics[0].line > 0 and (.diagnostics[0].file | endswith("type_error.ts"))' >/dev/null
+# lint pack: exit 3; all three rule families, each hit located at file:line
+SCRIPT_STATUS=0
+SCRIPT_OUT=$(build/dev/midday script check testkit/fixtures/ts/lint_violations.ts \
+    --cache-dir build/dev/ts-cache.a --json) || SCRIPT_STATUS=$?
+[ "$SCRIPT_STATUS" -eq 3 ]
+echo "$SCRIPT_OUT" | jq -e '.error.code == "script.lint"
+    and ([.diagnostics[].code] | unique) == ["no-timer","no-unseeded-random","no-wall-clock"]
+    and ([.diagnostics[] | select(.line > 0 and .col > 0)] | length) == 6' >/dev/null
 
 step "license scan (+ negative fixture)"
 scripts/license_scan.py >/dev/null

@@ -49,7 +49,8 @@ constexpr std::string_view kSyntheticDocument = R"json({
    "params": [{"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
    "returns": "float", "doc": "Blend a into b.", "compat_hash": "00000000000000ae"}],
  "verbs": [{"name": "probe", "summary": "fire the probe",
-   "flags": [{"name": "count", "type": "int", "required": false, "doc": "How many."}],
+   "flags": [{"name": "count", "type": "int", "required": false, "doc": "How many."},
+     {"name": "dry-run", "type": "bool", "required": false, "doc": "Rehearse only."}],
    "positionals": [{"name": "target", "type": "name", "required": true, "variadic": false,
      "doc": "What to hit."}],
    "compat_hash": "00000000000000af"}]
@@ -157,6 +158,8 @@ declare namespace midday {
     interface ProbeVerbArgs {
         /** How many. */
         count?: number;
+        /** Rehearse only. */
+        "dry-run"?: boolean;
         /** What to hit. */
         target: string;
     }
@@ -240,6 +243,7 @@ Flags:
 | flag | type | required | default | doc |
 | --- | --- | --- | --- | --- |
 | `--count` | `int` | no |  | How many. |
+| `--dry-run` | `bool` | no |  | Rehearse only. |
 
 Positionals:
 
