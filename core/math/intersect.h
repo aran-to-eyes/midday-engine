@@ -130,14 +130,18 @@ inline bool ray_aabb(const Ray& ray, const Aabb& box, float& t_out_min, float& t
     float t_min = 0.0f;
     float t_max = std::numeric_limits<float>::infinity();
     for (int axis = 0; axis < 3; ++axis) {
-        // The divide-by-zero is the algorithm: axis-parallel rays yield +/-inf
-        // slabs by IEEE 754 division, which the min/max lattice below handles
-        // exactly. MSVC's C4723 cannot express "intentional"; suppress it here
-        // and nowhere else.
-#if defined(_MSC_VER)
-#pragma warning(suppress : 4723)
-#endif
-        const float inv = 1.0f / ray.dir[axis];
+        // Axis-parallel rays need inv = +/-inf carrying the sign of the
+        // (possibly negative) zero — exactly what IEEE 1/±0 yields. Computing
+        // it via copysign instead of a literal divide-by-zero is bit-identical
+        // and sidesteps MSVC's backend C4723, which no statement-level pragma
+        // can reach (it fires at the inlining site).
+        const float d = ray.dir[axis];
+        float inv;
+        if (d == 0.0f) {
+            inv = std::copysign(std::numeric_limits<float>::infinity(), d);
+        } else {
+            inv = 1.0f / d;
+        }
         float t0 = (box.min[axis] - ray.origin[axis]) * inv;
         float t1 = (box.max[axis] - ray.origin[axis]) * inv;
         if (inv < 0.0f) {
