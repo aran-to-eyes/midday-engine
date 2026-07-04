@@ -167,6 +167,27 @@ LOADER_OUT=$(printf 'format: 1\nscene: s\nentitiez: []\n' > build/m0/bad.scene.y
 echo "$LOADER_OUT" | jq -e '.error.code == "loader.unknown_key"
     and .error.details.line == 3 and (.error.message | contains("entitiez"))' >/dev/null
 
+step "appendix A golden (3200-tick assert pack + independent dual-run diff)"
+# m0-appendix-a-determinism exit tests: the flagship golden — the authored
+# A.3 corpus driven to tick 3200 with the assertion pack; the five item-21
+# verdicts hold; two INDEPENDENT runs diff identical (never a self-diff).
+# The Linux CI determinism lane adds the dual-host x3 sha256 byte-compare;
+# on this (possibly non-Linux) host the diff is the semantic gate.
+rm -rf build/golden
+build/dev/midday run examples/appendix_a/boss.scene.yaml --to-tick 3200 --seed 7 \
+    --record build/golden/a1.mrj --cache-dir build/dev/ts-cache.a \
+    --assert case=appendix_a_golden --json \
+    | jq -e '.ok and .assertions.combat_transitions_at_3200==1
+        and .assertions.hurtbox_inactive_before_dead_enter
+        and .assertions.voided_stagger
+        and .assertions.locomotion_still_chasing
+        and .assertions.cause_chain_complete' >/dev/null
+build/dev/midday run examples/appendix_a/boss.scene.yaml --to-tick 3200 --seed 7 \
+    --record build/golden/a2.mrj --cache-dir build/dev/ts-cache.a \
+    --assert case=appendix_a_golden --json >/dev/null
+build/dev/midday journal diff build/golden/a1.mrj build/golden/a2.mrj --json \
+    | jq -e '.first_divergent_tick==null and .identical' >/dev/null
+
 step "license scan (+ negative fixture)"
 scripts/license_scan.py >/dev/null
 scripts/test_license_scan.py >/dev/null

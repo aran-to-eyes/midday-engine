@@ -236,6 +236,16 @@ struct RuntimeBridge {
     static char*
     normalize(JSContext* ctx, const char* base_name, const char* specifier, void* opaque) {
         auto* impl = static_cast<ScriptRuntime::Impl*>(opaque);
+        // A name already registered on this runtime imports as itself —
+        // canonical names are stable identities, so first-party shims can
+        // `import M from "<resolved>"` for any previously loaded module
+        // (the state-script binding rides on this; load_module_source).
+        if (impl->find_source(specifier) != nullptr) {
+            auto* known = static_cast<char*>(js_malloc(ctx, std::strlen(specifier) + 1));
+            if (known != nullptr)
+                std::memcpy(known, specifier, std::strlen(specifier) + 1);
+            return known;
+        }
         std::optional<ModuleSource> resolved;
         if (impl->resolver)
             resolved = impl->resolver(specifier, base_name);
@@ -393,9 +403,14 @@ ScriptRuntime::LoadedModule ScriptRuntime::load_module(std::string_view specifie
         error.details.set("specifier", specifier);
         return {std::string(), std::move(error)};
     }
-    std::string name = resolved->resolved;
+    return load_module_source(resolved->resolved, resolved->js_source);
+}
+
+ScriptRuntime::LoadedModule ScriptRuntime::load_module_source(std::string_view name_in,
+                                                              std::string_view source_in) {
+    std::string name(name_in);
     if (impl_->find_source(name) == nullptr)
-        impl_->module_sources.emplace_back(name, std::move(resolved->js_source));
+        impl_->module_sources.emplace_back(name, std::string(source_in));
     JSContext* ctx = impl_->ctx;
     const std::string* source = impl_->find_source(name);
     const JSValue result =

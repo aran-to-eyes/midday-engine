@@ -155,7 +155,17 @@ TEST_CASE("codegen.selfhost.batch_envelope: version-1 views derive from classes,
               "\"batch_envelope\":{\"envelope_version\":1,\"views\":[{\"component\":\"health\","
               "\"fields\":[{\"name\":\"max\",\"type\":\"float\",\"buffer\":\"f32\",\"width\":1,"
               "\"writable\":true},{\"name\":\"current\",\"type\":\"float\",\"buffer\":\"f32\","
-              "\"width\":1,\"writable\":true}]}]}}") != std::string::npos);
+              "\"width\":1,\"writable\":true}]}]}") != std::string::npos);
+
+    // The state-script hook seam (D-BUILD-084), byte-pinned: fixed engine
+    // contract, independent of the input document.
+    CHECK(synthetic.files.bindings.find(
+              "\"state_script_hooks\":{\"envelope_version\":1,"
+              "\"register\":\"__midday_register_state_script\","
+              "\"introspect\":\"__midday_state_hooks_of\","
+              "\"invoke\":\"__midday_invoke_state_hook\",\"emit\":\"__midday_emit\","
+              "\"hooks\":[\"onEnter\",\"onExit\",\"onUpdate\",\"onFixedUpdate\"]}}") !=
+          std::string::npos);
 
     // Number corpus: int -> f64 (2^53-exact contract), vec3 -> f32 width 3,
     // string/map columns excluded.
@@ -170,9 +180,11 @@ TEST_CASE("codegen.selfhost.batch_envelope: version-1 views derive from classes,
     CHECK(bindings.find("\"name\":\"label\",\"buffer\"") == std::string::npos);
     CHECK(bindings.find("\"name\":\"table\",\"buffer\"") == std::string::npos);
 
-    // The equivalence view really blanks the envelope and nothing else.
+    // The equivalence view blanks the envelope, DROPS the selfhost-only
+    // hook seam (the frozen bootstrap never emits it), and nothing else.
     const std::string scoped = selfhost::bindings_equivalence_view(bindings);
     CHECK(scoped.find("\"batch_envelope\":null") != std::string::npos);
+    CHECK(scoped.find("\"state_script_hooks\"") == std::string::npos);
     CHECK(scoped.find("\"envelope_version\"") == std::string::npos);
     CHECK(scoped.find("\"expr_functions\"") != std::string::npos);
 }

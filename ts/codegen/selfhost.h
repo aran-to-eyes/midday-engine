@@ -51,13 +51,14 @@ struct RunResult {
 
 RunResult run_generator(std::string_view input_bytes, const Config& config = {});
 
-// Equivalence scope for bindings_spec.json (D-BUILD-069): the batch envelope
-// is emitted by the SELF-HOSTED generator only — the bootstrap stays frozen
-// on the version-0 placeholder, so the byte-equivalence gate compares
-// bindings_spec.json with the "batch_envelope" member replaced by null in
-// both artifacts. Every other byte (and every other artifact) stays under
-// the full-byte gate. Non-JSON input comes back verbatim (the comparison
-// then fails byte-for-byte, which is the right report).
+// Equivalence scope for bindings_spec.json (D-BUILD-069 + D-BUILD-084): the
+// batch envelope and the state-script hook seam are emitted by the
+// SELF-HOSTED generator only — the bootstrap stays frozen on the version-0
+// placeholder, so the byte-equivalence gate compares bindings_spec.json
+// with the "batch_envelope" and "state_script_hooks" members replaced by
+// null in both artifacts. Every other byte (and every other artifact) stays
+// under the full-byte gate. Non-JSON input comes back verbatim (the
+// comparison then fails byte-for-byte, which is the right report).
 std::string bindings_equivalence_view(std::string_view bindings_bytes);
 
 } // namespace midday::selfhost

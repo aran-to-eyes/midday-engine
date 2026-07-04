@@ -137,6 +137,15 @@ public:
 
     LoadedModule load_module(std::string_view specifier);
 
+    // Register `source` under the canonical module name `name` and evaluate
+    // it exactly like load_module does — WITHOUT consulting the resolver for
+    // the module itself (its imports still resolve normally). Names already
+    // registered on this runtime import as themselves, so a first-party
+    // module may `import M from "<resolved>"` for any previously loaded
+    // module. The state-script binding shim (ts/runtime/state_script.h) is
+    // the canonical consumer.
+    LoadedModule load_module_source(std::string_view name, std::string_view source);
+
     // Interrupt-handler invocations consumed since construction.
     [[nodiscard]] std::uint64_t gas_used() const;
 

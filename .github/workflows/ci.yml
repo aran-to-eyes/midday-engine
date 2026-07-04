@@ -1,7 +1,9 @@
 # Midday Engine CI — M0 lanes that exist today (MILESTONE_0.md "M0 CI lanes"):
-#   build-linux (+ sanitizer job), build-macos, build-windows, drift.
-# golden-software / determinism / boundaries lanes arrive with their
-# owning nodes — they are deliberately NOT stubbed as passing no-ops.
+#   build-linux (+ sanitizer job), build-macos, build-windows, drift,
+#   determinism (two Linux x86_64 hosts — m0-appendix-a-determinism;
+#   m0-determinism-spike extends the lane with the kata scene).
+# golden-software / boundaries lanes arrive with their owning nodes — they
+# are deliberately NOT stubbed as passing no-ops.
 #
 # Declared host tools (Aurora D-22): cmake, ninja, python3, git, jq, zstd,
 # platform SDK tools. GitHub-hosted runners ship cmake/python3/git/jq/zstd;
@@ -104,6 +106,88 @@ jobs:
       - name: schema_manifest.json meta-schema
         run: python3 scripts/validate_envelope.py formats/schema_manifest.schema.json < api/schema_manifest.json
 
+  # The determinism lane (m0-appendix-a-determinism, Determinism Scope
+  # Aurora D-9): two INDEPENDENT Linux x86_64 hosts each drive the authored
+  # Appendix A corpus to tick 3200 three times (seed 7, assert pack on) and
+  # hash the NORMALIZED journal — the decompressed record stream
+  # (zstdcat journal.jsonl.zst), per D-BUILD-080: compression framing is
+  # transport, record content is the run. Within a host the 3 hashes must
+  # agree AND two independent bundles must `journal diff` clean (bit-identity
+  # is two runs diffed, never a self-diff — Zenith N017). The compare job
+  # then byte-compares the hashes ACROSS hosts; on mismatch it runs
+  # `midday journal diff` and surfaces the first divergent tick in the log.
+  determinism:
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [a, b]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure
+        run: cmake --preset ci
+      - name: Build
+        run: ninja -C build/ci midday
+      - name: Appendix A x3 (assert pack + normalized sha256)
+        run: |
+          mkdir -p build/det
+          : > build/det/hashes.txt
+          for i in 1 2 3; do
+            build/ci/midday run examples/appendix_a/boss.scene.yaml --to-tick 3200 --seed 7 \
+              --record "build/det/run$i.mrj" --cache-dir build/det/ts-cache \
+              --assert case=appendix_a_golden --json | jq -e \
+              '.ok and .assertions.combat_transitions_at_3200==1
+               and .assertions.hurtbox_inactive_before_dead_enter
+               and .assertions.voided_stagger
+               and .assertions.locomotion_still_chasing
+               and .assertions.cause_chain_complete' > /dev/null
+            zstdcat "build/det/run$i.mrj/journal.jsonl.zst" \
+              | sha256sum | cut -d' ' -f1 >> build/det/hashes.txt
+          done
+          cat build/det/hashes.txt
+          test "$(sort -u build/det/hashes.txt | wc -l)" -eq 1
+      - name: Within-host independent dual-run diff
+        run: |
+          build/ci/midday journal diff build/det/run1.mrj build/det/run2.mrj --json \
+            | jq -e '.first_divergent_tick==null and .identical'
+      - name: Stage exchange artifact (host a also ships the diff binary)
+        run: |
+          mkdir -p build/det/exchange
+          cp build/det/hashes.txt build/det/exchange/
+          cp -r build/det/run1.mrj build/det/exchange/run1.mrj
+          if [ "${{ matrix.host }}" = "a" ]; then cp build/ci/midday build/det/exchange/; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: determinism-${{ matrix.host }}
+          path: build/det/exchange
+          retention-days: 3
+
+  determinism-compare:
+    needs: determinism
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: determinism-a
+          path: host-a
+      - uses: actions/download-artifact@v4
+        with:
+          name: determinism-b
+          path: host-b
+      - name: Cross-host normalized byte-compare (3x sha256 each)
+        run: |
+          echo "host a:"; cat host-a/hashes.txt
+          echo "host b:"; cat host-b/hashes.txt
+          if ! cmp host-a/hashes.txt host-b/hashes.txt; then
+            echo "::error::cross-host journal divergence — first divergent tick follows"
+            chmod +x host-a/midday
+            host-a/midday journal diff host-a/run1.mrj host-b/run1.mrj --json | tee divergence.json || true
+            jq '.first_divergent_tick, .divergence' divergence.json
+            exit 1
+          fi
+
   build-macos:
     # Hosted macOS arm64 — never the managed-firewall dev Mac (Zenith D027).
     runs-on: macos-14
@@ -121,6 +205,28 @@ jobs:
           build/ci/midday version --json | scripts/validate_envelope.py
       - name: Selftest
         run: build/ci/midday selftest
+      - name: Appendix A golden — semantic report (bytes NON-GATING here, Aurora D-9)
+        run: |
+          # macOS arm64 gates SEMANTICS: the five A.3 verdicts and a same-
+          # host independent dual-run record diff. The cross-host BYTE
+          # compare is deliberately absent on this platform — pinned-
+          # platform byte equality is the Linux determinism lane's contract;
+          # this step reports the normalized hash for the record only.
+          mkdir -p build/det
+          for i in 1 2; do
+            build/ci/midday run examples/appendix_a/boss.scene.yaml --to-tick 3200 --seed 7 \
+              --record "build/det/run$i.mrj" --cache-dir build/det/ts-cache \
+              --assert case=appendix_a_golden --json | jq -e \
+              '.ok and .assertions.combat_transitions_at_3200==1
+               and .assertions.hurtbox_inactive_before_dead_enter
+               and .assertions.voided_stagger
+               and .assertions.locomotion_still_chasing
+               and .assertions.cause_chain_complete'
+          done
+          build/ci/midday journal diff build/det/run1.mrj build/det/run2.mrj --json \
+            | jq -e '.first_divergent_tick==null and .identical'
+          echo "normalized journal sha256 (report only, non-gating):"
+          zstdcat build/det/run1.mrj/journal.jsonl.zst | shasum -a 256 | cut -d' ' -f1
 
   build-windows:
     runs-on: windows-2022

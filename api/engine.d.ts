@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash 28c4155d61af2cb3 (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash aba94ceed9f92c1f (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -279,6 +279,8 @@ declare namespace midday {
         record?: string;
         /** TS build cache directory (default: .midday-cache/ts) */
         "cache-dir"?: string;
+        /** drive + verify a registered assertion pack: case=<name> (available: appendix_a_golden) */
+        assert?: string;
         /** the *.scene.yaml to load and run */
         scene: string;
     }

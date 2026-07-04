@@ -2,9 +2,11 @@
 // m0-batch-bindings implements. Shape spec: api/CODEGEN.md
 // "bindings_spec.json layout". No subsystem ever gets hand-written bindings.
 //
-// The batch envelope here is SELF-HOST ONLY (D-BUILD-069): the retired-in-
-// place bootstrap emitter stays frozen on the version-0 placeholder, and the
-// byte-equivalence gate compares bindings_spec.json modulo this one member.
+// The batch envelope (D-BUILD-069) and the state-script hook seam
+// (D-BUILD-084) are SELF-HOST ONLY: the retired-in-place bootstrap emitter
+// stays frozen on the version-0 placeholder, and the byte-equivalence gate
+// compares bindings_spec.json modulo these members
+// (selfhost::bindings_equivalence_view).
 
 import { JObject, JValue, dumpJson, findKey, jArr, jInt, jObj, jStr } from "./json";
 import { entries, str } from "./model";
@@ -85,6 +87,20 @@ export function emitBindings(document: JObject): string {
             jObj([
                 ["envelope_version", jInt(1)],
                 ["views", batchViews(document)],
+            ]),
+        ],
+        [
+            "state_script_hooks",
+            jObj([
+                ["envelope_version", jInt(1)],
+                ["register", jStr("__midday_register_state_script")],
+                ["introspect", jStr("__midday_state_hooks_of")],
+                ["invoke", jStr("__midday_invoke_state_hook")],
+                ["emit", jStr("__midday_emit")],
+                [
+                    "hooks",
+                    jArr([jStr("onEnter"), jStr("onExit"), jStr("onUpdate"), jStr("onFixedUpdate")]),
+                ],
             ]),
         ],
     ]);

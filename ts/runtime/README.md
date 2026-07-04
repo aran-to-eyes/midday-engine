@@ -38,3 +38,16 @@ and `batch_views.cpp` (the one sanctioned typed-array exception, through the
   JSON behind the m0 exit tests — 1k/10k/100k sweep, crossings constant at
   16 for the 3-pool fixture (<= 8 * pool_count), zero steady-state GC bytes,
   naive per-field mode >= 10x chattier (measured: ~1100x at 1k).
+- **State-script binding** (`state_script.h`, m0-appendix-a-determinism):
+  authored `script:` modules seated on statechart states. `StateScriptHost`
+  implements `statechart::StateHooks`; modules build through the toolchain
+  cache, a generated per-seat shim registers each default-export class with
+  the JS-side seat registry (instantiated at bind — boot-deterministic),
+  and only the hooks a class actually has ever cross the boundary. Inside a
+  hook, `__midday_emit(event, payload, key)` triggers on the bus with the
+  hook's own journal record as the cause id (the A.3 cause-chain contract);
+  symbolic keys resolve through an injected resolver (loader::resolve_key in
+  production). The seam's global names are generated data —
+  `api/bindings_spec.json` `state_script_hooks`, drift-gated by
+  `golden.ts_hook_parity`. Hook faults surface via `first_error()`
+  (tick-annotated); the run host fails the run loudly.

@@ -14,8 +14,10 @@ add_executable(midday
     verbs/api.cpp
     verbs/script.cpp
     verbs/run.cpp
+    verbs/run_assert.cpp
     verbs/journal.cpp
     verbs/run_test.cpp
+    verbs/golden_test.cpp
     verbs/envelope_test.cpp
     verbs/framework_test.cpp
     $<TARGET_OBJECTS:midday_base_tests>
@@ -56,6 +58,7 @@ target_link_libraries(midday PRIVATE
     midday::codegen_selfhost
     midday::script_runtime
     midday::batch_bench
+    midday::state_script
     midday::ts_toolchain
     doctest::doctest)
 target_compile_definitions(midday PRIVATE MIDDAY_VERSION="${PROJECT_VERSION}")

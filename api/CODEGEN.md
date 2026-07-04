@@ -217,7 +217,7 @@ All blocks separated by exactly one blank line; file ends with one newline.
 ## bindings_spec.json layout (format 1)
 
 Key order: `format_version` (1), `api_compat_hash`, `expr_functions`,
-`events`, `classes`, `batch_envelope`.
+`events`, `classes`, `batch_envelope`, `state_script_hooks`.
 
 - `expr_functions`, `events`, `classes`: the input entries **deep-copied
   with every `doc`/`summary` key removed** (at any depth); everything else —
@@ -255,6 +255,18 @@ Key order: `format_version` (1), `api_compat_hash`, `expr_functions`,
   byte of the artifact, and the other three artifacts, remain full-byte.
   The envelope derivation itself is pinned against LITERAL bytes by
   `codegen.selfhost.batch_envelope`.
+- `state_script_hooks` (SELF-HOST ONLY, D-BUILD-084): the state-script hook
+  seam contract (`m0-appendix-a-determinism`; runtime in
+  `ts/runtime/state_script.h`) —
+  `{"envelope_version":1,"register","introspect","invoke","emit","hooks"}`,
+  where the four string members are the seam's global function names
+  (`__midday_register_state_script`, `__midday_state_hooks_of`,
+  `__midday_invoke_state_hook`, `__midday_emit`) and `hooks` is the ordered
+  lifecycle vocabulary `["onEnter","onExit","onUpdate","onFixedUpdate"]`
+  (spec 4.1 / Appendix A.2.1). The C++ constants are drift-gated against
+  the committed artifact by `golden.ts_hook_parity` (seam test). The frozen
+  bootstrap never emits this member, so `bindings_equivalence_view` DROPS
+  it (vs nulling `batch_envelope`, which both generators emit).
 
 ## Determinism and drift gates
 
