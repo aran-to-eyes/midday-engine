@@ -15,6 +15,7 @@
 
 #include "cli/verb.h"
 #include "core/base/hex.h"
+#include "core/rhi/device.h"
 #include "core/rhi/goldens.h"
 #include "core/rhi/scenes.h"
 #include "core/rhi/vulkan/vulkan_device.h"

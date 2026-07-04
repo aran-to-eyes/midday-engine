@@ -178,12 +178,8 @@ using CommandListResult = HandleResult<CommandListHandle>;
 
 class RhiDevice;
 
-struct DeviceResult {
-    std::unique_ptr<RhiDevice> device = nullptr;
-    std::optional<base::Error> error = std::nullopt;
-
-    [[nodiscard]] bool ok() const { return device != nullptr; }
-};
+// DeviceResult lives in device.h: it holds unique_ptr<RhiDevice>, whose
+// implicit special members need the COMPLETE type in every including TU.
 
 // Bytes per pixel of a format (all M0 formats are 4).
 [[nodiscard]] constexpr std::uint32_t bytes_per_pixel(TextureFormat format) {

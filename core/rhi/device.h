@@ -103,4 +103,14 @@ public:
                                                     std::span<std::byte> out) = 0;
 };
 
+// The factory result: aggregate on purpose (designated-init at every create
+// site); lives HERE because unique_ptr<RhiDevice>'s implicit special members
+// need the complete type in every TU that includes this header.
+struct DeviceResult {
+    std::unique_ptr<RhiDevice> device = nullptr;
+    std::optional<base::Error> error = std::nullopt;
+
+    [[nodiscard]] bool ok() const { return device != nullptr; }
+};
+
 } // namespace midday::rhi

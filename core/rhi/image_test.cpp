@@ -2,6 +2,7 @@
 // (rhi.image.*). The hash domain is (width, height, RGBA bytes) — NEVER an
 // encoded file (Aurora D-14); the KAT pins the domain layout forever.
 
+#include "core/base/file_io.h"
 #include "core/rhi/image.h"
 #include "testkit/doctest.h"
 #include "testkit/temp_dir.h"
@@ -70,7 +71,7 @@ TEST_CASE("rhi.image.write_png") {
 
     // The file exists and is a PNG (magic); its CONTENT is verified by eyes
     // and lavapipe goldens — the hash contract deliberately ignores it.
-    std::FILE* file = std::fopen(path.c_str(), "rb");
+    std::FILE* file = midday::base::open_file(path, "rb"); // MSVC C4996-safe seam
     REQUIRE(file != nullptr);
     unsigned char magic[8] = {};
     const std::size_t got = std::fread(magic, 1, sizeof magic, file);
