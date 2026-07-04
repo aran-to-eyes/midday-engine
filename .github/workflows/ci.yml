@@ -235,7 +235,13 @@ jobs:
           # APIs. Tier-2 tolerance is the cross-backend gate (two-tier
           # semantics, D-BUILD-090); hash equality may incidentally hold when
           # both paths hit the same GPU, but is never required here.
-          export DYLD_LIBRARY_PATH="$(brew --prefix)/lib"
+          #
+          # NOT via DYLD_LIBRARY_PATH: SIP strips DYLD_* when the protected
+          # shell execs children, so the export never reaches midday on the
+          # runner (first red run proved it). /usr/local/lib is on dyld's
+          # DEFAULT fallback path — a symlink there survives SIP.
+          sudo mkdir -p /usr/local/lib
+          sudo ln -sf "$(brew --prefix)"/lib/libvulkan*.dylib /usr/local/lib/
           export VK_ICD_FILENAMES="$(brew --prefix)/etc/vulkan/icd.d/MoltenVK_icd.json"
           build/ci/midday rhi probe --json > build/ci/vk-probe.json
           cat build/ci/vk-probe.json
