@@ -32,7 +32,8 @@ struct MachineFixture {
         reflect::register_builtin_events(registry);
         for (const char* event :
              {"player.spotted", "player.inRange", "death.dealt", "stagger.hit", "attack.swoosh"})
-            vocab.events.emplace_back(event);
+            vocab.events.push_back({.name = event}); // brace-init: paren-aggregate
+                                                     // construct_at needs clang>=16
         vocab.group_keys.emplace_back("squad");
     }
 

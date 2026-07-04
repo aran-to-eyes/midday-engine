@@ -42,11 +42,12 @@ struct YamlEntry {
     std::string key = {};
     int key_line = 0; // 1-based
     int key_col = 0;  // 1-based
-    // Defined out-of-line pattern: YamlNode is complete below; vector<>
-    // members make the mutual recursion well-formed.
+    // YamlNode is complete below; vector<> members make the mutual recursion
+    // well-formed. node() is defined after YamlNode: front() does pointer
+    // arithmetic, which libstdc++ rejects on an incomplete element type.
     std::vector<YamlNode> value = {}; // exactly one element (vector = indirection)
 
-    [[nodiscard]] const YamlNode& node() const { return value.front(); }
+    [[nodiscard]] const YamlNode& node() const;
 };
 
 struct YamlNode {
@@ -84,6 +85,10 @@ struct YamlNode {
         return nullptr;
     }
 };
+
+inline const YamlNode& YamlEntry::node() const {
+    return value.front();
+}
 
 struct YamlParseResult {
     YamlNode root;
