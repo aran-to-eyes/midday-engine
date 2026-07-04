@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `3fcaa248545bfa3d`
+- api_compat_hash: `a12d3914281a7f32`
 
 ## Classes
 
@@ -463,3 +463,26 @@ Positionals:
 | positional | type | required | variadic | doc |
 | --- | --- | --- | --- | --- |
 | `op` | `string` | yes | no | operation: probe \| render |
+
+### `midday shot`
+
+screenshot tools (compare: two-tier golden comparison — decoded-pixel hash + explicit-threshold tolerance, optional diff image)
+
+- compat_hash: `5534b9a4eb0f4256`
+
+Flags:
+
+| flag | type | required | default | doc |
+| --- | --- | --- | --- | --- |
+| `--tolerance` | `int` | no | `2` | per-channel delta a pixel may carry without counting as over (0-255) |
+| `--max-pct-over` | `float` | no | `0` | percent of pixels allowed over --tolerance before tier 2 fails |
+| `--max-mean` | `float` | no | `1` | mean absolute channel delta budget (perceptual drift bound) |
+| `--diff` | `string` | no |  | write an amplified per-pixel delta image (x8, saturated) to this PNG path |
+
+Positionals:
+
+| positional | type | required | variadic | doc |
+| --- | --- | --- | --- | --- |
+| `op` | `string` | yes | no | operation: compare |
+| `a` | `string` | yes | no | first PNG (golden/reference) |
+| `b` | `string` | yes | no | second PNG (candidate) |

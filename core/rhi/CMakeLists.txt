@@ -10,6 +10,7 @@
 #                         (scripts/check_include_boundaries.py enforces).
 
 add_library(midday_rhi STATIC
+    compare.cpp
     image.cpp
     null_device.cpp
     scenes.cpp
@@ -17,7 +18,7 @@ add_library(midday_rhi STATIC
 add_library(midday::rhi ALIAS midday_rhi)
 target_link_libraries(midday_rhi
     PUBLIC midday::options midday::base
-    PRIVATE xxhash::xxhash stb::image_write)
+    PRIVATE xxhash::xxhash stb::image_write stb::image)
 # Clear-color conversion and scene constants are render-side, not sim state,
 # but the FP contract applies uniformly (one flag story tree-wide).
 midday_apply_deterministic_fp(midday_rhi)
@@ -46,6 +47,7 @@ midday_apply_deterministic_fp(midday_rhi_vulkan)
 # Tests as an OBJECT library so doctest self-registration survives linking
 # into the midday binary (D-BUILD-014 pattern).
 add_library(midday_rhi_tests OBJECT
+    compare_test.cpp
     image_test.cpp
     null_device_test.cpp
     scenes_test.cpp

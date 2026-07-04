@@ -319,7 +319,7 @@ TEST_CASE("cli.exit: envelope carries the validation class distinctly from usage
 }
 
 TEST_CASE("cli.verbs: registry validates and resolves the manifest") {
-    REQUIRE(midday::cli::verbs().size() == 8);
+    REQUIRE(midday::cli::verbs().size() == 9);
     for (const VerbSpec* spec : midday::cli::verbs())
         CHECK(!midday::cli::validate_spec(*spec).has_value());
     CHECK(midday::cli::find_verb("version") == &midday::cli::version_spec());
@@ -332,5 +332,6 @@ TEST_CASE("cli.verbs: registry validates and resolves the manifest") {
     CHECK(unknown.exit == Exit::Usage);
     CHECK(unwrap(unknown.error).code == "usage.unknown_verb");
     CHECK(unknown.payload.find("verbs")->dump() ==
-          "[\"version\",\"selftest\",\"help\",\"api\",\"script\",\"run\",\"journal\",\"rhi\"]");
+          "[\"version\",\"selftest\",\"help\",\"api\",\"script\",\"run\",\"journal\",\"rhi\","
+          "\"shot\"]");
 }

@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash 3fcaa248545bfa3d (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash a12d3914281a7f32 (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -311,6 +311,24 @@ declare namespace midday {
         op: string;
     }
 
+    /** screenshot tools (compare: two-tier golden comparison — decoded-pixel hash + explicit-threshold tolerance, optional diff image) */
+    interface ShotVerbArgs {
+        /** per-channel delta a pixel may carry without counting as over (0-255) */
+        tolerance?: number;
+        /** percent of pixels allowed over --tolerance before tier 2 fails */
+        "max-pct-over"?: number;
+        /** mean absolute channel delta budget (perceptual drift bound) */
+        "max-mean"?: number;
+        /** write an amplified per-pixel delta image (x8, saturated) to this PNG path */
+        diff?: string;
+        /** operation: compare */
+        op: string;
+        /** first PNG (golden/reference) */
+        a: string;
+        /** second PNG (candidate) */
+        b: string;
+    }
+
     /** Verb name -> parsed-argument type. */
     interface VerbArgsByName {
         "version": VersionVerbArgs;
@@ -321,5 +339,6 @@ declare namespace midday {
         "run": RunVerbArgs;
         "journal": JournalVerbArgs;
         "rhi": RhiVerbArgs;
+        "shot": ShotVerbArgs;
     }
 }

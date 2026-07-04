@@ -111,11 +111,11 @@
       "source": "https://github.com/KhronosGroup/glslang"
     },
     {
-      "name": "stb_image_write",
-      "version": "1.16",
+      "name": "stb",
+      "version": "stb_image 2.30 + stb_image_write 1.16",
       "commit": "31c1ad37456438565541f4919958214b6e762fb4",
       "license": "MIT",
-      "role": "PNG encoding for render-to-image transport (core/rhi, m0-rhi-vulkan). Golden hashes are DECODED PIXELS, never these encoded bytes (Aurora D-14) — the PNG is the human-inspectable artifact. Dual-licensed MIT / public domain upstream; MIT selected. stb_image_write_impl.c is the upstream-documented single implementation TU (vma_impl.cpp precedent). EXR (tinyexr) deliberately deferred: no M0 consumer — HDR targets arrive with the render-graph nodes, and vendoring a format nothing reads would be dead code (D-BUILD-005 ethos)",
+      "role": "PNG transport for the golden pillar (core/rhi): stb_image_write ENCODES render-to-image output (m0-rhi-vulkan), stb_image DECODES it for two-tier comparison (m0-golden-compare, PNG-only + no-stdio configuration). Golden hashes are DECODED PIXELS, never encoded bytes (Aurora D-14) — the PNG is the human-inspectable artifact. Dual-licensed MIT / public domain upstream; MIT selected. stb_image_write_impl.c / stb_image_impl.c are the upstream-documented single implementation TUs (vma_impl.cpp precedent). EXR (tinyexr) deliberately deferred: no M0 consumer (D-BUILD-005 ethos)",
       "path": "third_party/stb",
       "source": "https://github.com/nothings/stb"
     },

@@ -10,6 +10,7 @@
 // so a defective assertion pack cannot vouch for itself.
 
 #include "cli/verb.h"
+#include "cli/verbs/test_support.h"
 #include "core/journal/reader.h"
 #include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
@@ -21,22 +22,14 @@
 
 using namespace midday;
 using namespace midday::cli;
+using midday::cli::testsupport::field;
+using midday::cli::testsupport::invoke;
 using midday::testkit::unwrap;
 
 namespace {
 
 constexpr const char* kScene = "examples/appendix_a/boss.scene.yaml";
 constexpr const char* kCacheDir = ".midday-cache/selftest/golden";
-
-VerbOutcome invoke(const VerbSpec& spec, const std::vector<std::string>& tokens) {
-    Invocation inv;
-    inv.verb = spec.name;
-    for (const std::string& token : tokens)
-        inv.rest.push_back(token);
-    ParsedArgs parsed = parse_verb_args(spec, inv);
-    REQUIRE_FALSE(parsed.usage.has_value());
-    return spec.run(parsed.args);
-}
 
 VerbOutcome golden_run(const std::string& bundle) {
     return invoke(run_spec(),
@@ -51,14 +44,6 @@ VerbOutcome golden_run(const std::string& bundle) {
                    kCacheDir,
                    "--assert",
                    "case=appendix_a_golden"});
-}
-
-const Json& field(const Json& object, std::string_view key) {
-    const Json* value = object.find(key);
-    REQUIRE(value != nullptr);
-    if (value == nullptr)
-        std::abort(); // unreachable: REQUIRE threw
-    return *value;
 }
 
 } // namespace

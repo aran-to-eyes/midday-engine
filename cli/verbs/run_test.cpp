@@ -6,6 +6,7 @@
 // the exact first divergent tick (0 — the run.config root record).
 
 #include "cli/verb.h"
+#include "cli/verbs/test_support.h"
 #include "core/base/file_io.h"
 #include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
@@ -16,19 +17,10 @@
 
 using namespace midday;
 using namespace midday::cli;
+using midday::cli::testsupport::invoke;
 using midday::testkit::unwrap;
 
 namespace {
-
-VerbOutcome invoke(const VerbSpec& spec, const std::vector<std::string>& tokens) {
-    Invocation inv;
-    inv.verb = spec.name;
-    for (const std::string& token : tokens)
-        inv.rest.push_back(token);
-    ParsedArgs parsed = parse_verb_args(spec, inv);
-    REQUIRE_FALSE(parsed.usage.has_value());
-    return spec.run(parsed.args);
-}
 
 void write_corpus(const testkit::TempDir& dir, bool poison_machine = false) {
     REQUIRE_FALSE(base::write_file(dir.file("combat.events.yaml"),

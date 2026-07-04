@@ -17,7 +17,9 @@ add_executable(midday
     verbs/run_assert.cpp
     verbs/journal.cpp
     verbs/rhi.cpp
+    verbs/shot.cpp
     verbs/run_test.cpp
+    verbs/shot_test.cpp
     verbs/golden_test.cpp
     verbs/envelope_test.cpp
     verbs/framework_test.cpp

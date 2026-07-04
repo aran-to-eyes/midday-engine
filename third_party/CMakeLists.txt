@@ -260,6 +260,14 @@ add_library(stb_image_write STATIC stb/stb_image_write_impl.c)
 add_library(stb::image_write ALIAS stb_image_write)
 target_include_directories(stb_image_write SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/stb)
 
+# stb_image (same pinned stb commit) — PNG DECODING for the two-tier golden
+# comparison (m0-golden-compare): tier-1 hashes are computed over decoded
+# pixels, so the comparator must decode. PNG-only + no-stdio configuration
+# (see stb/stb_image_impl.c); the other stb decoders are compiled out.
+add_library(stb_image STATIC stb/stb_image_impl.c)
+add_library(stb::image ALIAS stb_image)
+target_include_directories(stb_image SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/stb)
+
 # rapidyaml (ryml) 0.15.2 — strict-YAML parsing for the PERMANENT loader
 # subset (core/loader, m0-yaml-loader-run). Amalgamated single header, kept
 # byte-pristine; ryml.cpp is the one TU defining RYML_SINGLE_HDR_DEFINE_NOW

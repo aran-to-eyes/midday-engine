@@ -203,6 +203,43 @@ step "RHI include boundaries (self-test + scan)"
 scripts/check_include_boundaries.py --self-test >/dev/null
 scripts/check_include_boundaries.py >/dev/null
 
+step "golden compare (fixture regen byte-compare + two-tier exit tests via the CLI)"
+# m0-golden-compare exit tests: the committed triplet under
+# testkit/fixtures/goldens/ is regenerated from scratch and byte-compared
+# (generator + encoder determinism, journal greppable.mrj precedent), then
+# all three pairs run through the REAL `midday shot compare`.
+rm -rf build/dev/compare_fixtures
+MIDDAY_COMPARE_FIXTURE_DIR="$PWD/build/dev/compare_fixtures" \
+    build/dev/midday selftest --filter 'compare.fixtures' >/dev/null
+for f in base.png identical.png noise.png shifted.png; do
+    cmp "testkit/fixtures/goldens/$f" "build/dev/compare_fixtures/$f"
+done
+# identical pair: different FILE bytes, same pixels (Aurora D-14 in committed
+# form) -> hash pass + tolerance pass, exit 0.
+if cmp -s testkit/fixtures/goldens/base.png testkit/fixtures/goldens/identical.png; then
+    echo "identical.png must differ from base.png at the byte level (D-14 pin)"; exit 1
+fi
+build/dev/midday shot compare testkit/fixtures/goldens/base.png \
+    testkit/fixtures/goldens/identical.png --json \
+    | jq -e '.ok and .hash_equal and .tolerance.pass and .pass
+        and .pixel_hash_a == .pixel_hash_b' >/dev/null
+# 1-LSB noise: hash FAIL + tolerance PASS -> exit 0 with hash_equal:false
+# reported (the caller chooses which tier gates).
+build/dev/midday shot compare testkit/fixtures/goldens/base.png \
+    testkit/fixtures/goldens/noise.png --json \
+    | jq -e '.ok and (.hash_equal | not) and .tolerance.pass and .pass
+        and .tolerance.max_channel_delta == 1' >/dev/null
+# structural: both tiers FAIL -> exit 1, diff.png emitted, verdicts in JSON.
+SHOT_STATUS=0
+SHOT_OUT=$(build/dev/midday shot compare testkit/fixtures/goldens/base.png \
+    testkit/fixtures/goldens/shifted.png --diff build/dev/compare_diff.png --json) \
+    || SHOT_STATUS=$?
+[ "$SHOT_STATUS" -eq 1 ]
+echo "$SHOT_OUT" | jq -e '(.ok | not) and .error.code == "shot.mismatch"
+    and (.hash_equal | not) and (.tolerance.pass | not) and (.pass | not)
+    and .tolerance.pct_pixels_over > 0' >/dev/null
+test -s build/dev/compare_diff.png
+
 step "duplication ratchet (jscpd)"
 npx --yes "$JSCPD_PIN" --config .jscpd.json . >/dev/null
 
