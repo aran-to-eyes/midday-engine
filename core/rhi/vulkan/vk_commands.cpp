@@ -3,7 +3,6 @@
 // SHARED CommandListState first (command_state.h), so protocol errors are
 // byte-identical to NullDevice's; only then does Vulkan record.
 
-#include "core/rhi/null_device.h" // shared error builders
 #include "core/rhi/validate.h"
 #include "core/rhi/vulkan/vk_internal.h"
 
@@ -56,7 +55,7 @@ std::optional<base::Error> VulkanDevice::destroy_command_list(CommandListHandle 
 
 CommandListEntry* VulkanDevice::live_list(CommandListHandle handle,
                                           std::optional<base::Error>& error) {
-    return lookup(lists_, handle, "command list", error);
+    return lookup_handle(lists_, handle, "command list", error);
 }
 
 std::optional<base::Error> VulkanDevice::cmd_begin(CommandListHandle list) {
@@ -81,7 +80,7 @@ std::optional<base::Error> VulkanDevice::cmd_begin_render_pass(CommandListHandle
     CommandListEntry* entry = live_list(list, error);
     if (entry == nullptr)
         return error;
-    TextureEntry* target = lookup(textures_, pass.color_target, "render target", error);
+    TextureEntry* target = lookup_handle(textures_, pass.color_target, "render target", error);
     if (target == nullptr)
         return error;
     if (auto usage_error = validate_render_target_usage(target->desc))
@@ -134,7 +133,7 @@ std::optional<base::Error> VulkanDevice::cmd_bind_pipeline(CommandListHandle lis
     CommandListEntry* entry = live_list(list, error);
     if (entry == nullptr)
         return error;
-    PipelineEntry* pipe = lookup(pipelines_, pipeline, "pipeline", error);
+    PipelineEntry* pipe = lookup_handle(pipelines_, pipeline, "pipeline", error);
     if (pipe == nullptr)
         return error;
     if (auto state_error = entry->state.bind_pipeline(pipe->uses_texture))
@@ -149,7 +148,7 @@ std::optional<base::Error> VulkanDevice::cmd_bind_vertex_buffer(CommandListHandl
     CommandListEntry* entry = live_list(list, error);
     if (entry == nullptr)
         return error;
-    BufferEntry* buf = lookup(buffers_, buffer, "vertex buffer", error);
+    BufferEntry* buf = lookup_handle(buffers_, buffer, "vertex buffer", error);
     if (buf == nullptr)
         return error;
     if (auto state_error = entry->state.bind_vertex_buffer())
@@ -169,10 +168,10 @@ std::optional<base::Error> VulkanDevice::cmd_bind_texture(CommandListHandle list
         return error;
     if (auto slot_error = validate_texture_slot(slot))
         return slot_error;
-    TextureEntry* tex = lookup(textures_, texture, "texture", error);
+    TextureEntry* tex = lookup_handle(textures_, texture, "texture", error);
     if (tex == nullptr)
         return error;
-    SamplerEntry* smp = lookup(samplers_, sampler, "sampler", error);
+    SamplerEntry* smp = lookup_handle(samplers_, sampler, "sampler", error);
     if (smp == nullptr)
         return error;
     if (auto state_error = entry->state.bind_texture())
@@ -266,7 +265,7 @@ std::optional<base::Error> VulkanDevice::submit_and_wait(CommandListHandle list)
 std::optional<base::Error> VulkanDevice::read_texture(TextureHandle texture,
                                                       std::span<std::byte> out) {
     std::optional<base::Error> error;
-    TextureEntry* tex = lookup(textures_, texture, "texture", error);
+    TextureEntry* tex = lookup_handle(textures_, texture, "texture", error);
     if (tex == nullptr)
         return error;
     const std::size_t expected =

@@ -2,7 +2,6 @@
 // (m0-rhi-vulkan). Descriptor validation reuses the seam's shared error
 // spellings so the Vulkan backend and NullDevice refuse identically.
 
-#include "core/rhi/null_device.h" // shared error builders (null_handle/stale_handle)
 #include "core/rhi/shadercomp/shader_compiler.h"
 #include "core/rhi/validate.h"
 #include "core/rhi/vulkan/vk_internal.h"
@@ -37,47 +36,6 @@ VkFormat to_vk(VertexFormat format) {
 }
 
 } // namespace
-
-template <typename Tag, typename T>
-T* VulkanDevice::lookup(HandlePool<Tag, T>& pool,
-                        Handle<Tag> handle,
-                        std::string_view kind,
-                        std::optional<base::Error>& error) {
-    if (handle.is_null()) {
-        error = null_handle_error(kind);
-        return nullptr;
-    }
-    T* value = pool.get(handle);
-    if (value == nullptr)
-        error = stale_handle_error(kind, handle.to_bits());
-    return value;
-}
-
-// Explicit instantiations for the TUs sharing the template (commands TU).
-template BufferEntry* VulkanDevice::lookup(HandlePool<BufferHandleTag, BufferEntry>&,
-                                           BufferHandle,
-                                           std::string_view,
-                                           std::optional<base::Error>&);
-template TextureEntry* VulkanDevice::lookup(HandlePool<TextureHandleTag, TextureEntry>&,
-                                            TextureHandle,
-                                            std::string_view,
-                                            std::optional<base::Error>&);
-template SamplerEntry* VulkanDevice::lookup(HandlePool<SamplerHandleTag, SamplerEntry>&,
-                                            SamplerHandle,
-                                            std::string_view,
-                                            std::optional<base::Error>&);
-template ShaderEntry* VulkanDevice::lookup(HandlePool<ShaderHandleTag, ShaderEntry>&,
-                                           ShaderHandle,
-                                           std::string_view,
-                                           std::optional<base::Error>&);
-template PipelineEntry* VulkanDevice::lookup(HandlePool<PipelineHandleTag, PipelineEntry>&,
-                                             PipelineHandle,
-                                             std::string_view,
-                                             std::optional<base::Error>&);
-template CommandListEntry* VulkanDevice::lookup(HandlePool<CommandListHandleTag, CommandListEntry>&,
-                                                CommandListHandle,
-                                                std::string_view,
-                                                std::optional<base::Error>&);
 
 std::optional<base::Error> VulkanDevice::make_buffer(VkDeviceSize size,
                                                      VkBufferUsageFlags usage,
@@ -172,10 +130,10 @@ ShaderResult VulkanDevice::create_shader(const ShaderDesc& desc) {
 
 PipelineResult VulkanDevice::create_pipeline(const PipelineDesc& desc) {
     std::optional<base::Error> error;
-    ShaderEntry* vert = lookup(shaders_, desc.vertex_shader, "vertex shader", error);
+    ShaderEntry* vert = lookup_handle(shaders_, desc.vertex_shader, "vertex shader", error);
     if (vert == nullptr)
         return {.error = std::move(error)};
-    ShaderEntry* frag = lookup(shaders_, desc.fragment_shader, "fragment shader", error);
+    ShaderEntry* frag = lookup_handle(shaders_, desc.fragment_shader, "fragment shader", error);
     if (frag == nullptr)
         return {.error = std::move(error)};
 
@@ -268,7 +226,7 @@ PipelineResult VulkanDevice::create_pipeline(const PipelineDesc& desc) {
 
 std::optional<base::Error> VulkanDevice::destroy_buffer(BufferHandle handle) {
     std::optional<base::Error> error;
-    if (lookup(buffers_, handle, "buffer", error) == nullptr)
+    if (lookup_handle(buffers_, handle, "buffer", error) == nullptr)
         return error;
     vkDeviceWaitIdle(device_); // synchronous model: nothing may be in flight
     BufferEntry entry = buffers_.release(handle);
@@ -278,7 +236,7 @@ std::optional<base::Error> VulkanDevice::destroy_buffer(BufferHandle handle) {
 
 std::optional<base::Error> VulkanDevice::destroy_texture(TextureHandle handle) {
     std::optional<base::Error> error;
-    if (lookup(textures_, handle, "texture", error) == nullptr)
+    if (lookup_handle(textures_, handle, "texture", error) == nullptr)
         return error;
     vkDeviceWaitIdle(device_);
     TextureEntry entry = textures_.release(handle);
@@ -288,7 +246,7 @@ std::optional<base::Error> VulkanDevice::destroy_texture(TextureHandle handle) {
 
 std::optional<base::Error> VulkanDevice::destroy_sampler(SamplerHandle handle) {
     std::optional<base::Error> error;
-    if (lookup(samplers_, handle, "sampler", error) == nullptr)
+    if (lookup_handle(samplers_, handle, "sampler", error) == nullptr)
         return error;
     vkDeviceWaitIdle(device_);
     vkDestroySampler(device_, samplers_.release(handle).sampler, nullptr);
@@ -297,7 +255,7 @@ std::optional<base::Error> VulkanDevice::destroy_sampler(SamplerHandle handle) {
 
 std::optional<base::Error> VulkanDevice::destroy_shader(ShaderHandle handle) {
     std::optional<base::Error> error;
-    if (lookup(shaders_, handle, "shader", error) == nullptr)
+    if (lookup_handle(shaders_, handle, "shader", error) == nullptr)
         return error;
     // Pipelines snapshot their stages (device.h): the module can go now.
     vkDestroyShaderModule(device_, shaders_.release(handle).module, nullptr);
@@ -306,7 +264,7 @@ std::optional<base::Error> VulkanDevice::destroy_shader(ShaderHandle handle) {
 
 std::optional<base::Error> VulkanDevice::destroy_pipeline(PipelineHandle handle) {
     std::optional<base::Error> error;
-    if (lookup(pipelines_, handle, "pipeline", error) == nullptr)
+    if (lookup_handle(pipelines_, handle, "pipeline", error) == nullptr)
         return error;
     vkDeviceWaitIdle(device_);
     vkDestroyPipeline(device_, pipelines_.release(handle).pipeline, nullptr);

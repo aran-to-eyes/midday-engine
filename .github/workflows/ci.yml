@@ -191,11 +191,17 @@ jobs:
 
   build-macos:
     # Hosted macOS arm64 — never the managed-firewall dev Mac (Zenith D027).
+    # m0-rhi-metal makes this THE native-Metal lane: hosted runners expose
+    # Metal through the "Apple Paravirtual device" (a real GPU-backed
+    # virtual device, not a software rasterizer), verified by the probe gate
+    # below. If a future runner image ever loses the Metal device, this lane
+    # goes red at the probe — the documented fallback is corpus-on-null +
+    # LOCAL-gate-only compare (D-BUILD-099), never a silently skipped step.
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - name: Install ninja
-        run: brew install ninja
+      - name: Install ninja + MoltenVK (the Vulkan seam's macOS transport)
+        run: brew install ninja molten-vk vulkan-loader
       - name: Configure
         run: cmake --preset ci
       - name: Build
@@ -204,8 +210,47 @@ jobs:
         run: |
           build/ci/midday version --json | jq -e '.name=="midday"'
           build/ci/midday version --json | scripts/validate_envelope.py
-      - name: Selftest
-        run: build/ci/midday selftest
+      - name: Metal probe — the hosted runner must expose a Metal device
+        run: |
+          # No pipes around gating commands (golden-software precedent).
+          build/ci/midday rhi probe --backend metal --json > build/ci/metal-probe.json
+          cat build/ci/metal-probe.json
+          jq -e '.available' build/ci/metal-probe.json
+      - name: Selftest (rhi conformance corpus runs on NullDevice + Vulkan/MoltenVK + native Metal)
+        run: |
+          # Metal skips are FORBIDDEN on macOS (the corpus zz report enforces
+          # it); the MoltenVK env below lets the Vulkan corpus gate here too.
+          export DYLD_LIBRARY_PATH="$(brew --prefix)/lib"
+          export VK_ICD_FILENAMES="$(brew --prefix)/etc/vulkan/icd.d/MoltenVK_icd.json"
+          build/ci/midday selftest
+      - name: Cross-backend compare — SAME scenes through native Metal AND Vulkan, tier 2
+        run: |
+          # MILESTONE_0 item 23: the RHI demonstrably spans two dissimilar
+          # APIs. Tier-2 tolerance is the cross-backend gate (two-tier
+          # semantics, D-BUILD-090); hash equality may incidentally hold when
+          # both paths hit the same GPU, but is never required here.
+          export DYLD_LIBRARY_PATH="$(brew --prefix)/lib"
+          export VK_ICD_FILENAMES="$(brew --prefix)/etc/vulkan/icd.d/MoltenVK_icd.json"
+          build/ci/midday rhi probe --json > build/ci/vk-probe.json
+          cat build/ci/vk-probe.json
+          jq -e '.available' build/ci/vk-probe.json
+          mkdir -p build/ci/cross-backend
+          build/ci/midday rhi render --backend metal --out-dir build/ci/cross-backend/metal --json > build/ci/cross-backend/render-metal.json
+          build/ci/midday rhi render --backend vulkan --out-dir build/ci/cross-backend/vulkan --json > build/ci/cross-backend/render-vulkan.json
+          for scene in clear triangle textured_quad; do
+            build/ci/midday shot compare \
+              "build/ci/cross-backend/metal/$scene.png" "build/ci/cross-backend/vulkan/$scene.png" \
+              --diff "build/ci/cross-backend/diff_$scene.png" --json \
+              > "build/ci/cross-backend/verdict_$scene.json"
+            cat "build/ci/cross-backend/verdict_$scene.json"
+            jq -e '.pass' "build/ci/cross-backend/verdict_$scene.json"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m0-cross-backend-compare
+          path: build/ci/cross-backend
+          retention-days: 14
       - name: Appendix A golden — semantic report (bytes NON-GATING here, Aurora D-9)
         run: |
           # macOS arm64 gates SEMANTICS: the five A.3 verdicts and a same-

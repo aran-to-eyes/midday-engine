@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash a12d3914281a7f32 (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash bd8b9e08281c755a (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -297,6 +297,8 @@ declare namespace midday {
 
     /** GPU seam tools (probe: device availability/caps; render: M0 scenes to PNG + decoded-pixel hashes) */
     interface RhiVerbArgs {
+        /** seam implementation: vulkan | metal (metal is macOS-only) */
+        backend?: string;
         /** enable the Vulkan validation layer (refuses if not installed) */
         validation?: boolean;
         /** require a software rasterizer (lavapipe class; golden lane sets this) */

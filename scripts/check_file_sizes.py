@@ -14,7 +14,7 @@ import sys
 LIMIT = 500
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCOPES = ["core", "cli", "api", "ts", "formats", "testkit", "replay", "model", "editor", "tools", "scripts"]
-SUFFIXES = {".cpp", ".h", ".ts", ".py"}
+SUFFIXES = {".cpp", ".h", ".mm", ".m", ".ts", ".py"}
 EXCEPTIONS_FILE = ROOT / "scripts" / "filesize_exceptions.json"
 
 

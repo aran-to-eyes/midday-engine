@@ -1,132 +1,141 @@
 {
-  "schema": "midday.licenses.manifest/1",
-  "description": "Machine-readable pin of every vendored dependency under third_party/. scripts/license_scan.py enforces 1:1 correspondence in CI (spec section 15, constraint 1). Allowed licenses: MIT/BSD/Apache/zlib preferred; LGPL only if dynamically linked; no proprietary SDKs.",
-  "dependencies": [
-    {
-      "name": "doctest",
-      "version": "2.4.12",
-      "commit": "1da23a3e8119ec5cce4f9388e91b065e20bf06f5",
-      "license": "MIT",
-      "role": "in-binary test framework (midday selftest)",
-      "path": "third_party/doctest",
-      "source": "https://github.com/doctest/doctest"
-    },
-    {
-      "name": "xxhash",
-      "version": "0.8.3",
-      "commit": "e626a72bc2321cd320e953a0ccf1584cad60f363",
-      "license": "BSD-2-Clause",
-      "role": "content hashing (interned Name ids; journal/golden hashes later)",
-      "path": "third_party/xxhash",
-      "source": "https://github.com/Cyan4973/xxHash"
-    },
-    {
-      "name": "fast_float",
-      "version": "8.2.9",
-      "commit": "8234a896236a6c98ee66cf214b31ca15e24579ca",
-      "license": "MIT",
-      "role": "correctly-rounded locale-free double parsing (core JSON; old libc++ has no FP from_chars)",
-      "path": "third_party/fast_float",
-      "source": "https://github.com/fastfloat/fast_float"
-    },
-    {
-      "name": "dragonbox",
-      "version": "1.1.3",
-      "commit": "3053a74ac81099591a12a55341a203d9688fbb92",
-      "license": "Apache-2.0 WITH LLVM-exception",
-      "role": "shortest round-trip double digits (core JSON emission, byte-identical on every platform)",
-      "path": "third_party/dragonbox",
-      "source": "https://github.com/jk-jeon/dragonbox"
-    },
-    {
-      "name": "quickjs-ng",
-      "version": "0.15.1",
-      "commit": "fd0a0210b7be00957751871e7e01b8291268fc29",
-      "license": "MIT",
-      "role": "embedded JS engine for the TypeScript script tier (spec section 7; JIT-less by design for iOS; core library only — quickjs-libc is deliberately NOT vendored, so scripts have no OS/filesystem/timer surface)",
-      "path": "third_party/quickjs",
-      "source": "https://github.com/quickjs-ng/quickjs"
-    },
-    {
-      "name": "typescript",
-      "version": "6.0.3",
-      "commit": "050880ce59e30b356b686bd3144efe24f875ebc8",
-      "license": "Apache-2.0",
-      "role": "TypeScript compiler vendored AS DATA (typescript.js runs on the embedded QuickJS — no Node anywhere, Aurora D-11) + the lib.es2020 d.ts closure it typechecks against; never compiled or linked",
-      "path": "third_party/typescript",
-      "source": "https://github.com/microsoft/TypeScript"
-    },
-    {
-      "name": "JoltPhysics",
-      "version": "5.5.0",
-      "commit": "23dadd0e603f1b321142d4c74df07fce85064989",
-      "license": "MIT",
-      "role": "THE physics engine (spec section 6); minimal deterministic server in M0 (core/physics). Vendored subset: the Jolt/ library tree only, byte-pristine — no samples/tests/viewer; ObjectStream/ is on disk but not compiled (ENABLE_OBJECT_STREAM=OFF shape). Built with JPH_CROSS_PLATFORM_DETERMINISTIC under the repo FP contract (D-BUILD-073)",
-      "path": "third_party/jolt",
-      "source": "https://github.com/jrouwe/JoltPhysics"
-    },
-    {
-      "name": "rapidyaml",
-      "version": "0.15.2",
-      "commit": "85bfe56e32b1cfe715aa1c39885b1b10761e7482",
-      "license": "MIT",
-      "role": "strict-YAML parsing for the PERMANENT loader subset (core/loader, m0-yaml-loader-run). Vendored as the upstream amalgamated single header (release asset rapidyaml-0.15.2.hpp, byte-pristine) plus ryml.cpp, the one TU defining RYML_SINGLE_HDR_DEFINE_NOW per upstream convention. Chosen over yaml-cpp (exception-driven API, weak location reporting) and libfyaml (C, heavier surface) for structured parse-error locations, callback-based error handling, and MIT (D-BUILD-076)",
-      "path": "third_party/ryml",
-      "source": "https://github.com/biojppm/rapidyaml"
-    },
-    {
-      "name": "Vulkan-Headers",
-      "version": "vulkan-sdk-1.4.350.1",
-      "commit": "8864cdc896bbc2a9b6eb36b3218fc9ef57908d77",
-      "license": "Apache-2.0",
-      "role": "Vulkan C API declarations for the RHI Vulkan backend (core/rhi/vulkan, m0-rhi-vulkan). Minimal set: vulkan.h + vulkan_core.h + vk_platform.h + the vk_video/ std headers vulkan_core.h includes; the C++ bindings (vulkan.hpp, ~20 MB) are deliberately not vendored. Headers are Apache-2.0 OR MIT upstream; Apache-2.0 selected. Consumed with VK_NO_PROTOTYPES — all entry points resolve through volk at runtime",
-      "path": "third_party/vulkan",
-      "source": "https://github.com/KhronosGroup/Vulkan-Headers"
-    },
-    {
-      "name": "volk",
-      "version": "vulkan-sdk-1.4.350.1",
-      "commit": "3ca312a4f38baa63d8006b6905abbeeb89c8087d",
-      "license": "MIT",
-      "role": "Vulkan meta-loader (core/rhi/vulkan): dlopens the platform loader and resolves every entry point via vkGet*ProcAddr, so the engine never links libvulkan and starts cleanly on ICD-less hosts (rhi probe reports unavailable instead of a dynamic-linker failure)",
-      "path": "third_party/volk",
-      "source": "https://github.com/zeux/volk"
-    },
-    {
-      "name": "VulkanMemoryAllocator",
-      "version": "3.4.0",
-      "commit": "3aa921224c154a0d2c43912bc88e1c42ce1f7607",
-      "license": "MIT",
-      "role": "GPU memory allocation for the Vulkan backend (core/rhi/vulkan). Header-only upstream, byte-pristine; the one deviation is vma_impl.cpp, the upstream-documented single VMA_IMPLEMENTATION TU, kept inside third_party/ so the header body never enters first-party lint. Dynamic Vulkan functions only (VMA_DYNAMIC_VULKAN_FUNCTIONS=1 via volk)",
-      "path": "third_party/vma",
-      "source": "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator"
-    },
-    {
-      "name": "glslang",
-      "version": "vulkan-sdk-1.4.350.1",
-      "commit": "275822a6261ee689aadb1da5f09a0ec2f058685c",
-      "license": "BSD-3-Clause",
-      "role": "GLSL -> SPIR-V compilation (core/rhi/shadercomp, spec section 5). Minimal source set: MachineIndependent (+preprocessor), GenericCodeGen, OSDependent Unix+Windows, ResourceLimits, SPIRV backend — C++ API only; no HLSL front-end (upstream-deprecated), no C interface TUs, no SPIRV-Tools optimizer (ENABLE_OPT off), no StandAlone tools or tests. glslang/build_info.h is GENERATED at vendor time with upstream's build_info.py from CHANGES.md (the one non-pristine file, zstd-amalgamation precedent, D-BUILD-031); regenerate with: python3 build_info.py <checkout> -i build_info.h.tmpl -o glslang/build_info.h. Upstream is multi-licensed (BSD-3-Clause/Apache-2.0/MIT per file, see LICENSE.txt); BSD-3-Clause is the covering grant for the vendored set. Compiled under the deterministic-FP contract: GLSL constant folding happens here and SPIR-V bytes must not vary by host toolchain",
-      "path": "third_party/glslang",
-      "source": "https://github.com/KhronosGroup/glslang"
-    },
-    {
-      "name": "stb",
-      "version": "stb_image 2.30 + stb_image_write 1.16",
-      "commit": "31c1ad37456438565541f4919958214b6e762fb4",
-      "license": "MIT",
-      "role": "PNG transport for the golden pillar (core/rhi): stb_image_write ENCODES render-to-image output (m0-rhi-vulkan), stb_image DECODES it for two-tier comparison (m0-golden-compare, PNG-only + no-stdio configuration). Golden hashes are DECODED PIXELS, never encoded bytes (Aurora D-14) — the PNG is the human-inspectable artifact. Dual-licensed MIT / public domain upstream; MIT selected. stb_image_write_impl.c / stb_image_impl.c are the upstream-documented single implementation TUs (vma_impl.cpp precedent). EXR (tinyexr) deliberately deferred: no M0 consumer (D-BUILD-005 ethos)",
-      "path": "third_party/stb",
-      "source": "https://github.com/nothings/stb"
-    },
-    {
-      "name": "zstd",
-      "version": "1.5.7",
-      "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
-      "license": "BSD-3-Clause",
-      "role": "journal stream compression (run.mrj journal.jsonl.zst; single-file amalgamation from upstream build/single_file_libs, regenerated with ZSTD_MULTITHREAD removed for deterministic single-threaded output, D-BUILD-031)",
-      "path": "third_party/zstd",
-      "source": "https://github.com/facebook/zstd"
-    }
-  ]
+ "schema": "midday.licenses.manifest/1",
+ "description": "Machine-readable pin of every vendored dependency under third_party/. scripts/license_scan.py enforces 1:1 correspondence in CI (spec section 15, constraint 1). Allowed licenses: MIT/BSD/Apache/zlib preferred; LGPL only if dynamically linked; no proprietary SDKs.",
+ "dependencies": [
+  {
+   "name": "doctest",
+   "version": "2.4.12",
+   "commit": "1da23a3e8119ec5cce4f9388e91b065e20bf06f5",
+   "license": "MIT",
+   "role": "in-binary test framework (midday selftest)",
+   "path": "third_party/doctest",
+   "source": "https://github.com/doctest/doctest"
+  },
+  {
+   "name": "xxhash",
+   "version": "0.8.3",
+   "commit": "e626a72bc2321cd320e953a0ccf1584cad60f363",
+   "license": "BSD-2-Clause",
+   "role": "content hashing (interned Name ids; journal/golden hashes later)",
+   "path": "third_party/xxhash",
+   "source": "https://github.com/Cyan4973/xxHash"
+  },
+  {
+   "name": "fast_float",
+   "version": "8.2.9",
+   "commit": "8234a896236a6c98ee66cf214b31ca15e24579ca",
+   "license": "MIT",
+   "role": "correctly-rounded locale-free double parsing (core JSON; old libc++ has no FP from_chars)",
+   "path": "third_party/fast_float",
+   "source": "https://github.com/fastfloat/fast_float"
+  },
+  {
+   "name": "dragonbox",
+   "version": "1.1.3",
+   "commit": "3053a74ac81099591a12a55341a203d9688fbb92",
+   "license": "Apache-2.0 WITH LLVM-exception",
+   "role": "shortest round-trip double digits (core JSON emission, byte-identical on every platform)",
+   "path": "third_party/dragonbox",
+   "source": "https://github.com/jk-jeon/dragonbox"
+  },
+  {
+   "name": "quickjs-ng",
+   "version": "0.15.1",
+   "commit": "fd0a0210b7be00957751871e7e01b8291268fc29",
+   "license": "MIT",
+   "role": "embedded JS engine for the TypeScript script tier (spec section 7; JIT-less by design for iOS; core library only \u2014 quickjs-libc is deliberately NOT vendored, so scripts have no OS/filesystem/timer surface)",
+   "path": "third_party/quickjs",
+   "source": "https://github.com/quickjs-ng/quickjs"
+  },
+  {
+   "name": "typescript",
+   "version": "6.0.3",
+   "commit": "050880ce59e30b356b686bd3144efe24f875ebc8",
+   "license": "Apache-2.0",
+   "role": "TypeScript compiler vendored AS DATA (typescript.js runs on the embedded QuickJS \u2014 no Node anywhere, Aurora D-11) + the lib.es2020 d.ts closure it typechecks against; never compiled or linked",
+   "path": "third_party/typescript",
+   "source": "https://github.com/microsoft/TypeScript"
+  },
+  {
+   "name": "JoltPhysics",
+   "version": "5.5.0",
+   "commit": "23dadd0e603f1b321142d4c74df07fce85064989",
+   "license": "MIT",
+   "role": "THE physics engine (spec section 6); minimal deterministic server in M0 (core/physics). Vendored subset: the Jolt/ library tree only, byte-pristine \u2014 no samples/tests/viewer; ObjectStream/ is on disk but not compiled (ENABLE_OBJECT_STREAM=OFF shape). Built with JPH_CROSS_PLATFORM_DETERMINISTIC under the repo FP contract (D-BUILD-073)",
+   "path": "third_party/jolt",
+   "source": "https://github.com/jrouwe/JoltPhysics"
+  },
+  {
+   "name": "rapidyaml",
+   "version": "0.15.2",
+   "commit": "85bfe56e32b1cfe715aa1c39885b1b10761e7482",
+   "license": "MIT",
+   "role": "strict-YAML parsing for the PERMANENT loader subset (core/loader, m0-yaml-loader-run). Vendored as the upstream amalgamated single header (release asset rapidyaml-0.15.2.hpp, byte-pristine) plus ryml.cpp, the one TU defining RYML_SINGLE_HDR_DEFINE_NOW per upstream convention. Chosen over yaml-cpp (exception-driven API, weak location reporting) and libfyaml (C, heavier surface) for structured parse-error locations, callback-based error handling, and MIT (D-BUILD-076)",
+   "path": "third_party/ryml",
+   "source": "https://github.com/biojppm/rapidyaml"
+  },
+  {
+   "name": "Vulkan-Headers",
+   "version": "vulkan-sdk-1.4.350.1",
+   "commit": "8864cdc896bbc2a9b6eb36b3218fc9ef57908d77",
+   "license": "Apache-2.0",
+   "role": "Vulkan C API declarations for the RHI Vulkan backend (core/rhi/vulkan, m0-rhi-vulkan). Minimal set: vulkan.h + vulkan_core.h + vk_platform.h + the vk_video/ std headers vulkan_core.h includes; the C++ bindings (vulkan.hpp, ~20 MB) are deliberately not vendored. Headers are Apache-2.0 OR MIT upstream; Apache-2.0 selected. Consumed with VK_NO_PROTOTYPES \u2014 all entry points resolve through volk at runtime",
+   "path": "third_party/vulkan",
+   "source": "https://github.com/KhronosGroup/Vulkan-Headers"
+  },
+  {
+   "name": "volk",
+   "version": "vulkan-sdk-1.4.350.1",
+   "commit": "3ca312a4f38baa63d8006b6905abbeeb89c8087d",
+   "license": "MIT",
+   "role": "Vulkan meta-loader (core/rhi/vulkan): dlopens the platform loader and resolves every entry point via vkGet*ProcAddr, so the engine never links libvulkan and starts cleanly on ICD-less hosts (rhi probe reports unavailable instead of a dynamic-linker failure)",
+   "path": "third_party/volk",
+   "source": "https://github.com/zeux/volk"
+  },
+  {
+   "name": "VulkanMemoryAllocator",
+   "version": "3.4.0",
+   "commit": "3aa921224c154a0d2c43912bc88e1c42ce1f7607",
+   "license": "MIT",
+   "role": "GPU memory allocation for the Vulkan backend (core/rhi/vulkan). Header-only upstream, byte-pristine; the one deviation is vma_impl.cpp, the upstream-documented single VMA_IMPLEMENTATION TU, kept inside third_party/ so the header body never enters first-party lint. Dynamic Vulkan functions only (VMA_DYNAMIC_VULKAN_FUNCTIONS=1 via volk)",
+   "path": "third_party/vma",
+   "source": "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator"
+  },
+  {
+   "name": "glslang",
+   "version": "vulkan-sdk-1.4.350.1",
+   "commit": "275822a6261ee689aadb1da5f09a0ec2f058685c",
+   "license": "BSD-3-Clause",
+   "role": "GLSL -> SPIR-V compilation (core/rhi/shadercomp, spec section 5). Minimal source set: MachineIndependent (+preprocessor), GenericCodeGen, OSDependent Unix+Windows, ResourceLimits, SPIRV backend \u2014 C++ API only; no HLSL front-end (upstream-deprecated), no C interface TUs, no SPIRV-Tools optimizer (ENABLE_OPT off), no StandAlone tools or tests. glslang/build_info.h is GENERATED at vendor time with upstream's build_info.py from CHANGES.md (the one non-pristine file, zstd-amalgamation precedent, D-BUILD-031); regenerate with: python3 build_info.py <checkout> -i build_info.h.tmpl -o glslang/build_info.h. Upstream is multi-licensed (BSD-3-Clause/Apache-2.0/MIT per file, see LICENSE.txt); BSD-3-Clause is the covering grant for the vendored set. Compiled under the deterministic-FP contract: GLSL constant folding happens here and SPIR-V bytes must not vary by host toolchain",
+   "path": "third_party/glslang",
+   "source": "https://github.com/KhronosGroup/glslang"
+  },
+  {
+   "name": "SPIRV-Cross",
+   "version": "vulkan-sdk-1.4.350.1",
+   "commit": "1a6169566c73d3da552748fc372fe2bbb856e46e",
+   "license": "Apache-2.0",
+   "role": "SPIR-V -> MSL translation for the native Metal backend (core/rhi/shadercomp, m0-rhi-metal; spec section 5: shaders compile once to SPIR-V, per-backend translation). Same Khronos SDK-family pin as Vulkan-Headers/volk/glslang. Minimal separable set under spirv_cross/: core IR (spirv_cross/parser/parsed_ir/cfg) + GLSL backend (MSL derives from it) + MSL backend + spirv.hpp/GLSL.std.450.h/NonSemanticShaderDebugInfo100.h - no HLSL, no reflection, no C API, no util, no CLI, byte-pristine. Upstream is Apache-2.0 OR MIT; Apache-2.0 selected. Compiled under the deterministic-FP contract: shader constant folding happens here and emitted MSL text must not vary by host toolchain",
+   "path": "third_party/spirv_cross",
+   "source": "https://github.com/KhronosGroup/SPIRV-Cross"
+  },
+  {
+   "name": "stb",
+   "version": "stb_image 2.30 + stb_image_write 1.16",
+   "commit": "31c1ad37456438565541f4919958214b6e762fb4",
+   "license": "MIT",
+   "role": "PNG transport for the golden pillar (core/rhi): stb_image_write ENCODES render-to-image output (m0-rhi-vulkan), stb_image DECODES it for two-tier comparison (m0-golden-compare, PNG-only + no-stdio configuration). Golden hashes are DECODED PIXELS, never encoded bytes (Aurora D-14) \u2014 the PNG is the human-inspectable artifact. Dual-licensed MIT / public domain upstream; MIT selected. stb_image_write_impl.c / stb_image_impl.c are the upstream-documented single implementation TUs (vma_impl.cpp precedent). EXR (tinyexr) deliberately deferred: no M0 consumer (D-BUILD-005 ethos)",
+   "path": "third_party/stb",
+   "source": "https://github.com/nothings/stb"
+  },
+  {
+   "name": "zstd",
+   "version": "1.5.7",
+   "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+   "license": "BSD-3-Clause",
+   "role": "journal stream compression (run.mrj journal.jsonl.zst; single-file amalgamation from upstream build/single_file_libs, regenerated with ZSTD_MULTITHREAD removed for deterministic single-threaded output, D-BUILD-031)",
+   "path": "third_party/zstd",
+   "source": "https://github.com/facebook/zstd"
+  }
+ ]
 }

@@ -1,4 +1,5 @@
-// `midday rhi probe|render` — the GPU seam's CLI face (m0-rhi-vulkan).
+// `midday rhi probe|render` — the GPU seam's CLI face (m0-rhi-vulkan;
+// --backend metal at m0-rhi-metal).
 //
 // probe: device availability + capability report, on ANY host. Probing is a
 //   question, so an ICD-less machine is a successful answer (exit 0,
@@ -12,11 +13,17 @@
 //   never a stubbed green: exit 1 rhi.golden_missing) or mismatched
 //   (rhi.golden_mismatch). --software requires a lavapipe-class device so
 //   goldens can never be minted on a surprise GPU.
+//
+// --backend vulkan|metal selects the seam implementation; the build-macos
+// lane renders the same scenes through BOTH and feeds `midday shot compare`
+// (tier 2) — the cross-backend proof (MILESTONE_0 item 23). --validation
+// and --software are Vulkan concepts and refuse under --backend metal.
 
 #include "cli/verb.h"
 #include "core/base/hex.h"
 #include "core/rhi/device.h"
 #include "core/rhi/goldens.h"
+#include "core/rhi/metal/metal_device.h"
 #include "core/rhi/scenes.h"
 #include "core/rhi/vulkan/vulkan_device.h"
 
@@ -49,24 +56,55 @@ Json caps_json(const rhi::DeviceCaps& caps) {
     return out;
 }
 
-rhi::VulkanDeviceOptions options_from(const VerbArgs& args) {
-    return {.enable_validation = args.get_bool("validation"),
-            .require_software = args.get_bool("software")};
+// Backend selection. Vulkan-only knobs refuse under metal EXPLICITLY (a
+// silently ignored --software could mint goldens on the wrong device class).
+struct BackendChoice {
+    rhi::DeviceResult result{};
+    std::optional<VerbOutcome> usage; // set = refuse before any device work
+};
+
+BackendChoice open_device(const VerbArgs& args) {
+    const std::string& backend = args.get_string("backend");
+    if (backend == "vulkan")
+        return {.result =
+                    rhi::create_vulkan_device({.enable_validation = args.get_bool("validation"),
+                                               .require_software = args.get_bool("software")}),
+                .usage = std::nullopt};
+    if (backend == "metal") {
+        if (args.get_bool("validation") || args.get_bool("software")) {
+            VerbOutcome out;
+            out.exit = Exit::Usage;
+            out.error = Error{.code = "usage.invalid_value",
+                              .message = "--validation and --software are Vulkan options "
+                                         "(not meaningful with --backend metal)"};
+            return {.usage = std::move(out)};
+        }
+        return {.result = rhi::create_metal_device({}), .usage = std::nullopt};
+    }
+    VerbOutcome out;
+    out.exit = Exit::Usage;
+    out.error = Error{.code = "usage.invalid_value",
+                      .message = "unknown backend '" + backend + "' (available: vulkan, metal)"};
+    return {.usage = std::move(out)};
 }
 
 VerbOutcome run_probe(const VerbArgs& args) {
-    rhi::DeviceResult device = rhi::create_vulkan_device(options_from(args));
+    BackendChoice choice = open_device(args);
+    if (choice.usage.has_value())
+        return std::move(*choice.usage);
+    const std::string& backend = args.get_string("backend");
+    rhi::DeviceResult& device = choice.result;
     VerbOutcome out;
     out.payload.set("available", device.ok());
     if (device.ok()) {
         out.payload.set("caps", caps_json(device.device->caps()));
-        out.human = "vulkan: " + device.device->caps().device_name + " (" +
+        out.human = backend + ": " + device.device->caps().device_name + " (" +
                     device.device->caps().driver_info + ")";
     } else {
         // Unavailability is the probe's ANSWER, not its failure (exit 0).
         out.payload.set("reason", device.error ? device.error->message : "unknown");
         out.payload.set("reason_code", device.error ? device.error->code : "rhi.unavailable");
-        out.human = "vulkan: unavailable — " +
+        out.human = backend + ": unavailable — " +
                     (device.error ? device.error->message : std::string("unknown"));
     }
     return out;
@@ -76,7 +114,10 @@ VerbOutcome run_render(const VerbArgs& args) {
     const std::string out_dir = args.present("out-dir") ? args.get_string("out-dir") : "";
     const std::string goldens = args.present("goldens") ? args.get_string("goldens") : "";
 
-    rhi::DeviceResult device = rhi::create_vulkan_device(options_from(args));
+    BackendChoice choice = open_device(args);
+    if (choice.usage.has_value())
+        return std::move(*choice.usage);
+    rhi::DeviceResult device = std::move(choice.result);
     if (!device.ok())
         return fail(std::move(device.error)
                         .value_or(base::Error{.code = "rhi.unavailable",
@@ -209,6 +250,10 @@ VerbOutcome rhi_verb(const VerbArgs& args) {
 }
 
 constexpr FlagSpec kFlags[] = {
+    {.name = "backend",
+     .type = "name",
+     .doc = "seam implementation: vulkan | metal (metal is macOS-only)",
+     .default_text = "vulkan"},
     {.name = "validation",
      .type = "bool",
      .doc = "enable the Vulkan validation layer (refuses if not installed)"},

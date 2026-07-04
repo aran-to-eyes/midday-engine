@@ -25,11 +25,12 @@ midday_apply_deterministic_fp(midday_rhi)
 
 add_library(midday_rhi_shadercomp STATIC
     shadercomp/shader_compiler.cpp
+    shadercomp/msl_translator.cpp
 )
 add_library(midday::rhi_shadercomp ALIAS midday_rhi_shadercomp)
 target_link_libraries(midday_rhi_shadercomp
     PUBLIC midday::options midday::base midday::rhi
-    PRIVATE glslang::glslang)
+    PRIVATE glslang::glslang spirv_cross::msl)
 midday_apply_deterministic_fp(midday_rhi_shadercomp)
 
 add_library(midday_rhi_vulkan STATIC
@@ -44,10 +45,37 @@ target_link_libraries(midday_rhi_vulkan
     PRIVATE midday::rhi_shadercomp volk::volk vma::vma)
 midday_apply_deterministic_fp(midday_rhi_vulkan)
 
+# midday_rhi_metal — the NATIVE Metal backend (m0-rhi-metal). The target
+# exists on every platform so consumers stay unconditional; only macOS gets
+# the Objective-C++ implementation (+ framework links), other platforms get
+# the structured-unavailable factory body. ARC: Metal object lifetimes ride
+# the HandlePool slots deterministically, no manual retain/release.
+if(APPLE)
+    add_library(midday_rhi_metal STATIC
+        metal/mtl_device.mm
+        metal/mtl_resources.mm
+        metal/mtl_textures.mm
+        metal/mtl_commands.mm
+    )
+    target_compile_options(midday_rhi_metal PRIVATE -fobjc-arc)
+    target_link_libraries(midday_rhi_metal
+        PUBLIC midday::options midday::base midday::rhi
+        PRIVATE midday::rhi_shadercomp "-framework Metal" "-framework Foundation")
+else()
+    add_library(midday_rhi_metal STATIC
+        metal/metal_unavailable.cpp
+    )
+    target_link_libraries(midday_rhi_metal
+        PUBLIC midday::options midday::base midday::rhi)
+endif()
+add_library(midday::rhi_metal ALIAS midday_rhi_metal)
+midday_apply_deterministic_fp(midday_rhi_metal)
+
 # Tests as an OBJECT library so doctest self-registration survives linking
 # into the midday binary (D-BUILD-014 pattern).
 add_library(midday_rhi_tests OBJECT
     compare_test.cpp
+    conformance_test.cpp
     image_test.cpp
     null_device_test.cpp
     scenes_test.cpp
@@ -55,5 +83,6 @@ add_library(midday_rhi_tests OBJECT
     vulkan/vulkan_test.cpp
 )
 target_link_libraries(midday_rhi_tests
-    PRIVATE midday::rhi midday::rhi_shadercomp midday::rhi_vulkan doctest::doctest)
+    PRIVATE midday::rhi midday::rhi_shadercomp midday::rhi_vulkan midday::rhi_metal
+            doctest::doctest)
 midday_apply_deterministic_fp(midday_rhi_tests)

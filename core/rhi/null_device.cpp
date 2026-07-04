@@ -30,35 +30,6 @@ std::uint8_t unorm8_from_float(float value) {
     return static_cast<std::uint8_t>(std::lround(clamped * 255.0F));
 }
 
-// Handle lookup lifted into one macro-free helper per pool would cost a
-// template on member pointers; three lines per call site is clearer.
-namespace {
-template <typename Tag, typename T>
-T* lookup(HandlePool<Tag, T>& pool,
-          Handle<Tag> handle,
-          std::string_view kind,
-          std::optional<base::Error>& error) {
-    if (handle.is_null()) {
-        error = null_handle_error(kind);
-        return nullptr;
-    }
-    T* value = pool.get(handle);
-    if (value == nullptr)
-        error = stale_handle_error(kind, handle.to_bits());
-    return value;
-}
-
-template <typename Tag, typename T>
-std::optional<base::Error>
-destroy(HandlePool<Tag, T>& pool, Handle<Tag> handle, std::string_view kind) {
-    std::optional<base::Error> error;
-    if (lookup(pool, handle, kind, error) == nullptr)
-        return error;
-    (void)pool.release(handle);
-    return std::nullopt;
-}
-} // namespace
-
 NullDevice::NullDevice() {
     caps_.backend = "null";
     caps_.device_name = "midday NullDevice";
@@ -113,31 +84,31 @@ ShaderResult NullDevice::create_shader(const ShaderDesc& desc) {
 
 PipelineResult NullDevice::create_pipeline(const PipelineDesc& desc) {
     std::optional<base::Error> error;
-    if (lookup(shaders_, desc.vertex_shader, "vertex shader", error) == nullptr)
+    if (lookup_handle(shaders_, desc.vertex_shader, "vertex shader", error) == nullptr)
         return {.error = std::move(error)};
-    if (lookup(shaders_, desc.fragment_shader, "fragment shader", error) == nullptr)
+    if (lookup_handle(shaders_, desc.fragment_shader, "fragment shader", error) == nullptr)
         return {.error = std::move(error)};
     return {.handle = pipelines_.create(NullPipeline{.desc = desc})};
 }
 
 std::optional<base::Error> NullDevice::destroy_buffer(BufferHandle handle) {
-    return destroy(buffers_, handle, "buffer");
+    return release_handle(buffers_, handle, "buffer");
 }
 
 std::optional<base::Error> NullDevice::destroy_texture(TextureHandle handle) {
-    return destroy(textures_, handle, "texture");
+    return release_handle(textures_, handle, "texture");
 }
 
 std::optional<base::Error> NullDevice::destroy_sampler(SamplerHandle handle) {
-    return destroy(samplers_, handle, "sampler");
+    return release_handle(samplers_, handle, "sampler");
 }
 
 std::optional<base::Error> NullDevice::destroy_shader(ShaderHandle handle) {
-    return destroy(shaders_, handle, "shader");
+    return release_handle(shaders_, handle, "shader");
 }
 
 std::optional<base::Error> NullDevice::destroy_pipeline(PipelineHandle handle) {
-    return destroy(pipelines_, handle, "pipeline");
+    return release_handle(pipelines_, handle, "pipeline");
 }
 
 CommandListResult NullDevice::create_command_list() {
@@ -145,12 +116,12 @@ CommandListResult NullDevice::create_command_list() {
 }
 
 std::optional<base::Error> NullDevice::destroy_command_list(CommandListHandle handle) {
-    return destroy(lists_, handle, "command list");
+    return release_handle(lists_, handle, "command list");
 }
 
 NullDevice::NullCommandList* NullDevice::live_list(CommandListHandle handle,
                                                    std::optional<base::Error>& error) {
-    return lookup(lists_, handle, "command list", error);
+    return lookup_handle(lists_, handle, "command list", error);
 }
 
 std::optional<base::Error> NullDevice::cmd_begin(CommandListHandle list) {
@@ -170,7 +141,7 @@ std::optional<base::Error> NullDevice::cmd_begin_render_pass(CommandListHandle l
     NullCommandList* cmd = live_list(list, error);
     if (cmd == nullptr)
         return error;
-    NullTexture* target = lookup(textures_, pass.color_target, "render target", error);
+    NullTexture* target = lookup_handle(textures_, pass.color_target, "render target", error);
     if (target == nullptr)
         return error;
     if (auto usage_error = validate_render_target_usage(target->desc))
@@ -196,7 +167,7 @@ std::optional<base::Error> NullDevice::cmd_bind_pipeline(CommandListHandle list,
     NullCommandList* cmd = live_list(list, error);
     if (cmd == nullptr)
         return error;
-    NullPipeline* pipe = lookup(pipelines_, pipeline, "pipeline", error);
+    NullPipeline* pipe = lookup_handle(pipelines_, pipeline, "pipeline", error);
     if (pipe == nullptr)
         return error;
     return cmd->state.bind_pipeline(pipe->desc.uses_texture);
@@ -208,7 +179,7 @@ std::optional<base::Error> NullDevice::cmd_bind_vertex_buffer(CommandListHandle 
     NullCommandList* cmd = live_list(list, error);
     if (cmd == nullptr)
         return error;
-    if (lookup(buffers_, buffer, "vertex buffer", error) == nullptr)
+    if (lookup_handle(buffers_, buffer, "vertex buffer", error) == nullptr)
         return error;
     return cmd->state.bind_vertex_buffer();
 }
@@ -223,9 +194,9 @@ std::optional<base::Error> NullDevice::cmd_bind_texture(CommandListHandle list,
         return error;
     if (auto slot_error = validate_texture_slot(slot))
         return slot_error;
-    if (lookup(textures_, texture, "texture", error) == nullptr)
+    if (lookup_handle(textures_, texture, "texture", error) == nullptr)
         return error;
-    if (lookup(samplers_, sampler, "sampler", error) == nullptr)
+    if (lookup_handle(samplers_, sampler, "sampler", error) == nullptr)
         return error;
     return cmd->state.bind_texture();
 }
@@ -277,7 +248,7 @@ std::optional<base::Error> NullDevice::submit_and_wait(CommandListHandle list) {
 std::optional<base::Error> NullDevice::read_texture(TextureHandle texture,
                                                     std::span<std::byte> out) {
     std::optional<base::Error> error;
-    NullTexture* tex = lookup(textures_, texture, "texture", error);
+    NullTexture* tex = lookup_handle(textures_, texture, "texture", error);
     if (tex == nullptr)
         return error;
     if (auto size_error = validate_readback_size(out.size(), tex->pixels.size()))

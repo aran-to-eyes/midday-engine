@@ -250,6 +250,40 @@ if(NOT MSVC)
 endif()
 midday_apply_deterministic_fp(glslang_vendored)
 
+# SPIRV-Cross vulkan-sdk-1.4.350.1 — SPIR-V -> MSL translation for the Metal
+# backend (m0-rhi-metal, spec section 5: "per-backend translation (MSL via
+# SPIRV-Cross)"). Same Khronos SDK-family pin as Vulkan-Headers/volk/glslang.
+# Minimal separable set: the core IR (cross/parser/parsed_ir/cfg) + the GLSL
+# backend (MSL derives from it) + the MSL backend — no HLSL, no reflection,
+# no C API, no util, no CLI. Sources live under spirv_cross/ so first-party
+# includes spell <spirv_cross/spirv_msl.hpp> and the include-boundary scan
+# quarantines them to core/rhi/shadercomp/ mechanically. Compiles with
+# exceptions (upstream default); the one first-party consumer TU catches
+# CompilerError at the seam and lifts it into a structured base::Error.
+# Deterministic FP applies: constant folding of shader literals happens here
+# and emitted MSL text must not vary by host toolchain.
+add_library(spirv_cross_vendored STATIC
+    spirv_cross/spirv_cross/spirv_cross.cpp
+    spirv_cross/spirv_cross/spirv_parser.cpp
+    spirv_cross/spirv_cross/spirv_cross_parsed_ir.cpp
+    spirv_cross/spirv_cross/spirv_cfg.cpp
+    spirv_cross/spirv_cross/spirv_glsl.cpp
+    spirv_cross/spirv_cross/spirv_msl.cpp
+)
+add_library(spirv_cross::msl ALIAS spirv_cross_vendored)
+target_include_directories(spirv_cross_vendored SYSTEM PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/spirv_cross)
+if(NOT MSVC)
+    # Translator tables, never debugged at -O0; identical in every preset
+    # (quickjs/jolt/glslang precedent). -w: upstream's C++20 lambda captures
+    # trip -Wdeprecated-this-capture 60+ times per build; the drop is pinned
+    # and never edited, so its diagnostics are noise, not signal.
+    target_compile_options(spirv_cross_vendored PRIVATE -O2 -w)
+else()
+    target_compile_options(spirv_cross_vendored PRIVATE /w)
+endif()
+midday_apply_deterministic_fp(spirv_cross_vendored)
+
 # stb_image_write (stb master 31c1ad37) — PNG encoding for render-to-image
 # transport (m0-rhi-vulkan). Golden hashes are DECODED PIXELS, never these
 # encoded bytes (Aurora D-14); the PNG is the human-inspectable artifact.

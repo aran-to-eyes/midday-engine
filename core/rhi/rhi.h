@@ -10,6 +10,7 @@
 //
 // Layout:
 //   handle.h         generational typed handles + the shared HandlePool
+//   handle_lookup.h  the shared null/stale lookup every backend validates with
 //   types.h          formats, descriptors, caps, result envelopes, errors
 //   command_state.h  the record -> submit state machine (shared validation)
 //   device.h         the RhiDevice interface

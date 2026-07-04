@@ -8,10 +8,13 @@ backend directory; `scripts/check_include_boundaries.py` + the CI
 
 - seam: `handle.h` (generational typed handles), `types.h` (descriptors,
   caps, errors), `command_state.h` (shared record->submit machine),
-  `validate.h` (shared refusals), `device.h` (RhiDevice)
+  `validate.h` (shared refusals), `handle_lookup.h` (shared null/stale
+  lookup), `device.h` (RhiDevice)
 - `null_device.*` — the no-GPU seam double (protocol truth, CPU-only)
 - `image.*` — RGBA8 readback container, decoded-pixel XXH3 hash, PNG
+- `compare.*` — the two-tier comparator (`midday shot compare`)
 - `scenes.*` + `goldens.h` — the three pinned M0 scenes + golden file format
-- `shadercomp/` — GLSL -> SPIR-V (glslang); SPIRV-Cross joins at m0-rhi-metal
+- `conformance_test.cpp` — ONE corpus, every backend (the conformance claim)
+- `shadercomp/` — GLSL -> SPIR-V (glslang) and SPIR-V -> MSL (SPIRV-Cross)
 - `vulkan/` — the Vulkan backend (volk + VMA, offscreen only)
-- `metal/` — arrives at m0-rhi-metal
+- `metal/` — the native Metal backend (macOS; offscreen only)

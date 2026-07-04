@@ -1,8 +1,9 @@
-// core/rhi/null_device_test.cpp — the seam semantics, proven CPU-only
-// (rhi.null.*): generational handles, LIFO reuse determinism, structured
-// error paths, and the shared record -> submit state machine. What passes
-// here holds for every backend, because the validated code (HandlePool +
-// CommandListState) IS the code the backends run.
+// core/rhi/null_device_test.cpp — NullDevice-specific truths (rhi.null.*):
+// fresh-device handle determinism (absolute generations, dual-script
+// identity) and the exact unorm8/clear execution-model pins. The
+// backend-independent seam semantics (protocol, refusal spellings, scene
+// truths) moved to the conformance corpus (core/rhi/conformance_test.cpp),
+// which drives NullDevice alongside every real backend.
 
 #include "core/rhi/null_device.h"
 #include "core/rhi/rhi.h"
@@ -42,27 +43,6 @@ TextureHandle make_target(NullDevice& device, std::uint32_t extent = 4) {
         {.width = extent, .height = extent, .usage = TextureUsage::kRenderTarget}, {});
     REQUIRE(result.ok());
     return result.handle;
-}
-
-struct Drawable {
-    PipelineHandle pipeline;
-    BufferHandle vertices;
-};
-
-Drawable make_drawable(NullDevice& device, bool uses_texture = false) {
-    ShaderResult vert =
-        device.create_shader({.stage = ShaderStage::kVertex, .glsl = "v", .debug_name = "v"});
-    ShaderResult frag =
-        device.create_shader({.stage = ShaderStage::kFragment, .glsl = "f", .debug_name = "f"});
-    REQUIRE(vert.ok());
-    REQUIRE(frag.ok());
-    PipelineDesc desc;
-    desc.vertex_shader = vert.handle;
-    desc.fragment_shader = frag.handle;
-    desc.uses_texture = uses_texture;
-    PipelineResult pipeline = device.create_pipeline(desc);
-    REQUIRE(pipeline.ok());
-    return {pipeline.handle, make_buffer(device)};
 }
 
 TEST_CASE("rhi.null.handle_generations_and_lifo_reuse") {
@@ -113,121 +93,6 @@ TEST_CASE("rhi.null.handle_assignment_is_deterministic") {
     CHECK(runs[0] == runs[1]);
 }
 
-TEST_CASE("rhi.null.descriptor_validation") {
-    NullDevice device;
-
-    auto zero_buffer = device.create_buffer({.size_bytes = 0}, {});
-    REQUIRE_FALSE(zero_buffer.ok());
-    CHECK(err_code(zero_buffer.error) == "rhi.invalid_argument");
-
-    auto zero_texture = device.create_texture({.width = 0, .height = 4}, {});
-    REQUIRE_FALSE(zero_texture.ok());
-    CHECK(err_code(zero_texture.error) == "rhi.invalid_argument");
-
-    auto huge = device.create_texture({.width = 1u << 20u, .height = 4}, {});
-    REQUIRE_FALSE(huge.ok());
-    CHECK(err_code(huge.error) == "rhi.unsupported");
-
-    // Initial data must match the resource size exactly (or be absent).
-    std::array<std::byte, 3> three{};
-    auto mismatched = device.create_buffer({.size_bytes = 8}, three);
-    REQUIRE_FALSE(mismatched.ok());
-    CHECK(err_code(mismatched.error) == "rhi.size_mismatch");
-
-    // Pipelines validate their shader handles.
-    PipelineDesc desc;
-    auto no_shaders = device.create_pipeline(desc);
-    REQUIRE_FALSE(no_shaders.ok());
-    CHECK(err_code(no_shaders.error) == "rhi.null_handle");
-}
-
-TEST_CASE("rhi.null.record_submit_state_machine") {
-    NullDevice device;
-    const TextureHandle target = make_target(device);
-    const Drawable drawable = make_drawable(device);
-    CommandListResult list = device.create_command_list();
-    REQUIRE(list.ok());
-    const CommandListHandle cmd = list.handle;
-    const RenderPassDesc pass{.color_target = target, .clear = {}};
-
-    // Recording ops before begin: rhi.not_recording.
-    CHECK(err_code(device.cmd_begin_render_pass(cmd, pass)) == "rhi.not_recording");
-    CHECK(err_code(device.cmd_end(cmd)) == "rhi.not_recording");
-    // Submit before end: rhi.not_ready.
-    CHECK(err_code(device.submit_and_wait(cmd)) == "rhi.not_ready");
-
-    CHECK_FALSE(device.cmd_begin(cmd).has_value());
-    CHECK(err_code(device.cmd_begin(cmd)) == "rhi.already_recording");
-
-    // Pass-scoped ops before a pass is open: rhi.no_pass.
-    CHECK(err_code(device.cmd_bind_pipeline(cmd, drawable.pipeline)) == "rhi.no_pass");
-    CHECK(err_code(device.cmd_draw(cmd, 3, 0)) == "rhi.no_pass");
-    CHECK(err_code(device.cmd_end_render_pass(cmd)) == "rhi.no_pass");
-
-    CHECK_FALSE(device.cmd_begin_render_pass(cmd, pass).has_value());
-    CHECK(err_code(device.cmd_begin_render_pass(cmd, pass)) == "rhi.pass_active");
-    CHECK(err_code(device.cmd_end(cmd)) == "rhi.pass_active");
-
-    // Draw prerequisites, in dependency order.
-    CHECK(err_code(device.cmd_draw(cmd, 3, 0)) == "rhi.no_pipeline");
-    CHECK_FALSE(device.cmd_bind_pipeline(cmd, drawable.pipeline).has_value());
-    CHECK(err_code(device.cmd_draw(cmd, 3, 0)) == "rhi.no_vertex_buffer");
-    CHECK_FALSE(device.cmd_bind_vertex_buffer(cmd, drawable.vertices).has_value());
-    CHECK(err_code(device.cmd_draw(cmd, 0, 0)) == "rhi.invalid_argument");
-    CHECK_FALSE(device.cmd_draw(cmd, 3, 0).has_value());
-
-    CHECK_FALSE(device.cmd_end_render_pass(cmd).has_value());
-    CHECK(err_code(device.cmd_end_render_pass(cmd)) == "rhi.no_pass");
-    CHECK_FALSE(device.cmd_end(cmd).has_value());
-
-    // Ready: recording ops refuse, exactly one submit consumes.
-    CHECK(err_code(device.cmd_draw(cmd, 3, 0)) == "rhi.not_recording");
-    CHECK_FALSE(device.submit_and_wait(cmd).has_value());
-    CHECK(err_code(device.submit_and_wait(cmd)) == "rhi.not_ready");
-    CHECK(device.submitted_draws() == 1);
-
-    // The list is reusable: begin resets it.
-    CHECK_FALSE(device.cmd_begin(cmd).has_value());
-    CHECK_FALSE(device.cmd_begin_render_pass(cmd, pass).has_value());
-    CHECK_FALSE(device.cmd_end_render_pass(cmd).has_value());
-    CHECK_FALSE(device.cmd_end(cmd).has_value());
-    CHECK_FALSE(device.submit_and_wait(cmd).has_value());
-}
-
-TEST_CASE("rhi.null.textured_pipeline_requires_texture") {
-    NullDevice device;
-    const TextureHandle target = make_target(device);
-    const Drawable drawable = make_drawable(device, /*uses_texture=*/true);
-    TextureResult sampled = device.create_texture({.width = 2, .height = 2}, {});
-    SamplerResult sampler = device.create_sampler({});
-    REQUIRE(sampled.ok());
-    REQUIRE(sampler.ok());
-    const CommandListHandle cmd = device.create_command_list().handle;
-
-    REQUIRE_FALSE(device.cmd_begin(cmd).has_value());
-    REQUIRE_FALSE(
-        device.cmd_begin_render_pass(cmd, {.color_target = target, .clear = {}}).has_value());
-    REQUIRE_FALSE(device.cmd_bind_pipeline(cmd, drawable.pipeline).has_value());
-    REQUIRE_FALSE(device.cmd_bind_vertex_buffer(cmd, drawable.vertices).has_value());
-
-    CHECK(err_code(device.cmd_draw(cmd, 3, 0)) == "rhi.texture_missing");
-    CHECK(err_code(device.cmd_bind_texture(cmd, 1, sampled.handle, sampler.handle)) ==
-          "rhi.unsupported"); // M0: slot 0 only
-    CHECK_FALSE(device.cmd_bind_texture(cmd, 0, sampled.handle, sampler.handle).has_value());
-    CHECK_FALSE(device.cmd_draw(cmd, 3, 0).has_value());
-}
-
-TEST_CASE("rhi.null.render_pass_target_validation") {
-    NullDevice device;
-    TextureResult sampled = device.create_texture({.width = 2, .height = 2}, {});
-    REQUIRE(sampled.ok());
-    const CommandListHandle cmd = device.create_command_list().handle;
-    REQUIRE_FALSE(device.cmd_begin(cmd).has_value());
-    auto error = device.cmd_begin_render_pass(cmd, {.color_target = sampled.handle, .clear = {}});
-    REQUIRE(error.has_value());
-    CHECK(err_code(error) == "rhi.invalid_argument");
-}
-
 TEST_CASE("rhi.null.clear_and_readback_pins") {
     // unorm8 conversion pins (the scene clear bytes rest on these).
     CHECK(unorm8_from_float(0.0F) == 0);
@@ -261,37 +126,6 @@ TEST_CASE("rhi.null.clear_and_readback_pins") {
         CHECK(std::to_integer<int>(pixels[px * 4 + 2]) == 153);
         CHECK(std::to_integer<int>(pixels[px * 4 + 3]) == 255);
     }
-}
-
-TEST_CASE("rhi.null.shader_destroy_after_pipeline_is_legal") {
-    NullDevice device;
-    const Drawable drawable = make_drawable(device);
-    // Destroy both shaders; the pipeline snapshotted them (device.h contract).
-    NullDevice::Counts counts = device.live_counts();
-    CHECK(counts.shaders == 2);
-    // (Handles for the shaders are inside make_drawable — re-derive via a
-    // fresh pipeline: destroying its shaders must not invalidate drawing.)
-    ShaderResult vert = device.create_shader({.stage = ShaderStage::kVertex, .glsl = "v"});
-    ShaderResult frag = device.create_shader({.stage = ShaderStage::kFragment, .glsl = "f"});
-    PipelineDesc desc;
-    desc.vertex_shader = vert.handle;
-    desc.fragment_shader = frag.handle;
-    PipelineResult pipeline = device.create_pipeline(desc);
-    REQUIRE(pipeline.ok());
-    CHECK_FALSE(device.destroy_shader(vert.handle).has_value());
-    CHECK_FALSE(device.destroy_shader(frag.handle).has_value());
-
-    const TextureHandle target = make_target(device);
-    const CommandListHandle cmd = device.create_command_list().handle;
-    REQUIRE_FALSE(device.cmd_begin(cmd).has_value());
-    REQUIRE_FALSE(
-        device.cmd_begin_render_pass(cmd, {.color_target = target, .clear = {}}).has_value());
-    CHECK_FALSE(device.cmd_bind_pipeline(cmd, pipeline.handle).has_value());
-    CHECK_FALSE(device.cmd_bind_vertex_buffer(cmd, drawable.vertices).has_value());
-    CHECK_FALSE(device.cmd_draw(cmd, 3, 0).has_value());
-    REQUIRE_FALSE(device.cmd_end_render_pass(cmd).has_value());
-    REQUIRE_FALSE(device.cmd_end(cmd).has_value());
-    CHECK_FALSE(device.submit_and_wait(cmd).has_value());
 }
 
 } // namespace

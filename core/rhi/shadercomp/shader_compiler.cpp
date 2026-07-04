@@ -3,6 +3,8 @@
 
 #include "core/rhi/shadercomp/shader_compiler.h"
 
+#include "core/rhi/shadercomp/compile_error.h"
+
 #include <SPIRV/GlslangToSpv.h>
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/Public/ShaderLang.h>
@@ -30,20 +32,6 @@ EShLanguage to_glslang(ShaderStage stage) {
         return EShLangFragment;
     }
     return EShLangVertex; // unreachable: enum is exhaustive
-}
-
-base::Error compile_error(ShaderStage stage,
-                          std::string_view debug_name,
-                          std::string log,
-                          std::string_view phase) {
-    base::Error error{.code = "rhi.shader_compile",
-                      .message = "GLSL " + std::string(phase) + " failed for " +
-                                 std::string(to_string(stage)) + " shader '" +
-                                 std::string(debug_name) + "'"};
-    error.details.set("stage", to_string(stage));
-    error.details.set("debug_name", debug_name);
-    error.details.set("log", std::move(log));
-    return error;
 }
 
 } // namespace
@@ -81,16 +69,16 @@ SpirvResult compile_glsl(ShaderStage stage,
 
     const auto messages = static_cast<EShMessages>(EShMsgSpvRules | EShMsgVulkanRules);
     if (!shader.parse(GetDefaultResources(), 100, false, messages))
-        return {.error = compile_error(stage, name_ptr, shader.getInfoLog(), "parse")};
+        return {.error = compile_error(stage, name_ptr, shader.getInfoLog(), "GLSL parse")};
 
     glslang::TProgram program;
     program.addShader(&shader);
     if (!program.link(messages))
-        return {.error = compile_error(stage, name_ptr, program.getInfoLog(), "link")};
+        return {.error = compile_error(stage, name_ptr, program.getInfoLog(), "GLSL link")};
 
     glslang::TIntermediate* intermediate = program.getIntermediate(language);
     if (intermediate == nullptr)
-        return {.error = compile_error(stage, name_ptr, program.getInfoLog(), "lowering")};
+        return {.error = compile_error(stage, name_ptr, program.getInfoLog(), "GLSL lowering")};
 
     SpirvResult result;
     spv::SpvBuildLogger logger;

@@ -67,6 +67,7 @@ target_link_libraries(midday PRIVATE
     midday::rhi
     midday::rhi_shadercomp
     midday::rhi_vulkan
+    midday::rhi_metal
     doctest::doctest)
 target_compile_definitions(midday PRIVATE MIDDAY_VERSION="${PROJECT_VERSION}")
 

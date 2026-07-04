@@ -44,7 +44,7 @@ INCLUDE_RE = re.compile(r'^\s*#\s*(?:include|import)\s*[<"]([^">]+)[">]')
 RULES = [
     ("vulkan", re.compile(r"^(vulkan/|vk_video/|volk\.h$|vk_mem_alloc\.h$|vulkan\.h$)"),
      "core/rhi/vulkan/"),
-    ("shadercomp", re.compile(r"^(glslang/|SPIRV/|spirv_cross/|spirv\.hpp)"),
+    ("shadercomp", re.compile(r"^(glslang/|SPIRV/|spirv_cross/|spirv[._])"),
      "core/rhi/shadercomp/"),
     ("metal", re.compile(r"^(Metal/|MetalKit/|QuartzCore/|Foundation/NSObjCRuntime)"),
      "core/rhi/metal/"),
@@ -97,12 +97,17 @@ def self_test() -> int:
         shader_leak = root / "cli" / "verbs"
         shader_leak.mkdir(parents=True)
         (shader_leak / "oops.cpp").write_text('#include <glslang/Public/ShaderLang.h>\n')
+        metal_leak = root / "core" / "renderer"
+        (metal_leak / "mtl_leak.mm").write_text('#import <Metal/Metal.h>\n')
+        metal_ok = root / "core" / "rhi" / "metal"
+        metal_ok.mkdir(parents=True)
+        (metal_ok / "mtl_ok.mm").write_text('#import <Metal/Metal.h>\n')
         report = scan(root)
         found = {(v["file"], v["rule"]) for v in report["violations"]}
-        expect = {("core/renderer/leak.cpp", "vulkan"), ("cli/verbs/oops.cpp", "shadercomp")}
-        ok = (not report["ok"] and expect <= found and len(report["violations"]) == 3
-              and all(not v["file"].startswith("core/rhi/vulkan/")
-                      for v in report["violations"]))
+        expect = {("core/renderer/leak.cpp", "vulkan"), ("cli/verbs/oops.cpp", "shadercomp"),
+                  ("core/renderer/mtl_leak.mm", "metal")}
+        ok = (not report["ok"] and expect <= found and len(report["violations"]) == 4
+              and all(not v["file"].startswith("core/rhi/") for v in report["violations"]))
         print(json.dumps({"self_test_ok": ok, "report": report}, indent=2))
         return 0 if ok else 1
 

@@ -22,6 +22,7 @@
 
 #include "core/rhi/command_state.h"
 #include "core/rhi/device.h"
+#include "core/rhi/handle_lookup.h" // IWYU pragma: export (shared error builders)
 
 #include <cstddef>
 #include <cstdint>
@@ -141,11 +142,6 @@ private:
     HandlePool<CommandListHandleTag, NullCommandList> lists_;
     std::uint64_t submitted_draws_ = 0;
 };
-
-// The shared "which resource is missing/stale" error builders — used by
-// every backend so wording and details are identical tree-wide.
-[[nodiscard]] base::Error null_handle_error(std::string_view kind);
-[[nodiscard]] base::Error stale_handle_error(std::string_view kind, std::uint64_t bits);
 
 // Exact UNORM8 conversion used by NullDevice clears and pinned in tests:
 // round-to-nearest of clamp(value, 0, 1) * 255.

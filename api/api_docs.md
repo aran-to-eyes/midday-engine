@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `a12d3914281a7f32`
+- api_compat_hash: `bd8b9e08281c755a`
 
 ## Classes
 
@@ -446,12 +446,13 @@ Positionals:
 
 GPU seam tools (probe: device availability/caps; render: M0 scenes to PNG + decoded-pixel hashes)
 
-- compat_hash: `95e65da8de3384c3`
+- compat_hash: `354cb19c011cf98c`
 
 Flags:
 
 | flag | type | required | default | doc |
 | --- | --- | --- | --- | --- |
+| `--backend` | `name` | no | `"vulkan"` | seam implementation: vulkan \| metal (metal is macOS-only) |
 | `--validation` | `bool` | no |  | enable the Vulkan validation layer (refuses if not installed) |
 | `--software` | `bool` | no |  | require a software rasterizer (lavapipe class; golden lane sets this) |
 | `--scene` | `name` | no |  | render one scene: clear \| triangle \| textured_quad (default: all) |
