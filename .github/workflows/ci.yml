@@ -216,12 +216,18 @@ jobs:
           build/ci/midday rhi probe --backend metal --json > build/ci/metal-probe.json
           cat build/ci/metal-probe.json
           jq -e '.available' build/ci/metal-probe.json
-      - name: Selftest (rhi conformance corpus runs on NullDevice + Vulkan/MoltenVK + native Metal)
+      - name: Selftest (rhi conformance corpus gates NullDevice + native Metal)
         run: |
           # Metal skips are FORBIDDEN on macOS (the corpus zz report enforces
-          # it); the MoltenVK env below lets the Vulkan corpus gate here too.
-          export DYLD_LIBRARY_PATH="$(brew --prefix)/lib"
-          export VK_ICD_FILENAMES="$(brew --prefix)/etc/vulkan/icd.d/MoltenVK_icd.json"
+          # it). DELIBERATELY no MoltenVK env here: each gate proves ONE
+          # claim — this step is the native-Metal conformance gate, and a
+          # MoltenVK fault in the same process must not be able to take the
+          # Metal verdict down with it (2026-07-04 incident: an ObjC
+          # exception during shared-registry bring-up killed all 13
+          # registry-touching cases; escapes now map to structured
+          # rhi.device_fault, D-BUILD-100). MoltenVK enters only in the
+          # compare step below, behind its own probe; the Vulkan corpus rows
+          # are gated by golden-software (lavapipe guaranteed).
           build/ci/midday selftest
       - name: Cross-backend compare — SAME scenes through native Metal AND Vulkan, tier 2
         run: |

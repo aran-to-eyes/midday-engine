@@ -20,36 +20,39 @@ namespace midday::rhi::mtl {
 
 TextureResult MetalDevice::create_texture(const TextureDesc& desc,
                                           std::span<const std::byte> initial_data) {
-    if (auto error = validate_texture_desc(desc, caps_.max_texture_size))
-        return {.error = std::move(error)};
-    const std::size_t byte_size =
-        std::size_t{desc.width} * desc.height * bytes_per_pixel(desc.format);
-    if (auto error = validate_initial_data(initial_data.size(), byte_size, desc.debug_name))
-        return {.error = std::move(error)};
-
-    const bool render_target = desc.usage == TextureUsage::kRenderTarget;
-    MTLTextureDescriptor* texture_desc =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-                                                           width:desc.width
-                                                          height:desc.height
-                                                       mipmapped:NO];
-    texture_desc.storageMode = MTLStorageModePrivate;
-    texture_desc.usage = render_target ? MTLTextureUsageRenderTarget : MTLTextureUsageShaderRead;
-
-    TextureEntry entry{.desc = desc};
-    entry.texture = [device_ newTextureWithDescriptor:texture_desc];
-    if (entry.texture == nil)
-        return {.error = mtl_fault("MTLDevice newTextureWithDescriptor", nil)};
-    entry.texture.label = [NSString stringWithUTF8String:desc.debug_name.c_str()];
-
-    // Content policy mirrors NullDevice and Vulkan: initial data uploads;
-    // absence means DEFINED zero content for sampled textures, while render
-    // targets stay undefined until their first pass clears them.
-    if (!initial_data.empty() || !render_target) {
-        if (auto error = upload_texture(entry, initial_data))
+    return guarded<TextureResult>("create_texture", [&]() -> TextureResult {
+        if (auto error = validate_texture_desc(desc, caps_.max_texture_size))
             return {.error = std::move(error)};
-    }
-    return {.handle = textures_.create(std::move(entry))};
+        const std::size_t byte_size =
+            std::size_t{desc.width} * desc.height * bytes_per_pixel(desc.format);
+        if (auto error = validate_initial_data(initial_data.size(), byte_size, desc.debug_name))
+            return {.error = std::move(error)};
+
+        const bool render_target = desc.usage == TextureUsage::kRenderTarget;
+        MTLTextureDescriptor* texture_desc =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                               width:desc.width
+                                                              height:desc.height
+                                                           mipmapped:NO];
+        texture_desc.storageMode = MTLStorageModePrivate;
+        texture_desc.usage =
+            render_target ? MTLTextureUsageRenderTarget : MTLTextureUsageShaderRead;
+
+        TextureEntry entry{.desc = desc};
+        entry.texture = [device_ newTextureWithDescriptor:texture_desc];
+        if (entry.texture == nil)
+            return {.error = mtl_fault("MTLDevice newTextureWithDescriptor", nil)};
+        entry.texture.label = [NSString stringWithUTF8String:desc.debug_name.c_str()];
+
+        // Content policy mirrors NullDevice and Vulkan: initial data uploads;
+        // absence means DEFINED zero content for sampled textures, while render
+        // targets stay undefined until their first pass clears them.
+        if (!initial_data.empty() || !render_target) {
+            if (auto error = upload_texture(entry, initial_data))
+                return {.error = std::move(error)};
+        }
+        return {.handle = textures_.create(std::move(entry))};
+    });
 }
 
 std::optional<base::Error> MetalDevice::upload_texture(TextureEntry& entry,
@@ -83,40 +86,42 @@ std::optional<base::Error> MetalDevice::upload_texture(TextureEntry& entry,
 
 std::optional<base::Error> MetalDevice::read_texture(TextureHandle texture,
                                                      std::span<std::byte> out) {
-    std::optional<base::Error> error;
-    TextureEntry* entry = lookup_handle(textures_, texture, "texture", error);
-    if (entry == nullptr)
-        return error;
-    const std::size_t expected =
-        std::size_t{entry->desc.width} * entry->desc.height * bytes_per_pixel(entry->desc.format);
-    if (auto size_error = validate_readback_size(out.size(), expected))
-        return size_error;
-    if (!entry->contents_defined)
-        return base::Error{.code = "rhi.invalid_argument",
-                           .message = "texture has no defined contents yet (render or upload "
-                                      "before reading '" +
-                                      entry->desc.debug_name + "')"};
+    return guarded_call("read_texture", [&]() -> std::optional<base::Error> {
+        std::optional<base::Error> error;
+        TextureEntry* entry = lookup_handle(textures_, texture, "texture", error);
+        if (entry == nullptr)
+            return error;
+        const std::size_t expected = std::size_t{entry->desc.width} * entry->desc.height *
+                                     bytes_per_pixel(entry->desc.format);
+        if (auto size_error = validate_readback_size(out.size(), expected))
+            return size_error;
+        if (!entry->contents_defined)
+            return base::Error{.code = "rhi.invalid_argument",
+                               .message = "texture has no defined contents yet (render or upload "
+                                          "before reading '" +
+                                          entry->desc.debug_name + "')"};
 
-    id<MTLBuffer> readback = [device_ newBufferWithLength:expected
-                                                  options:MTLResourceStorageModeShared];
-    if (readback == nil)
-        return mtl_fault("MTLDevice newBufferWithLength (readback)", nil);
-    auto copy_error = with_transient_blit([&](id<MTLBlitCommandEncoder> blit) {
-        [blit copyFromTexture:entry->texture
-                         sourceSlice:0
-                         sourceLevel:0
-                        sourceOrigin:MTLOriginMake(0, 0, 0)
-                          sourceSize:MTLSizeMake(entry->desc.width, entry->desc.height, 1)
-                            toBuffer:readback
-                   destinationOffset:0
-              destinationBytesPerRow:std::size_t{entry->desc.width} *
-                                     bytes_per_pixel(entry->desc.format)
-            destinationBytesPerImage:expected];
+        id<MTLBuffer> readback = [device_ newBufferWithLength:expected
+                                                      options:MTLResourceStorageModeShared];
+        if (readback == nil)
+            return mtl_fault("MTLDevice newBufferWithLength (readback)", nil);
+        auto copy_error = with_transient_blit([&](id<MTLBlitCommandEncoder> blit) {
+            [blit copyFromTexture:entry->texture
+                             sourceSlice:0
+                             sourceLevel:0
+                            sourceOrigin:MTLOriginMake(0, 0, 0)
+                              sourceSize:MTLSizeMake(entry->desc.width, entry->desc.height, 1)
+                                toBuffer:readback
+                       destinationOffset:0
+                  destinationBytesPerRow:std::size_t{entry->desc.width} *
+                                         bytes_per_pixel(entry->desc.format)
+                destinationBytesPerImage:expected];
+        });
+        if (copy_error)
+            return copy_error;
+        std::memcpy(out.data(), readback.contents, expected);
+        return std::nullopt;
     });
-    if (copy_error)
-        return copy_error;
-    std::memcpy(out.data(), readback.contents, expected);
-    return std::nullopt;
 }
 
 } // namespace midday::rhi::mtl

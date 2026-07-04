@@ -29,15 +29,21 @@ if [ -n "$FIRST_PARTY_CXX" ]; then
     # shellcheck disable=SC2086
     "$VENV/bin/clang-format" --dry-run --Werror $FIRST_PARTY_CXX
 
-    step "clang-tidy (compile_commands, first-party TUs)"
+    step "clang-tidy (compile_commands, first-party TUs, parallel)"
     FIRST_PARTY_TUS=$(echo "$FIRST_PARTY_CXX" | grep '\.cpp$' || true)
     TIDY_EXTRA=()
     if [ "$(uname)" = "Darwin" ]; then
         # The pinned (non-Apple) clang-tidy has no implicit macOS sysroot.
         TIDY_EXTRA=(--extra-arg="-isysroot$(xcrun --show-sdk-path)")
     fi
+    # One process per TU, all cores: the serial invocation crossed 30 minutes
+    # on 2-core CI runners once the tree passed 150 TUs. xargs -P preserves
+    # the exit contract (any failing TU fails the step); output interleaving
+    # is acceptable — findings carry file:line.
+    JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
     # shellcheck disable=SC2086
-    "$VENV/bin/clang-tidy" -p build/dev --quiet "${TIDY_EXTRA[@]}" $FIRST_PARTY_TUS
+    echo "$FIRST_PARTY_TUS" | xargs -n 4 -P "$JOBS" \
+        "$VENV/bin/clang-tidy" -p build/dev --quiet "${TIDY_EXTRA[@]}"
 fi
 
 step "selftest"

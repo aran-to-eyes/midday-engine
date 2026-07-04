@@ -24,6 +24,32 @@ namespace midday::rhi::mtl {
 // (when present) in details. Used for every unexpected Metal refusal.
 [[nodiscard]] base::Error mtl_fault(std::string_view what, NSError* error);
 
+// Structured mapping of an escaped Objective-C exception: "rhi.device_fault"
+// with the NSException name + reason in details. Metal's validation layer
+// and framework internals report misuse by RAISING NSException; the seam
+// contract says errors are VALUES (device.h), so every Metal-touching entry
+// point body runs inside guarded()/guarded_call() and no ObjC throw can
+// cross the seam — on any host, virtual GPUs included.
+[[nodiscard]] base::Error nsexception_fault(const char* what, NSException* exception);
+
+template <typename Result, typename Fn> Result guarded(const char* what, Fn&& fn) {
+    @try {
+        return fn();
+    } @catch (NSException* exception) {
+        Result result;
+        result.error = nsexception_fault(what, exception);
+        return result;
+    }
+}
+
+template <typename Fn> std::optional<base::Error> guarded_call(const char* what, Fn&& fn) {
+    @try {
+        return fn();
+    } @catch (NSException* exception) {
+        return nsexception_fault(what, exception);
+    }
+}
+
 // -- Resource table entries ---------------------------------------------------
 // ObjC object references are ARC-managed __strong members: HandlePool slot
 // recycling releases the underlying Metal objects deterministically.
