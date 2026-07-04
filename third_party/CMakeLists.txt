@@ -133,3 +133,22 @@ enable_language(C)
 add_library(zstd STATIC ${CMAKE_CURRENT_SOURCE_DIR}/zstd/zstd.c)
 add_library(zstd::zstd ALIAS zstd)
 target_include_directories(zstd SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/zstd)
+
+# rapidyaml (ryml) 0.15.2 — strict-YAML parsing for the PERMANENT loader
+# subset (core/loader, m0-yaml-loader-run). Amalgamated single header, kept
+# byte-pristine; ryml.cpp is the one TU defining RYML_SINGLE_HDR_DEFINE_NOW
+# (upstream convention). The loader wrapper (core/loader/yaml_parse.cpp) is
+# the ONLY first-party consumer: it converts the ryml tree into an owned
+# first-party node model and layers the strictness ryml deliberately leaves
+# to callers (duplicate keys, anchors/aliases/tags, multi-doc refusal).
+# Parse-only text handling — no float formatting reaches sim state (scalar
+# conversion goes through fast_float in the wrapper) — but the FP contract
+# applies uniformly like every vendored sim-adjacent target.
+add_library(ryml STATIC ${CMAKE_CURRENT_SOURCE_DIR}/ryml/ryml.cpp)
+add_library(ryml::ryml ALIAS ryml)
+target_include_directories(ryml SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/ryml)
+if(NOT MSVC)
+    # Same class as quickjs/jolt: never debugged at -O0, identical in every preset.
+    target_compile_options(ryml PRIVATE -O2)
+endif()
+midday_apply_deterministic_fp(ryml)

@@ -1,0 +1,34 @@
+# examples/appendix_a/boss.scene.yaml — the Appendix A.3 setup: entity Boss,
+# base components [Transform, Collider, RigidBody] + the boss machine
+# (regions locomotion + combat). This file is the flagship golden's REAL
+# input: `midday run examples/appendix_a/boss.scene.yaml --to-tick 3200
+# --seed 7` drives the m0-appendix-a-determinism assertion suite through the
+# exact agent path — authored text -> loader -> statechart -> journal.
+#
+# A.3 also lists Health in the boss's base set; Health is a script-tier
+# component (warden components/health.ts) and joins this file when the TS
+# component vocabulary lands (m1-ts-components) — the M0 loader refuses
+# components the runtime cannot honor yet rather than loading dead data.
+# The ground plane grounds the physics tier (spec 6): the boss is a dynamic
+# body, and the t3199 counter-attack of the trace arrives as physics
+# contact once the player-side content exists.
+format: 1
+
+scene: boss_arena
+
+events:
+  - boss.events.yaml
+
+entities:
+  - entity: Ground
+    components:
+      - Transform: {}
+      - Collider: {shape: plane}
+
+  - entity: Boss
+    components:
+      - Transform: {at: [0, 1.0, 0]}
+      - Collider: {shape: box, size: [1.2, 1.8, 1.2]}
+      - RigidBody: {}
+    machines:
+      - {instance: {path: boss.machine.yaml}}

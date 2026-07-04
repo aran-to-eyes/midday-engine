@@ -66,6 +66,15 @@
       "source": "https://github.com/jrouwe/JoltPhysics"
     },
     {
+      "name": "rapidyaml",
+      "version": "0.15.2",
+      "commit": "85bfe56e32b1cfe715aa1c39885b1b10761e7482",
+      "license": "MIT",
+      "role": "strict-YAML parsing for the PERMANENT loader subset (core/loader, m0-yaml-loader-run). Vendored as the upstream amalgamated single header (release asset rapidyaml-0.15.2.hpp, byte-pristine) plus ryml.cpp, the one TU defining RYML_SINGLE_HDR_DEFINE_NOW per upstream convention. Chosen over yaml-cpp (exception-driven API, weak location reporting) and libfyaml (C, heavier surface) for structured parse-error locations, callback-based error handling, and MIT (D-BUILD-076)",
+      "path": "third_party/ryml",
+      "source": "https://github.com/biojppm/rapidyaml"
+    },
+    {
       "name": "zstd",
       "version": "1.5.7",
       "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",

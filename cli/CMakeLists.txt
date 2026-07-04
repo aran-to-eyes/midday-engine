@@ -13,6 +13,9 @@ add_executable(midday
     verbs/help.cpp
     verbs/api.cpp
     verbs/script.cpp
+    verbs/run.cpp
+    verbs/journal.cpp
+    verbs/run_test.cpp
     verbs/envelope_test.cpp
     verbs/framework_test.cpp
     $<TARGET_OBJECTS:midday_base_tests>
@@ -25,6 +28,7 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_bus_tests>
     $<TARGET_OBJECTS:midday_tick_tests>
     $<TARGET_OBJECTS:midday_statechart_tests>
+    $<TARGET_OBJECTS:midday_loader_tests>
     $<TARGET_OBJECTS:midday_physics_tests>
     $<TARGET_OBJECTS:midday_api_tests>
     $<TARGET_OBJECTS:midday_codegen_bootstrap_tests>
@@ -45,6 +49,7 @@ target_link_libraries(midday PRIVATE
     midday::bus
     midday::tick
     midday::statechart
+    midday::loader
     midday::physics
     midday::api
     midday::codegen_bootstrap

@@ -139,5 +139,7 @@ const VerbSpec& selftest_spec();
 const VerbSpec& help_spec();
 const VerbSpec& api_spec();
 const VerbSpec& script_spec();
+const VerbSpec& run_spec();
+const VerbSpec& journal_spec();
 
 } // namespace midday::cli

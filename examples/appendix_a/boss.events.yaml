@@ -1,0 +1,19 @@
+# examples/appendix_a/boss.events.yaml — the Appendix A.3 event vocabulary
+# (MIDDAY_ENGINE_SPEC.md, normative worked trace). Typed payload schemas in
+# canonical reflect spellings; the bus validates every trigger against them
+# (spec 4.2 "events are first-class definitions").
+#
+# Derived names need no declaration: SlashAttack.finished (the sequence's
+# end, authored as `self.finished` sugar), HitboxLive.opened / .closed (the
+# span boundaries), and the built-in contact.* vocabulary all pass by
+# construction.
+format: 1
+
+events:
+  player.spotted: {payload: {player: entity_ref, distance: float}}
+  player.inRange: {payload: {player: entity_ref, distance: float}}
+  attack.swoosh:  {payload: {}, doc: the SlashAttack trigger keyframe at t=0.30s (tick 18)}
+  damage.dealt:   {payload: {amount: float, by: entity_ref}}
+  death.dealt:    {payload: {by: entity_ref}, doc: lethal damage landed — the any-state Dead rule}
+  stagger.hit:    {payload: {force: float}}
+  boss.died:      {payload: {}, doc: Dead.onEnter broadcast @ global (the A.3 depth-2 cascade)}

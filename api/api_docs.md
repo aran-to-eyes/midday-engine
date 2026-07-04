@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `266244ca65c75293`
+- api_compat_hash: `28c4155d61af2cb3`
 
 ## Classes
 
@@ -402,3 +402,41 @@ Positionals:
 | --- | --- | --- | --- | --- |
 | `action` | `name` | yes | no | check \| build \| bench |
 | `path` | `string` | no | no | TypeScript source file (bench: overrides the committed fixture) |
+
+### `midday run`
+
+load a scene and step the deterministic sim headless (FLIGHT-recorded)
+
+- compat_hash: `ed41e5b23ba4a8e5`
+
+Flags:
+
+| flag | type | required | default | doc |
+| --- | --- | --- | --- | --- |
+| `--ticks` | `int` | no |  | run exactly N fixed ticks |
+| `--to-tick` | `int` | no |  | run until the sim tick reaches N |
+| `--seed` | `int` | no | `0` | sim seed (journal identity + RNG streams) |
+| `--record` | `string` | no |  | run.mrj bundle path (default: the .midday-cache/run/last.mrj scratch bundle) |
+| `--cache-dir` | `string` | no |  | TS build cache directory (default: .midday-cache/ts) |
+
+Positionals:
+
+| positional | type | required | variadic | doc |
+| --- | --- | --- | --- | --- |
+| `scene` | `string` | yes | no | the *.scene.yaml to load and run |
+
+### `midday journal`
+
+interrogate run.mrj bundles (diff: first-divergent-tick over two runs)
+
+- compat_hash: `108eb4754ab5c342`
+
+_No flags._
+
+Positionals:
+
+| positional | type | required | variadic | doc |
+| --- | --- | --- | --- | --- |
+| `op` | `string` | yes | no | operation: diff |
+| `a` | `string` | yes | no | first run.mrj bundle |
+| `b` | `string` | yes | no | second run.mrj bundle |

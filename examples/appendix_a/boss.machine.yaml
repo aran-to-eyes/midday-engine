@@ -1,0 +1,69 @@
+# examples/appendix_a/boss.machine.yaml — the Appendix A.3 boss brain,
+# verbatim from the normative worked trace (MIDDAY_ENGINE_SPEC.md):
+#
+#   locomotion: Idle (initial) -> {player.spotted -> Chasing}
+#   combat:     Passive (initial), SlashAttack (sequence, 1.2s = 72 ticks:
+#               trigger attack.swoosh @0.3s; span HitboxLive [0.4-0.8s]
+#               with child entity Hurtbox under it; end -> self.finished),
+#               Staggered, Dead.
+#               Pairs: Passive {player.inRange -> SlashAttack};
+#               SlashAttack {self.finished -> Passive},
+#               {stagger.hit -> Staggered, priority 10}.
+#               Region any-state: {death.dealt -> Dead, priority 100}.
+#
+# M0 span->substate binding is AUTHORED, not magic (D-BUILD-081): the span
+# HitboxLive emits HitboxLive.opened/.closed on the host channel at its
+# tick-locked boundaries (E+24 / E+48), and the two explicit pairs below
+# enter/exit the HitboxLive substate on those events — so the Hurtbox
+# subtree is live exactly while the span is open, and death mid-span closes
+# everything inside the exit chain (A.2.1: script onExit first, span close
+# + substate exit second, subtree deactivation before Dead.onEnter — the
+# no-zombie-hitbox rule). m4 binds span-scoped activation natively; this
+# file then sheds the two pairs.
+format: 1
+
+machine: boss
+
+regions:
+  locomotion:
+    initial: Idle
+    states:
+      Idle:
+        on:
+          - {event: player.spotted, key: self, goto: Chasing}
+      Chasing: {}   # A.3 tick 3200: locomotion stays Chasing (parallel region untouched)
+
+  combat:
+    initial: Passive
+    anystate:
+      - {event: death.dealt, key: self, goto: Dead, priority: 100}
+    states:
+      Passive:
+        on:
+          - {event: player.inRange, key: self, goto: SlashAttack}
+
+      SlashAttack:
+        script: scripts/slash_attack.ts
+        initial: Windup
+        sequence:
+          duration: 1.2            # 72 ticks @ 60 Hz, tick-locked at instantiate
+          end: finish              # end -> self.finished (the pair below chains it)
+          tracks:
+            - trigger: [{t: 0.30, event: attack.swoosh}]    # fires at E+18
+            - span: {name: HitboxLive, from: 0.40, to: 0.80} # open E+24 .. close E+48
+        on:
+          - {event: self.finished, goto: Passive}
+          - {event: stagger.hit, key: self, goto: Staggered, priority: 10}
+          - {event: HitboxLive.opened, goto: HitboxLive}  # span binding (header note)
+          - {event: HitboxLive.closed, goto: Windup}
+        states:
+          Windup: {}               # the neutral swing phase outside the hit window
+          HitboxLive:              # live exactly while the span is open
+            children:
+              - {entity: Hurtbox, at: [0, 1.0, 1.2]}
+
+      Staggered: {}                # entered by stagger.hit (voided at t3200 in the trace);
+                                   # recovery wiring arrives with the full boss content
+
+      Dead:
+        script: scripts/dead.ts

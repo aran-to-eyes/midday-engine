@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash 266244ca65c75293 (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash 28c4155d61af2cb3 (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -267,6 +267,32 @@ declare namespace midday {
         path?: string;
     }
 
+    /** load a scene and step the deterministic sim headless (FLIGHT-recorded) */
+    interface RunVerbArgs {
+        /** run exactly N fixed ticks */
+        ticks?: number;
+        /** run until the sim tick reaches N */
+        "to-tick"?: number;
+        /** sim seed (journal identity + RNG streams) */
+        seed?: number;
+        /** run.mrj bundle path (default: the .midday-cache/run/last.mrj scratch bundle) */
+        record?: string;
+        /** TS build cache directory (default: .midday-cache/ts) */
+        "cache-dir"?: string;
+        /** the *.scene.yaml to load and run */
+        scene: string;
+    }
+
+    /** interrogate run.mrj bundles (diff: first-divergent-tick over two runs) */
+    interface JournalVerbArgs {
+        /** operation: diff */
+        op: string;
+        /** first run.mrj bundle */
+        a: string;
+        /** second run.mrj bundle */
+        b: string;
+    }
+
     /** Verb name -> parsed-argument type. */
     interface VerbArgsByName {
         "version": VersionVerbArgs;
@@ -274,5 +300,7 @@ declare namespace midday {
         "help": HelpVerbArgs;
         "api": ApiVerbArgs;
         "script": ScriptVerbArgs;
+        "run": RunVerbArgs;
+        "journal": JournalVerbArgs;
     }
 }

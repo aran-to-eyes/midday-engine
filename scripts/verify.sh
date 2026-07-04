@@ -146,6 +146,27 @@ build/dev/midday script bench --naive --entities 1000 --ticks 10 \
     | jq -e ".ok and .mode==\"naive\" and .crossings_constant
         and .boundary_crossings_per_tick >= 10*$BATCH_CROSSINGS" >/dev/null
 
+step "yaml loader + run (boss corpus: flight journal from run 1, same-seed dual-run diff)"
+# m0-yaml-loader-run exit tests: the authored Appendix A corpus loads and
+# runs headless with a FLIGHT bundle; two INDEPENDENT same-seed runs diff
+# identical through `midday journal diff` (never a self-diff). The full
+# A.3 assertion suite arrives at m0-appendix-a-determinism.
+rm -rf build/m0
+build/dev/midday run examples/appendix_a/boss.scene.yaml --to-tick 100 --seed 7 \
+    --record build/m0/a.mrj --cache-dir build/dev/ts-cache.a --json \
+    | jq -e '.ok and .ticks==100 and .recorded_tier=="flight"' >/dev/null
+build/dev/midday run examples/appendix_a/boss.scene.yaml --to-tick 100 --seed 7 \
+    --record build/m0/b.mrj --cache-dir build/dev/ts-cache.a --json >/dev/null
+build/dev/midday journal diff build/m0/a.mrj build/m0/b.mrj --json \
+    | jq -e '.first_divergent_tick==null and .identical' >/dev/null
+# Strictness is the product: an unknown YAML key exits 3 with file/line.
+LOADER_STATUS=0
+LOADER_OUT=$(printf 'format: 1\nscene: s\nentitiez: []\n' > build/m0/bad.scene.yaml \
+    && build/dev/midday run build/m0/bad.scene.yaml --json) || LOADER_STATUS=$?
+[ "$LOADER_STATUS" -eq 3 ]
+echo "$LOADER_OUT" | jq -e '.error.code == "loader.unknown_key"
+    and .error.details.line == 3 and (.error.message | contains("entitiez"))' >/dev/null
+
 step "license scan (+ negative fixture)"
 scripts/license_scan.py >/dev/null
 scripts/test_license_scan.py >/dev/null
