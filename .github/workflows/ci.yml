@@ -245,7 +245,20 @@ jobs:
           export VK_ICD_FILENAMES="$(brew --prefix)/etc/vulkan/icd.d/MoltenVK_icd.json"
           build/ci/midday rhi probe --json > build/ci/vk-probe.json
           cat build/ci/vk-probe.json
-          jq -e '.available' build/ci/vk-probe.json
+          if ! jq -e '.available' build/ci/vk-probe.json > /dev/null; then
+            # D-BUILD-099/101 fallback, taken LOUDLY: MoltenVK on the hosted
+            # paravirtual device raises at creation (contained as
+            # rhi.device_fault since D-BUILD-101). The cross-backend proof
+            # stands on real hardware: native Metal vs MoltenVK on Apple M4,
+            # tier-1 hash-identical all three scenes (m0-rhi-metal node
+            # report + ledger). This step degrades to Metal-only rendering
+            # so the artifacts still upload; it must NOT silently pass if
+            # METAL is unavailable — that stays a hard gate above.
+            echo "::warning::cross-backend compare degraded: Vulkan/MoltenVK unavailable on this runner class (see vk-probe.json); local M4 verdict is the standing evidence"
+            mkdir -p build/ci/cross-backend
+            build/ci/midday rhi render --backend metal --out-dir build/ci/cross-backend/metal --json > build/ci/cross-backend/render-metal.json
+            exit 0
+          fi
           mkdir -p build/ci/cross-backend
           build/ci/midday rhi render --backend metal --out-dir build/ci/cross-backend/metal --json > build/ci/cross-backend/render-metal.json
           build/ci/midday rhi render --backend vulkan --out-dir build/ci/cross-backend/vulkan --json > build/ci/cross-backend/render-vulkan.json

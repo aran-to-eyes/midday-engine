@@ -464,7 +464,25 @@ VulkanDevice::with_transient_commands(const std::function<void(VkCommandBuffer)>
 namespace midday::rhi {
 
 DeviceResult create_vulkan_device(const VulkanDeviceOptions& options) {
+#if defined(__APPLE__)
+    // MoltenVK sits on Metal, and Metal reports misuse by RAISING — on the
+    // hosted paravirtual device an NSException escaped clean through this
+    // C++ TU to main()'s backstop (clang routes ObjC throws through the C++
+    // ABI, so catch-all sees them as unknown). Same contract as
+    // D-BUILD-100: a backend never kills the process; errors are values.
+    try {
+        return vk::create_device(options);
+    } catch (...) {
+        DeviceResult result;
+        result.error =
+            base::Error{.code = "rhi.device_fault",
+                        .message = "vulkan (MoltenVK) device creation raised a non-C++ exception — "
+                                   "treat this driver/device class as unavailable"};
+        return result;
+    }
+#else
     return vk::create_device(options);
+#endif
 }
 
 } // namespace midday::rhi
