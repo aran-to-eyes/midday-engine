@@ -68,7 +68,17 @@ RhiDevice* acquire(const char* test_name) {
 // Golden dir: MIDDAY_RHI_GOLDEN_DIR (CI lane / verify set it) or the repo
 // default when running from the repo root. Absent dir = no hash gate here.
 std::string golden_dir() {
-    if (const char* env = std::getenv("MIDDAY_RHI_GOLDEN_DIR"); env != nullptr && *env != '\0')
+    // push/disable/pop, not warning(suppress): an #endif eats a suppress
+    // (journal writer_test precedent, D-BUILD ledger 2026-07-03).
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+    const char* env = std::getenv("MIDDAY_RHI_GOLDEN_DIR");
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+    if (env != nullptr && *env != '\0')
         return env;
     const std::string fallback = "testkit/goldens/m0";
     return std::filesystem::exists(fallback) ? fallback : std::string();

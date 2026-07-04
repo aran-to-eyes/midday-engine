@@ -287,7 +287,10 @@ jobs:
           ninja -C build/ci midday
       - name: Probe — a SOFTWARE device must exist, display-less
         run: |
-          build/ci/midday rhi probe --software --json | tee build/ci/probe.json
+          # No pipes around gating commands: the container shell has no
+          # pipefail, and `| tee` swallowed a real exit-1 once (2026-07-04).
+          build/ci/midday rhi probe --software --json > build/ci/probe.json
+          cat build/ci/probe.json
           jq -e '.available and .caps.software' build/ci/probe.json
       - name: rhi selftests against lavapipe (skips are impossible here)
         run: |
@@ -296,7 +299,10 @@ jobs:
         run: |
           build/ci/midday rhi render --software \
             --out-dir build/ci/goldens-candidate \
-            --goldens testkit/goldens/m0 --json | tee build/ci/render.json
+            --goldens testkit/goldens/m0 --json > build/ci/render.json
+          RC=$?
+          cat build/ci/render.json
+          exit $RC
       - name: Stage candidate report next to the images
         if: always()
         run: |
