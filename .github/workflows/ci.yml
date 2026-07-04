@@ -457,3 +457,6 @@ jobs:
           build/ci/midday.exe version --json | python3 scripts/validate_envelope.py
       - name: Selftest
         run: build/ci/midday.exe selftest
+      - name: FP flag scan (MSVC /fp:precise falsifiably checked — CONCERNS #4)
+        shell: bash
+        run: scripts/check_fp_flags.py build/ci/compile_commands.json
