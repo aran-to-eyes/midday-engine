@@ -141,5 +141,6 @@ const VerbSpec& api_spec();
 const VerbSpec& script_spec();
 const VerbSpec& run_spec();
 const VerbSpec& journal_spec();
+const VerbSpec& rhi_spec();
 
 } // namespace midday::cli

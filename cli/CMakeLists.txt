@@ -16,6 +16,7 @@ add_executable(midday
     verbs/run.cpp
     verbs/run_assert.cpp
     verbs/journal.cpp
+    verbs/rhi.cpp
     verbs/run_test.cpp
     verbs/golden_test.cpp
     verbs/envelope_test.cpp
@@ -37,6 +38,7 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_codegen_selfhost_tests>
     $<TARGET_OBJECTS:midday_script_runtime_tests>
     $<TARGET_OBJECTS:midday_ts_toolchain_tests>
+    $<TARGET_OBJECTS:midday_rhi_tests>
 )
 
 target_link_libraries(midday PRIVATE
@@ -60,6 +62,9 @@ target_link_libraries(midday PRIVATE
     midday::batch_bench
     midday::state_script
     midday::ts_toolchain
+    midday::rhi
+    midday::rhi_shadercomp
+    midday::rhi_vulkan
     doctest::doctest)
 target_compile_definitions(midday PRIVATE MIDDAY_VERSION="${PROJECT_VERSION}")
 

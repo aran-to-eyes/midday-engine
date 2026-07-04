@@ -1,9 +1,10 @@
 # Midday Engine CI — M0 lanes that exist today (MILESTONE_0.md "M0 CI lanes"):
 #   build-linux (+ sanitizer job), build-macos, build-windows, drift,
 #   determinism (two Linux x86_64 hosts — m0-appendix-a-determinism;
-#   m0-determinism-spike extends the lane with the kata scene).
-# golden-software / boundaries lanes arrive with their owning nodes — they
-# are deliberately NOT stubbed as passing no-ops.
+#   m0-determinism-spike extends the lane with the kata scene),
+#   boundaries + golden-software (m0-rhi-vulkan: RHI seam scan + headless
+#   software-Vulkan goldens; golden-software is EXPECTED RED until the first
+#   inspected goldens are committed — see the lane's bootstrap comment).
 #
 # Declared host tools (Aurora D-22): cmake, ninja, python3, git, jq, zstd,
 # platform SDK tools. GitHub-hosted runners ship cmake/python3/git/jq/zstd;
@@ -227,6 +228,85 @@ jobs:
             | jq -e '.first_divergent_tick==null and .identical'
           echo "normalized journal sha256 (report only, non-gating):"
           zstdcat build/det/run1.mrj/journal.jsonl.zst | shasum -a 256 | cut -d' ' -f1
+
+  # boundaries (m0-rhi-vulkan): no backend headers above the RHI seam —
+  # vulkan/volk/VMA only under core/rhi/vulkan/, glslang/SPIRV only under
+  # core/rhi/shadercomp/, Metal only under core/rhi/metal/. Pure source
+  # scan, any runner, no build. (The lane table's second clause — "no public
+  # code-assembled entity API" — is currently structural: the loader is the
+  # only spawn path; a scan for it joins when a public C++ scene API exists
+  # to police.) The self-test proves the scanner still catches planted
+  # violations before the clean scan is trusted.
+  boundaries:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Boundary scanner self-test
+        run: python3 scripts/check_include_boundaries.py --self-test
+      - name: RHI include boundaries
+        run: python3 scripts/check_include_boundaries.py
+
+  # golden-software (m0-rhi-vulkan): headless GPU render on SOFTWARE Vulkan
+  # (Mesa lavapipe) inside a plain ubuntu:24.04 container — no X11/Wayland
+  # sockets exist here, which is the point: headless render -> PNG is a
+  # launch requirement, not a mode (spec section 15).
+  #
+  # GOLDEN BOOTSTRAP (how the first green happens — read before "fixing"):
+  #   1. Fresh tree: testkit/goldens/m0 has no <scene>.hash and no
+  #      DRIVER_PIN.txt, so `midday rhi render --goldens` exits 1 with
+  #      rhi.golden_missing and this lane is RED. Deliberately: a stubbed
+  #      green would un-falsify the gate (never make this step pass on
+  #      missing goldens).
+  #   2. The run still uploads the rendered PNGs + decoded-pixel .hash files
+  #      + driver.txt as the 'm0-goldens-candidate' artifact (if: always()).
+  #   3. The orchestrator INSPECTS the PNGs (AGENTS.md visual gate: goldens
+  #      are born only from inspected images), then commits the .hash files
+  #      and driver.txt as testkit/goldens/m0/{clear,triangle,textured_quad}
+  #      .hash + DRIVER_PIN.txt. Re-run: green.
+  #   4. Hash-equal comparison is valid only within the pinned driver class
+  #      (spec section 5 two-tier semantics). If this container's mesa ever
+  #      ships a different llvmpipe build string, the verb refuses with
+  #      rhi.golden_driver_mismatch -> lane red -> re-inspect + re-mint via
+  #      the same candidate flow. The pin is the DRIVER STRING, enforced at
+  #      compare time, so a silently drifting runner can never corrupt
+  #      goldens.
+  golden-software:
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain + software Vulkan (declared host tools + Mesa lavapipe)
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential cmake ninja-build python3 git jq zstd \
+            libvulkan1 mesa-vulkan-drivers
+      - name: Configure + build
+        run: |
+          cmake --preset ci
+          ninja -C build/ci midday
+      - name: Probe — a SOFTWARE device must exist, display-less
+        run: |
+          build/ci/midday rhi probe --software --json | tee build/ci/probe.json
+          jq -e '.available and .caps.software' build/ci/probe.json
+      - name: rhi selftests against lavapipe (skips are impossible here)
+        run: |
+          MIDDAY_RHI_GOLDEN_DIR=testkit/goldens/m0 build/ci/midday selftest --filter 'rhi.*'
+      - name: Render M0 scenes + compare DECODED-PIXEL hashes against goldens
+        run: |
+          build/ci/midday rhi render --software \
+            --out-dir build/ci/goldens-candidate \
+            --goldens testkit/goldens/m0 --json | tee build/ci/render.json
+      - name: Stage candidate report next to the images
+        if: always()
+        run: |
+          cp build/ci/probe.json build/ci/render.json build/ci/goldens-candidate/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m0-goldens-candidate
+          path: build/ci/goldens-candidate
+          retention-days: 14
 
   build-windows:
     runs-on: windows-2022

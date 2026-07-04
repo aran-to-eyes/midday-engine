@@ -24,6 +24,7 @@ std::span<const VerbSpec* const> manifest() {
         &script_spec(),
         &run_spec(),
         &journal_spec(),
+        &rhi_spec(),
     };
     return kManifest;
 }

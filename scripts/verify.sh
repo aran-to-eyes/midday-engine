@@ -195,6 +195,14 @@ scripts/test_license_scan.py >/dev/null
 step "deterministic-FP flag scan"
 scripts/check_fp_flags.py build/dev/compile_commands.json >/dev/null
 
+step "RHI include boundaries (self-test + scan)"
+# The seam is mechanical (spec section 5): no vulkan/volk/VMA include outside
+# core/rhi/vulkan/, no glslang/SPIRV outside core/rhi/shadercomp/, no Metal
+# outside core/rhi/metal/. The self-test proves the scanner still catches
+# planted violations before the clean scan is trusted (license_scan ethos).
+scripts/check_include_boundaries.py --self-test >/dev/null
+scripts/check_include_boundaries.py >/dev/null
+
 step "duplication ratchet (jscpd)"
 npx --yes "$JSCPD_PIN" --config .jscpd.json . >/dev/null
 

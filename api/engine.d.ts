@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash aba94ceed9f92c1f (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash 3fcaa248545bfa3d (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -295,6 +295,22 @@ declare namespace midday {
         b: string;
     }
 
+    /** GPU seam tools (probe: device availability/caps; render: M0 scenes to PNG + decoded-pixel hashes) */
+    interface RhiVerbArgs {
+        /** enable the Vulkan validation layer (refuses if not installed) */
+        validation?: boolean;
+        /** require a software rasterizer (lavapipe class; golden lane sets this) */
+        software?: boolean;
+        /** render one scene: clear | triangle | textured_quad (default: all) */
+        scene?: string;
+        /** write <scene>.png + <scene>.hash + driver.txt here (render) */
+        "out-dir"?: string;
+        /** compare decoded-pixel hashes against this golden dir (render) */
+        goldens?: string;
+        /** operation: probe | render */
+        op: string;
+    }
+
     /** Verb name -> parsed-argument type. */
     interface VerbArgsByName {
         "version": VersionVerbArgs;
@@ -304,5 +320,6 @@ declare namespace midday {
         "script": ScriptVerbArgs;
         "run": RunVerbArgs;
         "journal": JournalVerbArgs;
+        "rhi": RhiVerbArgs;
     }
 }

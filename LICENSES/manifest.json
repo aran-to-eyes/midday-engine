@@ -75,6 +75,51 @@
       "source": "https://github.com/biojppm/rapidyaml"
     },
     {
+      "name": "Vulkan-Headers",
+      "version": "vulkan-sdk-1.4.350.1",
+      "commit": "8864cdc896bbc2a9b6eb36b3218fc9ef57908d77",
+      "license": "Apache-2.0",
+      "role": "Vulkan C API declarations for the RHI Vulkan backend (core/rhi/vulkan, m0-rhi-vulkan). Minimal set: vulkan.h + vulkan_core.h + vk_platform.h + the vk_video/ std headers vulkan_core.h includes; the C++ bindings (vulkan.hpp, ~20 MB) are deliberately not vendored. Headers are Apache-2.0 OR MIT upstream; Apache-2.0 selected. Consumed with VK_NO_PROTOTYPES — all entry points resolve through volk at runtime",
+      "path": "third_party/vulkan",
+      "source": "https://github.com/KhronosGroup/Vulkan-Headers"
+    },
+    {
+      "name": "volk",
+      "version": "vulkan-sdk-1.4.350.1",
+      "commit": "3ca312a4f38baa63d8006b6905abbeeb89c8087d",
+      "license": "MIT",
+      "role": "Vulkan meta-loader (core/rhi/vulkan): dlopens the platform loader and resolves every entry point via vkGet*ProcAddr, so the engine never links libvulkan and starts cleanly on ICD-less hosts (rhi probe reports unavailable instead of a dynamic-linker failure)",
+      "path": "third_party/volk",
+      "source": "https://github.com/zeux/volk"
+    },
+    {
+      "name": "VulkanMemoryAllocator",
+      "version": "3.4.0",
+      "commit": "3aa921224c154a0d2c43912bc88e1c42ce1f7607",
+      "license": "MIT",
+      "role": "GPU memory allocation for the Vulkan backend (core/rhi/vulkan). Header-only upstream, byte-pristine; the one deviation is vma_impl.cpp, the upstream-documented single VMA_IMPLEMENTATION TU, kept inside third_party/ so the header body never enters first-party lint. Dynamic Vulkan functions only (VMA_DYNAMIC_VULKAN_FUNCTIONS=1 via volk)",
+      "path": "third_party/vma",
+      "source": "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator"
+    },
+    {
+      "name": "glslang",
+      "version": "vulkan-sdk-1.4.350.1",
+      "commit": "275822a6261ee689aadb1da5f09a0ec2f058685c",
+      "license": "BSD-3-Clause",
+      "role": "GLSL -> SPIR-V compilation (core/rhi/shadercomp, spec section 5). Minimal source set: MachineIndependent (+preprocessor), GenericCodeGen, OSDependent Unix+Windows, ResourceLimits, SPIRV backend — C++ API only; no HLSL front-end (upstream-deprecated), no C interface TUs, no SPIRV-Tools optimizer (ENABLE_OPT off), no StandAlone tools or tests. glslang/build_info.h is GENERATED at vendor time with upstream's build_info.py from CHANGES.md (the one non-pristine file, zstd-amalgamation precedent, D-BUILD-031); regenerate with: python3 build_info.py <checkout> -i build_info.h.tmpl -o glslang/build_info.h. Upstream is multi-licensed (BSD-3-Clause/Apache-2.0/MIT per file, see LICENSE.txt); BSD-3-Clause is the covering grant for the vendored set. Compiled under the deterministic-FP contract: GLSL constant folding happens here and SPIR-V bytes must not vary by host toolchain",
+      "path": "third_party/glslang",
+      "source": "https://github.com/KhronosGroup/glslang"
+    },
+    {
+      "name": "stb_image_write",
+      "version": "1.16",
+      "commit": "31c1ad37456438565541f4919958214b6e762fb4",
+      "license": "MIT",
+      "role": "PNG encoding for render-to-image transport (core/rhi, m0-rhi-vulkan). Golden hashes are DECODED PIXELS, never these encoded bytes (Aurora D-14) — the PNG is the human-inspectable artifact. Dual-licensed MIT / public domain upstream; MIT selected. stb_image_write_impl.c is the upstream-documented single implementation TU (vma_impl.cpp precedent). EXR (tinyexr) deliberately deferred: no M0 consumer — HDR targets arrive with the render-graph nodes, and vendoring a format nothing reads would be dead code (D-BUILD-005 ethos)",
+      "path": "third_party/stb",
+      "source": "https://github.com/nothings/stb"
+    },
+    {
       "name": "zstd",
       "version": "1.5.7",
       "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",

@@ -134,6 +134,132 @@ add_library(zstd STATIC ${CMAKE_CURRENT_SOURCE_DIR}/zstd/zstd.c)
 add_library(zstd::zstd ALIAS zstd)
 target_include_directories(zstd SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/zstd)
 
+# Vulkan-Headers vulkan-sdk-1.4.350.1 — the Vulkan C API declarations
+# (m0-rhi-vulkan). Minimal set: vulkan.h + vulkan_core.h + vk_platform.h +
+# the vk_video/ std headers vulkan_core.h includes; the C++ bindings
+# (vulkan.hpp and friends, ~20 MB) are deliberately NOT vendored — the RHI
+# speaks the C API through volk. VK_NO_PROTOTYPES is PUBLIC: nothing may
+# link the loader statically; every entry point arrives via volk at runtime,
+# which is what makes an ICD-less host a probe result instead of a link error.
+add_library(vulkan_headers INTERFACE)
+add_library(vulkan::headers ALIAS vulkan_headers)
+target_include_directories(vulkan_headers SYSTEM INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/vulkan/include)
+target_compile_definitions(vulkan_headers INTERFACE VK_NO_PROTOTYPES)
+
+# volk vulkan-sdk-1.4.350.1 — Vulkan meta-loader (m0-rhi-vulkan). dlopens the
+# platform loader at runtime and resolves every entry point through
+# vkGetInstanceProcAddr/vkGetDeviceProcAddr; no libvulkan link dependency, so
+# the engine binary starts fine on hosts with no Vulkan at all (the RHI
+# reports "unavailable" instead of the dynamic linker failing).
+enable_language(C)
+add_library(volk STATIC volk/volk.c)
+add_library(volk::volk ALIAS volk)
+target_include_directories(volk SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/volk)
+target_link_libraries(volk PUBLIC vulkan::headers)
+if(UNIX)
+    target_link_libraries(volk PUBLIC ${CMAKE_DL_LIBS})
+endif()
+
+# VulkanMemoryAllocator 3.4.0 — GPU memory allocation for the Vulkan backend
+# (m0-rhi-vulkan). Header-only upstream; vma_impl.cpp is the one
+# VMA_IMPLEMENTATION TU (upstream-documented usage), kept in third_party/ so
+# the vendored header body never enters first-party lint. Dynamic Vulkan
+# functions only (fetched through volk's vkGet*ProcAddr at device creation).
+add_library(vma STATIC vma/vma_impl.cpp)
+add_library(vma::vma ALIAS vma)
+target_include_directories(vma SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vma)
+target_compile_definitions(vma PUBLIC
+    VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=1)
+target_link_libraries(vma PUBLIC vulkan::headers)
+if(NOT MSVC)
+    # Allocator bookkeeping, never debugged at -O0; identical in every preset
+    # (quickjs/jolt precedent).
+    target_compile_options(vma PRIVATE -O2)
+endif()
+
+# glslang vulkan-sdk-1.4.350.1 — GLSL -> SPIR-V compilation (m0-rhi-vulkan,
+# spec section 5: "compiled via glslang (BSD) to SPIR-V"). Minimal source
+# set: MachineIndependent + preprocessor + GenericCodeGen + OSDependent +
+# ResourceLimits + SPIRV, C++ API only — no HLSL front-end (ENABLE_HLSL off,
+# upstream-deprecated), no C interface TUs, no SPIRV-Tools optimizer
+# (ENABLE_OPT off), no StandAlone tools. glslang/build_info.h is GENERATED
+# once at vendor time with upstream's build_info.py (the one non-pristine
+# file, like zstd's amalgamation — recorded in the manifest role).
+# Deterministic FP applies: GLSL constant folding happens in this library,
+# and SPIR-V bytes must not depend on the host toolchain's FP mood.
+add_library(glslang_vendored STATIC
+    glslang/glslang/MachineIndependent/attribute.cpp
+    glslang/glslang/MachineIndependent/Constant.cpp
+    glslang/glslang/MachineIndependent/glslang_tab.cpp
+    glslang/glslang/MachineIndependent/InfoSink.cpp
+    glslang/glslang/MachineIndependent/Initialize.cpp
+    glslang/glslang/MachineIndependent/Intermediate.cpp
+    glslang/glslang/MachineIndependent/intermOut.cpp
+    glslang/glslang/MachineIndependent/IntermTraverse.cpp
+    glslang/glslang/MachineIndependent/iomapper.cpp
+    glslang/glslang/MachineIndependent/limits.cpp
+    glslang/glslang/MachineIndependent/linkValidate.cpp
+    glslang/glslang/MachineIndependent/parseConst.cpp
+    glslang/glslang/MachineIndependent/ParseContextBase.cpp
+    glslang/glslang/MachineIndependent/ParseHelper.cpp
+    glslang/glslang/MachineIndependent/PoolAlloc.cpp
+    glslang/glslang/MachineIndependent/propagateNoContraction.cpp
+    glslang/glslang/MachineIndependent/reflection.cpp
+    glslang/glslang/MachineIndependent/RemoveTree.cpp
+    glslang/glslang/MachineIndependent/Scan.cpp
+    glslang/glslang/MachineIndependent/ShaderLang.cpp
+    glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp
+    glslang/glslang/MachineIndependent/SymbolTable.cpp
+    glslang/glslang/MachineIndependent/Versions.cpp
+    glslang/glslang/MachineIndependent/preprocessor/Pp.cpp
+    glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp
+    glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp
+    glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp
+    glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp
+    glslang/glslang/GenericCodeGen/CodeGen.cpp
+    glslang/glslang/GenericCodeGen/Link.cpp
+    glslang/glslang/ResourceLimits/ResourceLimits.cpp
+    glslang/SPIRV/GlslangToSpv.cpp
+    glslang/SPIRV/InReadableOrder.cpp
+    glslang/SPIRV/Logger.cpp
+    glslang/SPIRV/SpvBuilder.cpp
+    glslang/SPIRV/SpvPostProcess.cpp
+    glslang/SPIRV/SpvTools.cpp
+    glslang/SPIRV/doc.cpp
+    glslang/SPIRV/disassemble.cpp
+)
+if(WIN32)
+    target_sources(glslang_vendored PRIVATE glslang/glslang/OSDependent/Windows/ossource.cpp)
+    target_compile_definitions(glslang_vendored PRIVATE GLSLANG_OSINCLUDE_WIN32)
+else()
+    target_sources(glslang_vendored PRIVATE glslang/glslang/OSDependent/Unix/ossource.cpp)
+    target_compile_definitions(glslang_vendored PRIVATE GLSLANG_OSINCLUDE_UNIX)
+endif()
+add_library(glslang::glslang ALIAS glslang_vendored)
+target_include_directories(glslang_vendored SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang)
+target_compile_definitions(glslang_vendored PUBLIC ENABLE_SPIRV)
+find_package(Threads QUIET)
+if(TARGET Threads::Threads)
+    target_link_libraries(glslang_vendored PUBLIC Threads::Threads)
+endif()
+if(NOT MSVC)
+    # Parser tables + SPIR-V builder: never debugged at -O0, identical in
+    # every preset (quickjs/jolt/ryml precedent).
+    target_compile_options(glslang_vendored PRIVATE -O2)
+endif()
+midday_apply_deterministic_fp(glslang_vendored)
+
+# stb_image_write (stb master 31c1ad37) — PNG encoding for render-to-image
+# transport (m0-rhi-vulkan). Golden hashes are DECODED PIXELS, never these
+# encoded bytes (Aurora D-14); the PNG is the human-inspectable artifact.
+# stb_image_write_impl.c is the one STB_IMAGE_WRITE_IMPLEMENTATION TU
+# (upstream-documented usage), kept in third_party/ like vma_impl.cpp.
+enable_language(C)
+add_library(stb_image_write STATIC stb/stb_image_write_impl.c)
+add_library(stb::image_write ALIAS stb_image_write)
+target_include_directories(stb_image_write SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/stb)
+
 # rapidyaml (ryml) 0.15.2 — strict-YAML parsing for the PERMANENT loader
 # subset (core/loader, m0-yaml-loader-run). Amalgamated single header, kept
 # byte-pristine; ryml.cpp is the one TU defining RYML_SINGLE_HDR_DEFINE_NOW

@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `aba94ceed9f92c1f`
+- api_compat_hash: `3fcaa248545bfa3d`
 
 ## Classes
 
@@ -441,3 +441,25 @@ Positionals:
 | `op` | `string` | yes | no | operation: diff |
 | `a` | `string` | yes | no | first run.mrj bundle |
 | `b` | `string` | yes | no | second run.mrj bundle |
+
+### `midday rhi`
+
+GPU seam tools (probe: device availability/caps; render: M0 scenes to PNG + decoded-pixel hashes)
+
+- compat_hash: `95e65da8de3384c3`
+
+Flags:
+
+| flag | type | required | default | doc |
+| --- | --- | --- | --- | --- |
+| `--validation` | `bool` | no |  | enable the Vulkan validation layer (refuses if not installed) |
+| `--software` | `bool` | no |  | require a software rasterizer (lavapipe class; golden lane sets this) |
+| `--scene` | `name` | no |  | render one scene: clear \| triangle \| textured_quad (default: all) |
+| `--out-dir` | `string` | no |  | write <scene>.png + <scene>.hash + driver.txt here (render) |
+| `--goldens` | `string` | no |  | compare decoded-pixel hashes against this golden dir (render) |
+
+Positionals:
+
+| positional | type | required | variadic | doc |
+| --- | --- | --- | --- | --- |
+| `op` | `string` | yes | no | operation: probe \| render |
