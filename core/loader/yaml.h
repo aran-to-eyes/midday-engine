@@ -45,7 +45,7 @@ struct YamlEntry {
     // YamlNode is complete below; vector<> members make the mutual recursion
     // well-formed. node() is defined after YamlNode: front() does pointer
     // arithmetic, which libstdc++ rejects on an incomplete element type.
-    std::vector<YamlNode> value = {}; // exactly one element (vector = indirection)
+    std::vector<YamlNode> value; // exactly one element (vector = indirection)
 
     [[nodiscard]] const YamlNode& node() const;
 };
@@ -61,11 +61,11 @@ struct YamlNode {
     Kind kind = Kind::kNull;
     int line = 0; // 1-based position of the node's first token
     int col = 0;
-    std::string scalar;              // kScalar: the raw text, escapes resolved
-    bool quoted = false;             // kScalar: was quoted — always a string, never a
-                                     // number/bool, and empty-string capable
-    std::vector<YamlEntry> map = {}; // kMap entries, authoring order
-    std::vector<YamlNode> seq = {};  // kSeq elements, authoring order
+    std::string scalar;         // kScalar: the raw text, escapes resolved
+    bool quoted = false;        // kScalar: was quoted — always a string, never a
+                                // number/bool, and empty-string capable
+    std::vector<YamlEntry> map; // kMap entries, authoring order
+    std::vector<YamlNode> seq;  // kSeq elements, authoring order
 
     [[nodiscard]] bool is_map() const { return kind == Kind::kMap; }
 
