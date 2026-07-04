@@ -1,0 +1,93 @@
+# examples/spikes/kata.machine.yaml — the determinism kata's brain
+# (m0-determinism-spike, GRAFT Zenith D024). Four parallel regions keep all
+# the milestone's axes moving PER TICK and feeding each other — never four
+# disconnected stubs:
+#
+#   drive:  a 30-tick metronome. Cycle (24 ticks) runs churn.ts every fixed
+#           update (GC churn + seeded RNG -> kata.churn journaled), fires
+#           kata.beat at t=0.10s, and opens span Surge [0.15, 0.35] whose
+#           .opened/.closed pairs swap the SurgeOn substate (Aura subtree
+#           activates while the span is live — the A.3 span binding). Rest
+#           (6 ticks) breathes, then re-enters Cycle forever.
+#   echo:   kata.beat -> Excited the SAME tick (cascade depth 1); Excited's
+#           onEnter emits kata.echo (depth 2), then a 9-tick sequence cools
+#           it back to Calm.
+#   tally:  flips Even/Odd on every kata.echo — the depth-2 cascade lands a
+#           THIRD region's transition in the same tick.
+#   impact: contact.began (Jolt phase-6 dispatch on the host channel) ->
+#           Struck; impact.ts broadcasts kata.impact @ global with an RNG
+#           payload; an 18-tick recovery re-arms Watch.
+#
+# 600 ticks @ 60 Hz = 20 drive periods: >= 140 transitions, 20 span
+# open/close pairs, ~480 kata.churn emits, plus every contact of the falling
+# debris — the byte-compare covers cross-system ordering end to end.
+format: 1
+
+machine: kata
+
+regions:
+  drive:
+    initial: Cycle
+    states:
+      Cycle:
+        script: scripts/churn.ts
+        initial: Base
+        sequence:
+          duration: 0.4                  # 24 ticks @ 60 Hz
+          end: finish
+          tracks:
+            - trigger: [{t: 0.10, event: kata.beat}]     # tick 6 of the cycle
+            - span: {name: Surge, from: 0.15, to: 0.35}  # open tick 9, close tick 21
+        on:
+          - {event: self.finished, goto: Rest}
+          - {event: Surge.opened, goto: SurgeOn}         # span binding (A.3 precedent)
+          - {event: Surge.closed, goto: Base}
+        states:
+          Base: {}                       # the off-surge swing phase
+          SurgeOn:                       # live exactly while the span is open
+            children:
+              - {entity: Aura, at: [0, 2.0, 0]}
+      Rest:
+        sequence:
+          duration: 0.1                  # 6 ticks; the metronome's off-beat
+          end: finish
+        on:
+          - {event: self.finished, goto: Cycle}
+
+  echo:
+    initial: Calm
+    states:
+      Calm:
+        on:
+          - {event: kata.beat, key: self, goto: Excited}
+      Excited:
+        script: scripts/echo.ts
+        sequence:
+          duration: 0.15                 # 9 ticks of excitement
+          end: finish
+        on:
+          - {event: self.finished, goto: Calm}
+
+  tally:
+    initial: Even
+    states:
+      Even:
+        on:
+          - {event: kata.echo, key: self, goto: Odd}
+      Odd:
+        on:
+          - {event: kata.echo, key: self, goto: Even}
+
+  impact:
+    initial: Watch
+    states:
+      Watch:
+        on:
+          - {event: contact.began, key: self, goto: Struck}
+      Struck:
+        script: scripts/impact.ts
+        sequence:
+          duration: 0.3                  # 18-tick recovery before re-arming
+          end: finish
+        on:
+          - {event: self.finished, goto: Watch}

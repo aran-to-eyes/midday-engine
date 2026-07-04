@@ -418,7 +418,7 @@ Flags:
 | `--seed` | `int` | no | `0` | sim seed (journal identity + RNG streams) |
 | `--record` | `string` | no |  | run.mrj bundle path (default: the .midday-cache/run/last.mrj scratch bundle) |
 | `--cache-dir` | `string` | no |  | TS build cache directory (default: .midday-cache/ts) |
-| `--assert` | `string` | no |  | drive + verify a registered assertion pack: case=<name> (available: appendix_a_golden) |
+| `--assert` | `string` | no |  | drive + verify a registered assertion pack: case=<name> (available: appendix_a_golden, determinism_kata) |
 
 Positionals:
 

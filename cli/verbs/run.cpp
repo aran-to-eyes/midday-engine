@@ -23,6 +23,7 @@
 #include "core/hierarchy/hierarchy.h"
 #include "core/journal/writer.h"
 #include "core/loader/loader.h"
+#include "core/math/rng.h"
 #include "core/physics/physics_server.h"
 #include "core/reflect/builtin_events.h"
 #include "core/reflect/registry.h"
@@ -34,6 +35,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -66,6 +68,35 @@ VerbOutcome refuse(Error error) {
     out.exit = is_validation(error) ? Exit::Validation : Exit::Failure;
     out.error = std::move(error);
     return out;
+}
+
+// __midday_rng(stream): seeded, NAMED Philox child streams for state
+// scripts — the SIM profile's deterministic replacement for the poisoned
+// Math.random. Derivation: run seed -> child("scripts") -> child(<stream>);
+// each named stream persists for the run, so per-tick draws advance a pure
+// (seed, stream, draw-count) function of the executed program. The CLI owns
+// this ambient sim service until the API tier formalizes RNG bindings.
+void register_script_rng(script::ScriptRuntime& runtime, std::uint64_t seed) {
+    struct Streams {
+        math::RngStream root;
+        std::map<std::string, math::RngStream> named;
+    };
+
+    auto streams = std::make_shared<Streams>(
+        Streams{.root = math::RngStream(seed).child(base::Name("scripts")), .named = {}});
+    runtime.register_host_fn("__midday_rng", [streams](const Json::Array& args) {
+        script::HostResult result;
+        if (args.size() != 1 || !args[0].is_string()) {
+            result.error = Error{.code = "script.rng_args",
+                                 .message = "__midday_rng expects (stream: string)"};
+            return result;
+        }
+        const std::string& name = args[0].as_string();
+        auto [it, fresh] = streams->named.try_emplace(name, streams->root.child(base::Name(name)));
+        (void)fresh;
+        result.value = Json(it->second.uniform_double());
+        return result;
+    });
 }
 
 // The canonical sim composition (destruction order = reverse declaration:
@@ -215,6 +246,7 @@ VerbOutcome run_verb(const VerbArgs& args) {
             tool_config.cache_dir = args.get_string("cache-dir");
         sim.toolchain.emplace(std::move(tool_config));
         sim.runtime.emplace(); // SIM profile: poisoned clocks, gas metering
+        register_script_rng(*sim.runtime, static_cast<std::uint64_t>(seed));
         sim.scripts.emplace(*sim.runtime, *sim.toolchain, *sim.bus, &loader::resolve_key);
         if (auto error = sim.scripts->first_error())
             return refuse(std::move(*error));
@@ -240,7 +272,10 @@ VerbOutcome run_verb(const VerbArgs& args) {
         }
     }
 
-    // Step. run_to_tick is a no-op past the target; tick(n) is exact.
+    // Step. run_to_tick is a no-op past the target; tick(n) is exact. The
+    // gc probes bracket EXACTLY the tick window: module build/bind churn
+    // stays out of the ts_gc_churn evidence (RunProbes contract).
+    const std::uint64_t gc_before = sim.runtime.has_value() ? sim.runtime->alloc_bytes() : 0;
     std::optional<base::Error> tick_error;
     if (has_to_tick)
         tick_error = sim.loop->run_to_tick(static_cast<std::uint64_t>(args.get_int("to-tick")));
@@ -248,6 +283,7 @@ VerbOutcome run_verb(const VerbArgs& args) {
         tick_error = sim.loop->tick(static_cast<std::uint64_t>(args.get_int("ticks")));
     if (tick_error.has_value())
         return refuse(std::move(*tick_error));
+    const std::uint64_t gc_after = sim.runtime.has_value() ? sim.runtime->alloc_bytes() : 0;
 
     // A script hook that faulted mid-run fails the run loudly (exit 1; the
     // error carries file/stack plus the sim tick it faulted on).
@@ -268,11 +304,18 @@ VerbOutcome run_verb(const VerbArgs& args) {
     // the named verdicts; any failed assertion fails the run (exit 1), with
     // every named value still reported in the envelope.
     if (sim.pack != nullptr) {
-        RunAssertPack::Verdict verdict = sim.pack->evaluate(*sim.chart, bundle);
+        RunAssertPack::RunProbes probes;
+        probes.ticks = sim.loop->current_tick();
+        probes.gc_alloc_before_ticks = gc_before;
+        probes.gc_alloc_after_ticks = gc_after;
+        probes.physics = sim.physics != nullptr ? &sim.physics->stats() : nullptr;
+        RunAssertPack::Verdict verdict = sim.pack->evaluate(*sim.chart, bundle, probes);
         if (verdict.error.has_value())
             return refuse(std::move(*verdict.error));
         out.payload.set("assert_case", assert_case);
         out.payload.set("assertions", std::move(verdict.assertions));
+        if (!verdict.exercised.is_null())
+            out.payload.set("exercised", std::move(verdict.exercised));
         if (!verdict.failed.empty()) {
             out.exit = Exit::Failure;
             Error error{.code = "run.assert_failed",
@@ -325,7 +368,7 @@ constexpr FlagSpec kFlags[] = {
     {.name = "assert",
      .type = "string",
      .doc = "drive + verify a registered assertion pack: case=<name> "
-            "(available: appendix_a_golden)"},
+            "(available: appendix_a_golden, determinism_kata)"},
 };
 
 constexpr PositionalSpec kPositionals[] = {

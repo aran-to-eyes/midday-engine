@@ -1,0 +1,14 @@
+# examples/spikes/kata.events.yaml — the determinism-kata vocabulary
+# (m0-determinism-spike). Every event here is journaled fuel for the
+# byte-compare: kata.churn carries seeded-RNG floats out of the per-tick TS
+# hook, kata.beat -> kata.echo is the depth-2 cascade ladder, kata.impact
+# rides the physics-contact chain onto the global channel. The built-in
+# contact.* vocabulary and the derived <state>.finished / Surge.opened /
+# Surge.closed names need no declaration (loader grammar contract).
+format: 1
+
+events:
+  kata.beat:   {payload: {}, doc: the drive sequence trigger keyframe at t=0.10s of every Cycle}
+  kata.churn:  {payload: {load: float, sum: float}, doc: per-fixed-tick TS churn report with both floats folded from seeded RNG streams}
+  kata.echo:   {payload: {charge: float}, doc: Excited.onEnter cascade emit that flips the tally region the same tick}
+  kata.impact: {payload: {jolt: float}, doc: Struck.onEnter broadcast at global closing the contact to script chain}

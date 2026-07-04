@@ -344,7 +344,15 @@ Toolchain::LoadOutcome Toolchain::load_module(ScriptRuntime& runtime, const std:
             return std::nullopt;
         }
         if (!built.check.ok) {
-            base::Error error{.code = "script.type_error",
+            // Type errors and lint hits share the validation exit class;
+            // the code names the dominant family — kept in lockstep with
+            // the script-verb classification (cli/verbs/script.cpp), so a
+            // wall-clock-tainted module refuses as script.lint through
+            // `midday run` exactly as it does through `midday script check`.
+            bool any_type = false;
+            for (const Diagnostic& diag : built.check.diagnostics)
+                any_type = any_type || diag.kind == "type";
+            base::Error error{.code = any_type ? "script.type_error" : "script.lint",
                               .message = built.check.diagnostics.front().to_string()};
             base::Json list = base::Json::array();
             for (const Diagnostic& diag : built.check.diagnostics)

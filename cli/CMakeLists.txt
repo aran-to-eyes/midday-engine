@@ -15,12 +15,14 @@ add_executable(midday
     verbs/script.cpp
     verbs/run.cpp
     verbs/run_assert.cpp
+    verbs/run_assert_kata.cpp
     verbs/journal.cpp
     verbs/rhi.cpp
     verbs/shot.cpp
     verbs/run_test.cpp
     verbs/shot_test.cpp
     verbs/golden_test.cpp
+    verbs/spike_test.cpp
     verbs/envelope_test.cpp
     verbs/framework_test.cpp
     $<TARGET_OBJECTS:midday_base_tests>

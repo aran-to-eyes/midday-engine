@@ -107,16 +107,20 @@ jobs:
       - name: schema_manifest.json meta-schema
         run: python3 scripts/validate_envelope.py formats/schema_manifest.schema.json < api/schema_manifest.json
 
-  # The determinism lane (m0-appendix-a-determinism, Determinism Scope
-  # Aurora D-9): two INDEPENDENT Linux x86_64 hosts each drive the authored
-  # Appendix A corpus to tick 3200 three times (seed 7, assert pack on) and
-  # hash the NORMALIZED journal — the decompressed record stream
-  # (zstdcat journal.jsonl.zst), per D-BUILD-080: compression framing is
-  # transport, record content is the run. Within a host the 3 hashes must
-  # agree AND two independent bundles must `journal diff` clean (bit-identity
-  # is two runs diffed, never a self-diff — Zenith N017). The compare job
-  # then byte-compares the hashes ACROSS hosts; on mismatch it runs
-  # `midday journal diff` and surfaces the first divergent tick in the log.
+  # The determinism lane (m0-appendix-a-determinism + m0-determinism-spike,
+  # Determinism Scope Aurora D-9): two INDEPENDENT Linux x86_64 hosts each
+  # drive BOTH corpora three times — the authored Appendix A boss to tick
+  # 3200 (seed 7) and the determinism kata to tick 600 (seed 123, the
+  # `.exercised.*` asserts gating BEFORE any compare so an empty-scene run
+  # can never vacuously pass) — and hash the NORMALIZED journal, the
+  # decompressed record stream (zstdcat journal.jsonl.zst), per D-BUILD-080:
+  # compression framing is transport, record content is the run. Within a
+  # host the 3 hashes per corpus must agree AND two independent bundles must
+  # `journal diff` clean (bit-identity is two runs diffed, never a self-diff
+  # — Zenith N017). The compare job then byte-compares the hashes ACROSS
+  # hosts; on mismatch it runs `midday journal diff` and surfaces the first
+  # divergent tick in the log. The wall-clock-tainted kata variant must die
+  # at the lint gate (exit 3) before a single tick executes.
   determinism:
     strategy:
       fail-fast: false
@@ -149,15 +153,40 @@ jobs:
           done
           cat build/det/hashes.txt
           test "$(sort -u build/det/hashes.txt | wc -l)" -eq 1
-      - name: Within-host independent dual-run diff
+      - name: Determinism kata x3 (exercised asserts + normalized sha256)
+        run: |
+          : > build/det/kata-hashes.txt
+          for i in 1 2 3; do
+            build/ci/midday run examples/spikes/determinism.scene.yaml --ticks 600 --seed 123 \
+              --record "build/det/kata$i.mrj" --cache-dir build/det/ts-cache \
+              --assert case=determinism_kata --json | jq -e \
+              '.ok and .exercised.ts_gc_churn and .exercised.jolt_step
+               and .exercised.statechart_transitions and .exercised.sequence_spans' > /dev/null
+            zstdcat "build/det/kata$i.mrj/journal.jsonl.zst" \
+              | sha256sum | cut -d' ' -f1 >> build/det/kata-hashes.txt
+          done
+          cat build/det/kata-hashes.txt
+          test "$(sort -u build/det/kata-hashes.txt | wc -l)" -eq 1
+      - name: Wall-clock-tainted variant dies at the lint gate (exit 3, pre-tick)
+        run: |
+          status=0
+          out=$(build/ci/midday run examples/spikes/tainted/tainted.scene.yaml --ticks 1 \
+            --cache-dir build/det/ts-cache --json) || status=$?
+          test "$status" -eq 3
+          echo "$out" | jq -e '.error.code == "script.lint"
+            and .error.details.diagnostics[0].code == "no-wall-clock"'
+      - name: Within-host independent dual-run diff (both corpora)
         run: |
           build/ci/midday journal diff build/det/run1.mrj build/det/run2.mrj --json \
+            | jq -e '.first_divergent_tick==null and .identical'
+          build/ci/midday journal diff build/det/kata1.mrj build/det/kata2.mrj --json \
             | jq -e '.first_divergent_tick==null and .identical'
       - name: Stage exchange artifact (host a also ships the diff binary)
         run: |
           mkdir -p build/det/exchange
-          cp build/det/hashes.txt build/det/exchange/
+          cp build/det/hashes.txt build/det/kata-hashes.txt build/det/exchange/
           cp -r build/det/run1.mrj build/det/exchange/run1.mrj
+          cp -r build/det/kata1.mrj build/det/exchange/kata1.mrj
           if [ "${{ matrix.host }}" = "a" ]; then cp build/ci/midday build/det/exchange/; fi
       - uses: actions/upload-artifact@v4
         with:
@@ -177,17 +206,24 @@ jobs:
         with:
           name: determinism-b
           path: host-b
-      - name: Cross-host normalized byte-compare (3x sha256 each)
+      - name: Cross-host normalized byte-compare (3x sha256 each, both corpora)
         run: |
-          echo "host a:"; cat host-a/hashes.txt
-          echo "host b:"; cat host-b/hashes.txt
-          if ! cmp host-a/hashes.txt host-b/hashes.txt; then
-            echo "::error::cross-host journal divergence — first divergent tick follows"
-            chmod +x host-a/midday
-            host-a/midday journal diff host-a/run1.mrj host-b/run1.mrj --json | tee divergence.json || true
-            jq '.first_divergent_tick, .divergence' divergence.json
-            exit 1
-          fi
+          fail=0
+          compare() { # <hash file> <bundle name> <corpus label>
+            echo "$3 / host a:"; cat "host-a/$1"
+            echo "$3 / host b:"; cat "host-b/$1"
+            if ! cmp "host-a/$1" "host-b/$1"; then
+              echo "::error::cross-host journal divergence ($3) — first divergent tick follows"
+              chmod +x host-a/midday
+              host-a/midday journal diff "host-a/$2" "host-b/$2" --json \
+                | tee "divergence-$3.json" || true
+              jq '.first_divergent_tick, .divergence' "divergence-$3.json"
+              fail=1
+            fi
+          }
+          compare hashes.txt run1.mrj appendix-a
+          compare kata-hashes.txt kata1.mrj kata
+          exit "$fail"
 
   build-macos:
     # Hosted macOS arm64 — never the managed-firewall dev Mac (Zenith D027).
@@ -298,6 +334,22 @@ jobs:
             | jq -e '.first_divergent_tick==null and .identical'
           echo "normalized journal sha256 (report only, non-gating):"
           zstdcat build/det/run1.mrj/journal.jsonl.zst | shasum -a 256 | cut -d' ' -f1
+      - name: Determinism kata — semantic report (bytes NON-GATING here, Aurora D-9)
+        run: |
+          # Same scope split as the boss golden: macOS gates the exercised
+          # asserts + same-host independent dual-run diff; cross-host byte
+          # equality stays the Linux determinism lane's contract.
+          for i in 1 2; do
+            build/ci/midday run examples/spikes/determinism.scene.yaml --ticks 600 --seed 123 \
+              --record "build/det/kata$i.mrj" --cache-dir build/det/ts-cache \
+              --assert case=determinism_kata --json | jq -e \
+              '.ok and .exercised.ts_gc_churn and .exercised.jolt_step
+               and .exercised.statechart_transitions and .exercised.sequence_spans'
+          done
+          build/ci/midday journal diff build/det/kata1.mrj build/det/kata2.mrj --json \
+            | jq -e '.first_divergent_tick==null and .identical'
+          echo "normalized kata journal sha256 (report only, non-gating):"
+          zstdcat build/det/kata1.mrj/journal.jsonl.zst | shasum -a 256 | cut -d' ' -f1
 
   # boundaries (m0-rhi-vulkan): no backend headers above the RHI seam —
   # vulkan/volk/VMA only under core/rhi/vulkan/, glslang/SPIRV only under

@@ -279,7 +279,7 @@ declare namespace midday {
         record?: string;
         /** TS build cache directory (default: .midday-cache/ts) */
         "cache-dir"?: string;
-        /** drive + verify a registered assertion pack: case=<name> (available: appendix_a_golden) */
+        /** drive + verify a registered assertion pack: case=<name> (available: appendix_a_golden, determinism_kata) */
         assert?: string;
         /** the *.scene.yaml to load and run */
         scene: string;

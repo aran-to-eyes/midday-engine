@@ -1,0 +1,16 @@
+# examples/spikes/tainted/tainted.scene.yaml — the wall-clock-tainted
+# NEGATIVE variant (m0-determinism-spike, MILESTONE_0 item 25): its one
+# state script calls Date.now(), so `midday run` must refuse at the LINT
+# GATE — exit 3, script.lint, diagnostic no-wall-clock at file:line —
+# BEFORE a single tick executes. If this scene ever runs, the SIM
+# determinism firewall has a hole.
+format: 1
+
+scene: tainted_clock
+
+entities:
+  - entity: Timekeeper
+    components:
+      - Transform: {}
+    machines:
+      - {instance: {path: tainted.machine.yaml}}

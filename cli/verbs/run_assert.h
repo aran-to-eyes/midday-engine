@@ -30,6 +30,10 @@ namespace midday::bus {
 class Bus;
 }
 
+namespace midday::physics {
+struct PhysicsStats;
+}
+
 namespace midday::ecs {
 class World;
 }
@@ -82,21 +86,39 @@ public:
                                       const loader::SpawnResult& spawned,
                                       std::uint64_t cause_id) = 0;
 
+    // Live run measurements the host hands to evaluate(): counters no
+    // journal walk can reconstruct (the run host owns the script runtime
+    // and the physics server; packs never do). gc_alloc_* bracket the TICK
+    // WINDOW — module build/bind allocation is excluded by construction.
+    struct RunProbes {
+        std::uint64_t ticks = 0;
+        std::uint64_t gc_alloc_before_ticks = 0;
+        std::uint64_t gc_alloc_after_ticks = 0;
+        const physics::PhysicsStats* physics = nullptr; // null: scene has no physics
+    };
+
     // Post-close: walk the recorded bundle + live probes into the named
     // verdicts. `assertions` reports every named value (the envelope
     // carries it verbatim); `failed` lists the names that did not hold.
+    // `exercised` is the item-25 surface (`.exercised.*` in the envelope):
+    // packs without an exercised contract leave it null.
     struct Verdict {
         Json assertions = Json::object();
+        Json exercised;
         std::vector<std::string> failed;
         std::optional<Error> error; // bundle unreadable etc. (infrastructure)
     };
 
-    virtual Verdict evaluate(statechart::Statechart& chart, const std::string& bundle) = 0;
+    virtual Verdict
+    evaluate(statechart::Statechart& chart, const std::string& bundle, const RunProbes& probes) = 0;
 };
 
 // The pack registry (manifest style, cli/verbs/registry.cpp precedent):
 // nullptr when `name` is unknown — the caller reports assert_pack_names().
 std::unique_ptr<RunAssertPack> make_assert_pack(std::string_view name);
 std::string assert_pack_names();
+
+// The "determinism_kata" pack (run_assert_kata.cpp — registry factory).
+std::unique_ptr<RunAssertPack> make_determinism_kata_pack();
 
 } // namespace midday::cli

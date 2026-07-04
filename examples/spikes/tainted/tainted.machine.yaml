@@ -1,0 +1,13 @@
+# examples/spikes/tainted/tainted.machine.yaml — one region, one state, one
+# deliberately tainted script (scripts/tainted_clock.ts). The machine is
+# structurally valid: only the lint gate may refuse this corpus.
+format: 1
+
+machine: tainted
+
+regions:
+  main:
+    initial: Sample
+    states:
+      Sample:
+        script: scripts/tainted_clock.ts

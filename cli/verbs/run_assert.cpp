@@ -21,6 +21,7 @@
 
 #include "cli/verbs/run_assert.h"
 
+#include "cli/verbs/run_assert_walk.h"
 #include "core/bus/bus.h"
 #include "core/ecs/world.h"
 #include "core/hierarchy/hierarchy.h"
@@ -36,6 +37,8 @@
 namespace midday::cli {
 namespace {
 
+using assertwalk::is_event_trigger;
+using assertwalk::payload_is;
 using journal::Record;
 
 // ---- the A.3 timeline, derived from the normative text -----------------------
@@ -58,20 +61,6 @@ constexpr InjectRow kApproach[] = {
     {kSpotTick, "player.spotted", 12.0},
     {kEnterTick - 1, "player.inRange", 1.5},
 };
-
-const std::string* payload_str(const Record& record, std::string_view key) {
-    const Json* value = record.payload.find(key);
-    return value != nullptr && value->is_string() ? &value->as_string() : nullptr;
-}
-
-bool payload_is(const Record& record, std::string_view key, std::string_view expected) {
-    const std::string* value = payload_str(record, key);
-    return value != nullptr && *value == expected;
-}
-
-bool is_event_trigger(const Record& record, std::string_view event) {
-    return record.kind == "event.trigger" && payload_is(record, "event", event);
-}
 
 class AppendixAGoldenPack final : public RunAssertPack,
                                   public tick::PhaseHook,
@@ -186,7 +175,9 @@ public:
         hurtbox_dormant_at_boss_died_ = !hurtbox_.is_null() && hierarchy_->is_dormant(hurtbox_);
     }
 
-    Verdict evaluate(statechart::Statechart& chart, const std::string& bundle) override;
+    Verdict evaluate(statechart::Statechart& chart,
+                     const std::string& bundle,
+                     const RunProbes& probes) override;
 
 private:
     struct Facts; // journal-walk collector (below)
@@ -286,24 +277,13 @@ struct AppendixAGoldenPack::Facts {
 };
 
 RunAssertPack::Verdict AppendixAGoldenPack::evaluate(statechart::Statechart& chart,
-                                                     const std::string& bundle) {
+                                                     const std::string& bundle,
+                                                     const RunProbes& /*probes*/) {
     Verdict verdict;
-    journal::ReaderOpenResult opened = journal::Reader::open(bundle);
-    if (opened.error.has_value() || !opened.reader.has_value()) {
-        verdict.error = std::move(opened.error)
-                            .value_or(Error{.code = "journal.io", .message = "cannot open bundle"});
-        return verdict;
-    }
     Facts facts;
-    while (true) {
-        journal::Reader::NextResult next = opened.reader->next();
-        if (next.error.has_value()) {
-            verdict.error = std::move(next.error);
-            return verdict;
-        }
-        if (!next.record.has_value())
-            break;
-        facts.collect(*next.record);
+    if (auto error = assertwalk::walk_bundle(bundle, facts)) {
+        verdict.error = std::move(error);
+        return verdict;
     }
 
     const auto id_of = [](const std::optional<Record>& record) {
@@ -422,11 +402,13 @@ RunAssertPack::Verdict AppendixAGoldenPack::evaluate(statechart::Statechart& cha
 std::unique_ptr<RunAssertPack> make_assert_pack(std::string_view name) {
     if (name == "appendix_a_golden")
         return std::make_unique<AppendixAGoldenPack>();
+    if (name == "determinism_kata")
+        return make_determinism_kata_pack();
     return nullptr;
 }
 
 std::string assert_pack_names() {
-    return "appendix_a_golden";
+    return "appendix_a_golden, determinism_kata";
 }
 
 } // namespace midday::cli

@@ -1,0 +1,53 @@
+# examples/spikes/determinism.scene.yaml — the PERMANENT determinism kata
+# (m0-determinism-spike; MILESTONE_0 item 25, GRAFT Zenith D024). The
+# canonical run is `midday run <this> --ticks 600 --seed 123 --assert
+# case=determinism_kata`: per tick and SIMULTANEOUSLY it exercises
+# agent-style TS allocation/GC churn, Jolt stepping, event cascades +
+# statechart transitions + sequence spans, and seeded RNG streams — and the
+# pack refuses the run unless all four `.exercised.*` axes actually moved,
+# so no byte-compare over this scene can ever vacuously pass.
+#
+# The scene is SELF-DRIVING (no driver system): the kata machine's regions
+# perpetuate their own cycles (kata.machine.yaml header) while the debris
+# stack rains onto the Agent — Jolt contacts land on the host channel and
+# pull the impact region (and its script) into the same journal stream.
+format: 1
+
+scene: determinism_kata
+
+events:
+  - kata.events.yaml
+
+entities:
+  - entity: Ground
+    components:
+      - Transform: {}
+      - Collider: {shape: plane}
+
+  - entity: Agent
+    components:
+      - Transform: {at: [0, 3.0, 0]}
+      - Collider: {shape: box, size: [1.0, 1.0, 1.0]}
+      - RigidBody: {}
+    machines:
+      - {instance: {path: kata.machine.yaml}}
+
+  # Staggered, laterally offset debris: distinct impact ticks, tumbling
+  # contacts — contact.began traffic spread across the run, not one burst.
+  - entity: DebrisA
+    components:
+      - Transform: {at: [0.35, 5.0, 0.10]}
+      - Collider: {shape: box, size: [0.8, 0.8, 0.8]}
+      - RigidBody: {}
+
+  - entity: DebrisB
+    components:
+      - Transform: {at: [-0.30, 6.5, -0.20]}
+      - Collider: {shape: box, size: [0.6, 0.6, 0.6]}
+      - RigidBody: {}
+
+  - entity: DebrisC
+    components:
+      - Transform: {at: [0.15, 8.0, 0.25]}
+      - Collider: {shape: box, size: [0.7, 0.7, 0.7]}
+      - RigidBody: {}

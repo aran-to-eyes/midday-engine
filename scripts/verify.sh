@@ -194,6 +194,39 @@ build/dev/midday run examples/appendix_a/boss.scene.yaml --to-tick 3200 --seed 7
 build/dev/midday journal diff build/golden/a1.mrj build/golden/a2.mrj --json \
     | jq -e '.first_divergent_tick==null and .identical' >/dev/null
 
+step "determinism kata (600-tick exercised asserts + dual-run compare + tainted lint gate)"
+# m0-determinism-spike exit tests (MILESTONE_0 item 25, Zenith D024): the
+# kata must move TS GC churn + Jolt stepping + statechart cascades +
+# sequence spans SIMULTANEOUSLY — the `.exercised.*` asserts run BEFORE any
+# compare so an empty-scene byte-compare can never vacuously pass.
+# Bit-identity is two INDEPENDENT runs (never a self-diff): the diff verb
+# names divergences, then the normalized record streams are byte-compared
+# (zstdcat per D-BUILD-080 — framing is transport, record content is the run).
+rm -rf build/spike
+build/dev/midday run examples/spikes/determinism.scene.yaml --ticks 600 --seed 123 \
+    --record build/spike/ka.mrj --cache-dir build/dev/ts-cache.a \
+    --assert case=determinism_kata --json \
+    | jq -e '.ok and .exercised.ts_gc_churn and .exercised.jolt_step
+        and .exercised.statechart_transitions and .exercised.sequence_spans' >/dev/null
+build/dev/midday run examples/spikes/determinism.scene.yaml --ticks 600 --seed 123 \
+    --record build/spike/kb.mrj --cache-dir build/dev/ts-cache.a \
+    --assert case=determinism_kata --json >/dev/null
+build/dev/midday journal diff build/spike/ka.mrj build/spike/kb.mrj --json \
+    | jq -e '.first_divergent_tick==null and .identical' >/dev/null
+zstdcat build/spike/ka.mrj/journal.jsonl.zst > build/spike/ka.jsonl
+zstdcat build/spike/kb.mrj/journal.jsonl.zst > build/spike/kb.jsonl
+cmp build/spike/ka.jsonl build/spike/kb.jsonl
+# wall-clock taint: Date.now() must die at the LINT GATE (exit 3,
+# script.lint, no-wall-clock at file:line) through the REAL run path,
+# before a single tick executes.
+TAINT_STATUS=0
+TAINT_OUT=$(build/dev/midday run examples/spikes/tainted/tainted.scene.yaml --ticks 1 \
+    --cache-dir build/dev/ts-cache.a --json) || TAINT_STATUS=$?
+[ "$TAINT_STATUS" -eq 3 ]
+echo "$TAINT_OUT" | jq -e '.error.code == "script.lint"
+    and .error.details.diagnostics[0].code == "no-wall-clock"
+    and .error.details.diagnostics[0].line > 0' >/dev/null
+
 step "license scan (+ negative fixture)"
 scripts/license_scan.py >/dev/null
 scripts/test_license_scan.py >/dev/null
