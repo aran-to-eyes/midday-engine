@@ -132,6 +132,33 @@ echo "$SCRIPT_OUT" | jq -e '.error.code == "script.lint"
     and ([.diagnostics[].code] | unique) == ["no-timer","no-unseeded-random","no-wall-clock"]
     and ([.diagnostics[] | select(.line > 0 and .col > 0)] | length) == 6' >/dev/null
 
+step "ts components (m1-ts-components: warden components typecheck; @component/@field extract WITHOUT executing)"
+# Exit-test #1: the two authored Warden components typecheck against the
+# generated engine.d.ts (incl. TriggerEntered). Exit-test #2: their schema
+# extracts STATICALLY from the AST into a PROJECT manifest (never
+# api/schema_manifest.json — that stays engine-only). The extract-throws
+# fixture proves the walk never runs the code: its top-level detonate() would
+# emit+throw if executed, yet Dangerous extracts cleanly. (Exit-test #3 —
+# this.emit own-key + stale-ref despawn tick/site — is the component_host
+# doctests, run by selftest above.)
+rm -f build/dev/health.components.json build/dev/dangerous.components.json
+build/dev/midday script check examples/warden/components/health.ts \
+    --cache-dir build/dev/ts-cache.components --json | jq -e '.ok' >/dev/null
+build/dev/midday script check examples/warden/components/damage_on_touch.ts \
+    --cache-dir build/dev/ts-cache.components --json | jq -e '.ok' >/dev/null
+build/dev/midday script extract examples/warden/components/health.ts \
+    --out build/dev/health.components.json --cache-dir build/dev/ts-cache.components --json \
+    | jq -e '.ok and .components == 1' >/dev/null
+jq -e '.format_version == 1 and .components[0].name == "Health"
+    and (.components[0].fields | map(.name)) == ["max","value"]
+    and .components[0].fields[0].type == "float" and .components[0].fields[0].min == 0
+    and (.components[0].methods[0].params | map(.type)) == ["float","entity_ref"]' \
+    build/dev/health.components.json >/dev/null
+build/dev/midday script extract testkit/fixtures/ts/component_extract_throws.ts \
+    --out build/dev/dangerous.components.json --cache-dir build/dev/ts-cache.components --json \
+    | jq -e '.ok and .components == 1' >/dev/null
+jq -e '.components[0].name == "Dangerous"' build/dev/dangerous.components.json >/dev/null
+
 step "batch-binding budgets (1k/10k/100k sweep + naive ratio, m0-batch-bindings exit tests)"
 # Crossings stay <= 8 * pool_count AND constant across the sweep (O(pools),
 # never O(entities)); steady-state pooled-math ticks allocate ZERO GC bytes.

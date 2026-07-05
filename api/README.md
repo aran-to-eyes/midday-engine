@@ -23,7 +23,10 @@ lane):
 
 - `engine.d.ts` — agent-facing TypeScript declarations (value types, event
   payload interfaces + name map, expression function signatures, CLI verb
-  argument types). Structural validation: `formats/engine_dts.meta.md`.
+  argument types), plus a trailing ambient `declare module "midday"` block
+  (the Script component API's generated event-alias augmentation over
+  `ts/lib/component.ts`'s real Component/StateScript/decorator surface —
+  m1-ts-components). Structural validation: `formats/engine_dts.meta.md`.
 - `schema_manifest.json` — the validate-before-write source (value-type wire
   shapes, event payload schemas, expression signatures; scene/machine formats
   join at m1). Meta-schema: `formats/schema_manifest.schema.json`.

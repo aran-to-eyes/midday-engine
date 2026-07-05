@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash a30db5ed89f735df (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash a12b4221e3231d69 (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -45,7 +45,13 @@ declare namespace midday {
 
     /** TypeDesc "entity_ref": generational entity handle; a stale handle reads alive == false. */
     interface EntityRef {
+        readonly index: number;
+        readonly generation: number;
         readonly alive: boolean;
+        get<T extends import("midday").Component>(ctor: import("midday").ComponentCtor<T>): T;
+        tryGet<T extends import("midday").Component>(ctor: import("midday").ComponentCtor<T>): T | undefined;
+        has(ctor: import("midday").ComponentCtor<import("midday").Component>): boolean;
+        root(): EntityRef;
     }
 
     /** TypeDesc "asset_ref": project-root-relative asset path. */
@@ -253,6 +259,8 @@ declare namespace midday {
         "cache-dir"?: string;
         /** build: report {transpiled, cache_hits} counters in the payload */
         stats?: boolean;
+        /** extract: project-level component schema manifest path to write (required; never api/schema_manifest.json) */
+        out?: string;
         /** bench: entity count for the budget sweep */
         entities?: number;
         /** bench: measured ticks (after warmup) */
@@ -261,7 +269,7 @@ declare namespace midday {
         warmup?: number;
         /** bench: per-field host-hook accessors (the chatty comparison mode) */
         naive?: boolean;
-        /** check | build | bench */
+        /** check | build | extract | bench */
         action: string;
         /** TypeScript source file (bench: overrides the committed fixture) */
         path?: string;
@@ -391,4 +399,81 @@ declare namespace midday {
         "check": CheckVerbArgs;
         "mv": MvVerbArgs;
     }
+}
+
+// -- Script component API (ambient; ts/lib/component.ts is the real runtime surface kept in sync by hand — api/CODEGEN.md "Script component API") --
+declare module "midday" {
+    export type Vec2 = midday.Vec2;
+    export type Vec3 = midday.Vec3;
+    export type Vec4 = midday.Vec4;
+    export type Quat = midday.Quat;
+    export type Color = midday.Color;
+    export type EntityRef = midday.EntityRef;
+    export type AssetRef = midday.AssetRef;
+
+    export interface FieldOptions {
+        min?: number;
+        max?: number;
+        save?: boolean;
+        event?: boolean;
+    }
+
+    export interface ComponentCtor<T extends Component> {
+        new (): T;
+        readonly name: string;
+    }
+
+    export abstract class Component {
+        readonly entity: midday.EntityRef;
+        emit(name: string, payload?: Record<string, unknown>): void;
+    }
+
+    export abstract class StateScript {
+        readonly entity: midday.EntityRef;
+        emit(name: string, payload?: Record<string, unknown>): void;
+        onEnter?(from: string): void;
+        onExit?(to: string): void;
+        onUpdate?(dt: number): void;
+        onFixedUpdate?(dt: number): void;
+    }
+
+    export class Transform extends Component {
+        position: midday.Vec3;
+        rotation: midday.Quat;
+        scale: midday.Vec3;
+    }
+
+    export function component(): (
+        ctor: new (...args: any[]) => Component,
+        context: ClassDecoratorContext,
+    ) => void;
+    export function field(
+        options?: FieldOptions,
+    ): (value: undefined, context: ClassFieldDecoratorContext) => void;
+
+    export const events: {
+        trigger(
+            name: string,
+            payload: Record<string, unknown>,
+            opts: { key: midday.EntityRef | string },
+        ): void;
+    };
+
+    export const world: {
+        query<T extends readonly ComponentCtor<Component>[]>(
+            ...ctors: T
+        ): IterableIterator<
+            [midday.EntityRef, ...{ [K in keyof T]: T[K] extends ComponentCtor<infer C> ? C : never }]
+        >;
+    };
+
+    export type TriggerEntered = midday.EventPayloads["trigger.entered"];
+    export type TriggerExited = midday.EventPayloads["trigger.exited"];
+    export type ContactBegan = midday.EventPayloads["contact.began"];
+    export type ContactEnded = midday.EventPayloads["contact.ended"];
+    export type StateFinished = midday.EventPayloads["state.finished"];
+    export type EntitySpawned = midday.EventPayloads["entity.spawned"];
+    export type EntityDespawned = midday.EventPayloads["entity.despawned"];
+    export type ActionPressed = midday.EventPayloads["action.pressed"];
+    export type ActionReleased = midday.EventPayloads["action.released"];
 }

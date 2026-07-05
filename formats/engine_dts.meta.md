@@ -9,7 +9,11 @@ tool itself after every generation):
 
 1. Balanced `{`/`}` on non-comment lines (comment lines — leading `//` or
    `/*` — are skipped; generated doc text lives only in comments), never
-   dipping negative.
+   dipping negative. Spans the WHOLE file — since m1-ts-components the file
+   holds two top-level declarations, `declare namespace midday { ... }`
+   followed by `declare module "midday" { ... }` (the Script component
+   API's event-alias augmentation; api/CODEGEN.md), and the brace count is
+   checked across both.
 2. Completeness against the source document: every event contributes both
    its payload interface (`interface <Pascal>Event`) and its quoted
    name key in `EventPayloads`; every expression function appears as

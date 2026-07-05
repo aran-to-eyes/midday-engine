@@ -77,7 +77,13 @@ declare namespace midday {
 
     /** TypeDesc "entity_ref": generational entity handle; a stale handle reads alive == false. */
     interface EntityRef {
+        readonly index: number;
+        readonly generation: number;
         readonly alive: boolean;
+        get<T extends import("midday").Component>(ctor: import("midday").ComponentCtor<T>): T;
+        tryGet<T extends import("midday").Component>(ctor: import("midday").ComponentCtor<T>): T | undefined;
+        has(ctor: import("midday").ComponentCtor<import("midday").Component>): boolean;
+        root(): EntityRef;
     }
 
     /** TypeDesc "asset_ref": project-root-relative asset path. */
@@ -141,6 +147,75 @@ declare namespace midday {
     interface VerbArgsByName {
         "probe": ProbeVerbArgs;
     }
+}
+
+// -- Script component API (ambient; ts/lib/component.ts is the real runtime surface kept in sync by hand — api/CODEGEN.md "Script component API") --
+declare module "midday" {
+    export type Vec2 = midday.Vec2;
+    export type Vec3 = midday.Vec3;
+    export type Vec4 = midday.Vec4;
+    export type Quat = midday.Quat;
+    export type Color = midday.Color;
+    export type EntityRef = midday.EntityRef;
+    export type AssetRef = midday.AssetRef;
+
+    export interface FieldOptions {
+        min?: number;
+        max?: number;
+        save?: boolean;
+        event?: boolean;
+    }
+
+    export interface ComponentCtor<T extends Component> {
+        new (): T;
+        readonly name: string;
+    }
+
+    export abstract class Component {
+        readonly entity: midday.EntityRef;
+        emit(name: string, payload?: Record<string, unknown>): void;
+    }
+
+    export abstract class StateScript {
+        readonly entity: midday.EntityRef;
+        emit(name: string, payload?: Record<string, unknown>): void;
+        onEnter?(from: string): void;
+        onExit?(to: string): void;
+        onUpdate?(dt: number): void;
+        onFixedUpdate?(dt: number): void;
+    }
+
+    export class Transform extends Component {
+        position: midday.Vec3;
+        rotation: midday.Quat;
+        scale: midday.Vec3;
+    }
+
+    export function component(): (
+        ctor: new (...args: any[]) => Component,
+        context: ClassDecoratorContext,
+    ) => void;
+    export function field(
+        options?: FieldOptions,
+    ): (value: undefined, context: ClassFieldDecoratorContext) => void;
+
+    export const events: {
+        trigger(
+            name: string,
+            payload: Record<string, unknown>,
+            opts: { key: midday.EntityRef | string },
+        ): void;
+    };
+
+    export const world: {
+        query<T extends readonly ComponentCtor<Component>[]>(
+            ...ctors: T
+        ): IterableIterator<
+            [midday.EntityRef, ...{ [K in keyof T]: T[K] extends ComponentCtor<infer C> ? C : never }]
+        >;
+    };
+
+    export type ProbeFired = midday.EventPayloads["probe.fired"];
 }
 )dts";
 

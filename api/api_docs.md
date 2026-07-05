@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `a30db5ed89f735df`
+- api_compat_hash: `a12b4221e3231d69`
 
 ## Classes
 
@@ -383,7 +383,7 @@ Positionals:
 
 typecheck, lint, transpile, and benchmark TypeScript on the embedded runtime
 
-- compat_hash: `892089cc9ae1e6c8`
+- compat_hash: `12cc2bd464b3d6cd`
 
 Flags:
 
@@ -391,6 +391,7 @@ Flags:
 | --- | --- | --- | --- | --- |
 | `--cache-dir` | `string` | no | `".midday-cache/ts"` | content-hash cache directory (regenerable, never committed) |
 | `--stats` | `bool` | no |  | build: report {transpiled, cache_hits} counters in the payload |
+| `--out` | `string` | no |  | extract: project-level component schema manifest path to write (required; never api/schema_manifest.json) |
 | `--entities` | `int` | no | `1000` | bench: entity count for the budget sweep |
 | `--ticks` | `int` | no | `60` | bench: measured ticks (after warmup) |
 | `--warmup` | `int` | no | `5` | bench: unmeasured warmup ticks before the window |
@@ -400,7 +401,7 @@ Positionals:
 
 | positional | type | required | variadic | doc |
 | --- | --- | --- | --- | --- |
-| `action` | `name` | yes | no | check \| build \| bench |
+| `action` | `name` | yes | no | check \| build \| extract \| bench |
 | `path` | `string` | no | no | TypeScript source file (bench: overrides the committed fixture) |
 
 ### `midday run`

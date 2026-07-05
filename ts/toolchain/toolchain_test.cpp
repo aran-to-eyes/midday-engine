@@ -7,6 +7,7 @@
 #include "core/base/file_io.h"
 #include "testkit/doctest.h"
 #include "testkit/doctest_unwrap.h"
+#include "testkit/temp_dir.h"
 #include "ts/toolchain/toolchain.h"
 
 #include <filesystem>
@@ -19,9 +20,11 @@ using midday::base::Json;
 using midday::script::BuildOutcome;
 using midday::script::CheckOutcome;
 using midday::script::Diagnostic;
+using midday::script::ExtractOutcome;
 using midday::script::ScriptRuntime;
 using midday::script::Toolchain;
 using midday::script::ToolchainConfig;
+using midday::testkit::TempDir;
 
 constexpr const char* kHello = "testkit/fixtures/ts/hello.ts";
 constexpr const char* kTypeError = "testkit/fixtures/ts/type_error.ts";
@@ -91,6 +94,93 @@ TEST_CASE("script.toolchain: game code typechecks against the generated engine.d
     for (const Diagnostic& diag : outcome.diagnostics)
         MESSAGE(diag.to_string());
     CHECK(outcome.ok);
+}
+
+TEST_CASE(
+    "script.toolchain: warden's Health component extracts its @field schema, order-preserving") {
+    Toolchain toolchain(fresh_config("extract_health"));
+    ExtractOutcome outcome = toolchain.extract("examples/warden/components/health.ts");
+    REQUIRE_MESSAGE(!outcome.check.failure.has_value(),
+                    (outcome.check.failure ? outcome.check.failure->message : std::string()));
+    for (const Diagnostic& diag : outcome.check.diagnostics)
+        MESSAGE(diag.to_string());
+    REQUIRE(outcome.check.ok);
+    REQUIRE(outcome.components.is_array());
+    REQUIRE(outcome.components.elements().size() == 1);
+    const Json& health = outcome.components.elements()[0];
+    CHECK(health.find("name")->as_string() == "Health");
+    CHECK(health.find("file")->as_string() == "examples/warden/components/health.ts");
+
+    const Json& fields = *health.find("fields");
+    REQUIRE(fields.elements().size() == 2);
+    const Json& max_field = fields.elements()[0];
+    CHECK(max_field.find("name")->as_string() == "max");
+    CHECK(max_field.find("type")->as_string() == "float");
+    CHECK(max_field.find("default")->as_int() == 100);
+    CHECK(max_field.find("min")->as_int() == 0); // @field({min: 0}) — decorator arg, read as-is
+    const Json& value_field = fields.elements()[1];
+    CHECK(value_field.find("name")->as_string() == "value");
+    CHECK(value_field.find("type")->as_string() == "float");
+    CHECK(value_field.find("default")->as_int() == 100);
+    CHECK(value_field.find("min") == nullptr); // bare @field() carries no constraint args
+
+    const Json& methods = *health.find("methods");
+    REQUIRE(methods.elements().size() == 1);
+    const Json& damage = methods.elements()[0];
+    CHECK(damage.find("name")->as_string() == "damage");
+    const Json& params = *damage.find("params");
+    REQUIRE(params.elements().size() == 2);
+    CHECK(params.elements()[0].find("name")->as_string() == "amount");
+    CHECK(params.elements()[0].find("type")->as_string() == "float");
+    CHECK(params.elements()[1].find("name")->as_string() == "by");
+    CHECK(params.elements()[1].find("type")->as_string() == "entity_ref");
+    CHECK(damage.find("returns") == nullptr); // damage() declares no return type -> omitted
+}
+
+TEST_CASE(
+    "script.toolchain: a component whose top-level code would emit/throw still extracts cleanly") {
+    // The static-AST proof (exit test #2): the fixture's module-scope code
+    // would fire an event and throw if it ever ran; extract() never runs
+    // it — the walk is entirely syntactic (ts/toolchain/driver.js).
+    Toolchain toolchain(fresh_config("extract_throws"));
+    ExtractOutcome outcome = toolchain.extract("testkit/fixtures/ts/component_extract_throws.ts");
+    REQUIRE_MESSAGE(!outcome.check.failure.has_value(),
+                    (outcome.check.failure ? outcome.check.failure->message : std::string()));
+    for (const Diagnostic& diag : outcome.check.diagnostics)
+        MESSAGE(diag.to_string());
+    REQUIRE(outcome.check.ok);
+    REQUIRE(outcome.components.elements().size() == 1);
+    const Json& dangerous = outcome.components.elements()[0];
+    CHECK(dangerous.find("name")->as_string() == "Dangerous");
+    const Json& fields = *dangerous.find("fields");
+    REQUIRE(fields.elements().size() == 2);
+    CHECK(fields.elements()[0].find("name")->as_string() == "power");
+    CHECK(fields.elements()[0].find("default")->as_int() == 10);
+    CHECK(fields.elements()[1].find("name")->as_string() == "label");
+    CHECK(fields.elements()[1].find("type")->as_string() == "string");
+    CHECK(fields.elements()[1].find("default")->as_string() == "dangerous");
+}
+
+TEST_CASE("script.toolchain: an unresolvable @field type refuses as a schema diagnostic") {
+    Toolchain toolchain(fresh_config("extract_unknown_type"));
+    TempDir dir{"extract-unknown-type"};
+    const std::string path = dir.file("bad.ts");
+    REQUIRE_FALSE(midday::base::write_file(path,
+                                           "import {Component, component, field} from 'midday'\n"
+                                           "@component()\n"
+                                           "export class Bad extends Component {\n"
+                                           "    @field() mystery: object = {};\n"
+                                           "}\n",
+                                           "test.io")
+                      .has_value());
+    ExtractOutcome outcome = toolchain.extract(path);
+    REQUIRE_FALSE(outcome.check.failure.has_value());
+    REQUIRE_FALSE(outcome.check.ok);
+    CHECK(outcome.components.elements().empty());
+    REQUIRE(outcome.check.diagnostics.size() == 1);
+    CHECK(outcome.check.diagnostics.front().kind == "schema");
+    CHECK(outcome.check.diagnostics.front().code == "schema.unresolved_type");
+    CHECK(outcome.check.diagnostics.front().message.find("mystery") != std::string::npos);
 }
 
 TEST_CASE("script.toolchain: type errors come back structured with file:line") {

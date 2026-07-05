@@ -61,7 +61,13 @@ constexpr std::string_view kValueTypes =
 
     /** TypeDesc "entity_ref": generational entity handle; a stale handle reads alive == false. */
     interface EntityRef {
+        readonly index: number;
+        readonly generation: number;
         readonly alive: boolean;
+        get<T extends import("midday").Component>(ctor: import("midday").ComponentCtor<T>): T;
+        tryGet<T extends import("midday").Component>(ctor: import("midday").ComponentCtor<T>): T | undefined;
+        has(ctor: import("midday").ComponentCtor<import("midday").Component>): boolean;
+        root(): EntityRef;
     }
 
     /** TypeDesc "asset_ref": project-root-relative asset path. */
@@ -175,6 +181,86 @@ std::string expr_block(const Json& document) {
     return "    namespace expr {\n" + body + "    }\n";
 }
 
+// The fixed component-authoring surface: api/CODEGEN.md "Script component
+// API". See ts/codegen/dts.ts's COMPONENT_API for the full rationale
+// (byte-mirrored here for the equivalence gate).
+constexpr std::string_view kComponentApi =
+    R"(    export type Vec2 = midday.Vec2;
+    export type Vec3 = midday.Vec3;
+    export type Vec4 = midday.Vec4;
+    export type Quat = midday.Quat;
+    export type Color = midday.Color;
+    export type EntityRef = midday.EntityRef;
+    export type AssetRef = midday.AssetRef;
+
+    export interface FieldOptions {
+        min?: number;
+        max?: number;
+        save?: boolean;
+        event?: boolean;
+    }
+
+    export interface ComponentCtor<T extends Component> {
+        new (): T;
+        readonly name: string;
+    }
+
+    export abstract class Component {
+        readonly entity: midday.EntityRef;
+        emit(name: string, payload?: Record<string, unknown>): void;
+    }
+
+    export abstract class StateScript {
+        readonly entity: midday.EntityRef;
+        emit(name: string, payload?: Record<string, unknown>): void;
+        onEnter?(from: string): void;
+        onExit?(to: string): void;
+        onUpdate?(dt: number): void;
+        onFixedUpdate?(dt: number): void;
+    }
+
+    export class Transform extends Component {
+        position: midday.Vec3;
+        rotation: midday.Quat;
+        scale: midday.Vec3;
+    }
+
+    export function component(): (
+        ctor: new (...args: any[]) => Component,
+        context: ClassDecoratorContext,
+    ) => void;
+    export function field(
+        options?: FieldOptions,
+    ): (value: undefined, context: ClassFieldDecoratorContext) => void;
+
+    export const events: {
+        trigger(
+            name: string,
+            payload: Record<string, unknown>,
+            opts: { key: midday.EntityRef | string },
+        ): void;
+    };
+
+    export const world: {
+        query<T extends readonly ComponentCtor<Component>[]>(
+            ...ctors: T
+        ): IterableIterator<
+            [midday.EntityRef, ...{ [K in keyof T]: T[K] extends ComponentCtor<infer C> ? C : never }]
+        >;
+    };
+)";
+
+// One bare, ergonomic payload-type alias per registered event; see
+// ts/codegen/dts.ts's eventAliasBlock for the full rationale (byte-mirrored
+// here for the equivalence gate).
+std::string event_alias_block(const Json& document) {
+    std::string body;
+    for (const Json& entry : entries(document, "events"))
+        body += "    export type " + pascal_case(str(entry, "name")) +
+                " = midday.EventPayloads[\"" + str(entry, "name") + "\"];\n";
+    return body;
+}
+
 std::string verb_block(const Json& entry) {
     std::string body;
     for (const Json& flag : entries(entry, "flags")) {
@@ -254,6 +340,14 @@ std::string emit_dts(const Json& document) {
             out += "\n";
         out += blocks[i];
     }
+    out += "}\n\n"
+           "// -- Script component API (ambient; ts/lib/component.ts is the real "
+           "runtime surface kept in sync by hand — api/CODEGEN.md \"Script component "
+           "API\") --\n"
+           "declare module \"midday\" {\n";
+    out += kComponentApi;
+    out += "\n";
+    out += event_alias_block(document);
     out += "}\n";
     return out;
 }

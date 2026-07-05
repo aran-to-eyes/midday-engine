@@ -43,6 +43,19 @@ target_link_libraries(midday_state_script
     PRIVATE midday_ts_toolchain)
 midday_apply_deterministic_fp(midday_state_script)
 
+# The TS component-authoring binding (m1-ts-components): entity.get/tryGet/
+# has/root's native primitives + this.emit's own-key trigger. Needs
+# core::hierarchy too (entity.root() = Hierarchy::owner_of), which the base
+# runtime does not link — own target, same rationale as state_script above.
+add_library(midday_component_host STATIC
+    component_host.cpp
+)
+add_library(midday::component_host ALIAS midday_component_host)
+target_link_libraries(midday_component_host
+    PUBLIC midday::options midday::base midday::script_runtime
+           midday::ecs midday::bus midday::hierarchy)
+midday_apply_deterministic_fp(midday_component_host)
+
 # Tests as an OBJECT library so doctest self-registration survives linking
 # into the midday binary (D-BUILD-014 pattern).
 add_library(midday_script_runtime_tests OBJECT
@@ -50,9 +63,11 @@ add_library(midday_script_runtime_tests OBJECT
     batch_views_test.cpp
     batch_bench_test.cpp
     state_script_test.cpp
+    component_host_test.cpp
 )
 target_link_libraries(midday_script_runtime_tests
     PRIVATE midday::script_runtime midday::batch_bench midday::state_script
+            midday::component_host midday::statechart
             midday_ts_toolchain midday::journal midday::tick midday::hierarchy
             doctest::doctest)
 midday_apply_deterministic_fp(midday_script_runtime_tests)

@@ -29,3 +29,33 @@ QuickJS. No Node anywhere (Aurora D-11).
   hits (structured diagnostics in the payload), 1 for infrastructure
   failures, 2 for usage. `midday script bench` (the batch-binding budget
   harness) lives in ts/runtime and drives fixtures through this toolchain.
+- **Component schema extraction** (`Toolchain::extract`, m1-ts-components,
+  `midday script extract <path> --out <file>`): runs check() and, ONLY if
+  it comes back clean, an AST walk (driver.js, same "never regex over
+  text" discipline as the lint pack) over the ENTRY file's top-level
+  `@component()`-decorated classes — the code is NEVER run. Field/param/
+  return types come from an explicit type annotation, or (fields with no
+  annotation) the initializer's literal kind; `@field({...})` args and
+  literal `= value` defaults are read as literals only (numeric, string,
+  boolean, or an array of those) — nothing is evaluated. An unrecognized
+  shape pushes a `"schema"`-kind diagnostic into the SAME array the type/
+  lint passes use, so it fails validate-before-write exactly like a type
+  error. The CLI writes `{format_version, components}` to a PROJECT-LEVEL
+  file (`--out`, required) — never `api/schema_manifest.json`, which stays
+  engine-only and codegen-owned (api/CODEGEN.md).
+- **`midday` bare specifier vs `midday/<name>`**: `midday/<name>` (with a
+  slash) resolves to `ts/lib/<name>.ts` via the tsc `paths` mapping AND the
+  runtime resolver, identically (D-BUILD-072). Bare `midday` (no slash,
+  the m1-ts-components component-authoring surface: `Component`,
+  `@component`/`@field`, `StateScript`, `events`, `world.query`,
+  `Transform`) is deliberately NOT in `paths` — tsc always prefers an
+  in-program AMBIENT module declaration over paths-based file resolution
+  for an EXACT specifier match (confirmed empirically), so a competing
+  `paths` entry for exact `"midday"` would sit inert once `engine.d.ts`
+  declares `declare module "midday"`. The type surface is therefore
+  ambient (api/CODEGEN.md "Script component API"); `ts/lib/component.ts`
+  (re-exported by `ts/lib/index.ts`, the RUNTIME resolver's target for
+  bare `midday`) is the real implementation, kept in sync by hand. The
+  `"decorators"` `lib` entry (alongside `es2020`) is TC39 stage-3 decorator
+  *types* — the vendored compiler is >= 5.0, so `experimentalDecorators`
+  is never needed.

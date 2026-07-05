@@ -32,9 +32,22 @@ constexpr std::string_view kCacheSchema = "midday.ts.cache/1 midday-lint/1";
 // libs — the toolchain tier of formats/engine_dts.meta.md's contract.
 // The paths mapping IS the engine module surface (D-BUILD-072): bare
 // "midday/*" specifiers resolve into ts/lib — reserved by D-BUILD-065,
-// defined here; every other bare specifier keeps refusing.
+// defined here; every other bare specifier keeps refusing. "midday" (no
+// slash, m1-ts-components) is DELIBERATELY NOT in this map: tsc always
+// prefers an in-program AMBIENT module declaration over paths-based file
+// resolution for an EXACT (non-wildcard) specifier match (proven
+// empirically — a "midday" paths entry sat inert/shadowed once
+// engine.d.ts's `declare module "midday"` existed), so the component-
+// authoring surface is declared ambiently in engine.d.ts (api/CODEGEN.md
+// "Script component API") and resolved at RUNTIME ONLY by the module
+// resolver below — ts/lib/component.ts is the real implementation behind
+// it; the two are kept in sync by hand (documented at both). The
+// "decorators" lib entry is TC39 (stage-3) decorator type support
+// (@component()/@field()) — the vendored compiler is >= 5.0, so no
+// experimentalDecorators flag is needed, ever (that would be the legacy,
+// reflect-metadata-shaped decorator model this engine does not use).
 constexpr std::string_view kCompilerOptionsJson =
-    R"({"lib":["es2020"],"module":"esnext","moduleResolution":"bundler",)"
+    R"({"lib":["es2020","decorators"],"module":"esnext","moduleResolution":"bundler",)"
     R"("newLine":"lf","paths":{"midday/*":["./ts/lib/*.ts"]},)"
     R"("strict":true,"target":"es2020","types":[]})";
 
@@ -210,8 +223,14 @@ struct Toolchain::Impl {
         return std::nullopt;
     }
 
-    // Run driver.js on the entry; decode into a CheckOutcome (+ emitted js).
-    CheckOutcome compile(const std::string& path, bool emit, std::string* js_out) {
+    // Run driver.js on the entry; decode into a CheckOutcome (+ emitted js
+    // and/or extracted component schemas, each opt-in and mutually
+    // orthogonal — see ExtractOutcome / BuildOutcome).
+    CheckOutcome compile(const std::string& path,
+                         bool emit,
+                         std::string* js_out,
+                         bool extract = false,
+                         base::Json* components_out = nullptr) {
         CheckOutcome outcome;
         if (auto error = ensure_runtime()) {
             outcome.failure = std::move(error);
@@ -227,6 +246,7 @@ struct Toolchain::Impl {
         request.set("lib_dir", generic(config.lib_dir));
         request.set("options", std::move(options.value));
         request.set("emit", emit);
+        request.set("extract", extract);
         EvalResult result = runtime->call_json("__midday_ts_run", request);
         entry_root.clear();
         if (result.error) {
@@ -248,6 +268,12 @@ struct Toolchain::Impl {
             const base::Json* js = result.value.find("js");
             if (outcome.ok && js != nullptr && js->is_string())
                 *js_out = js->as_string();
+        }
+        if (components_out != nullptr) {
+            const base::Json* components = result.value.find("components");
+            *components_out = outcome.ok && components != nullptr && components->is_array()
+                                  ? *components
+                                  : base::Json::array();
         }
         return outcome;
     }
@@ -309,6 +335,13 @@ CheckOutcome Toolchain::check(const std::string& path) {
     return impl_->compile(path, false, nullptr);
 }
 
+ExtractOutcome Toolchain::extract(const std::string& path) {
+    ExtractOutcome outcome;
+    outcome.components = base::Json::array();
+    outcome.check = impl_->compile(path, false, nullptr, /*extract=*/true, &outcome.components);
+    return outcome;
+}
+
 BuildOutcome Toolchain::build(const std::string& path) {
     return impl_->build(path);
 }
@@ -332,6 +365,11 @@ Toolchain::LoadOutcome Toolchain::load_module(ScriptRuntime& runtime, const std:
             // mapping so typecheck and runtime resolve identically.
             target = std::filesystem::path(impl_->config.lib_ts_dir) /
                      specifier.substr(std::string_view("midday/").size());
+        } else if (specifier == "midday") {
+            // The bare component-authoring surface (m1-ts-components):
+            // "<lib_ts_dir>/index.ts", mirroring the exact ("midday") paths
+            // entry above so typecheck and runtime resolve identically.
+            target = std::filesystem::path(impl_->config.lib_ts_dir) / "index.ts";
         } else {
             return std::nullopt; // other bare specifiers keep refusing
         }

@@ -51,3 +51,19 @@ and `batch_views.cpp` (the one sanctioned typed-array exception, through the
   `api/bindings_spec.json` `state_script_hooks`, drift-gated by
   `golden.ts_hook_parity`. Hook faults surface via `first_error()`
   (tick-annotated); the run host fails the run loudly.
+- **Component-authoring binding** (`component_host.h`, m1-ts-components):
+  the native seat behind `entity.get/tryGet/has/root` and `this.emit`'s
+  own-key trigger (`ts/lib/component.ts`). Two native primitives never
+  throw — `__midday_entity_status(index, generation)` (aliveness + a
+  latest-despawn-tick record, `note_despawn()`) and `__midday_entity_root`
+  (`core::hierarchy::Hierarchy::owner_of` — "the nearest ancestor-or-self
+  marked owner," spec 4.2's entity.root(); a caller with no Hierarchy gets
+  identity root()) — so the TS side raises stale-ref errors as a PLAIN
+  throw, never a native one: `script_runtime.cpp`'s exception converter
+  only locates a callsite for a pure-JS throw (a native-origin throw sits
+  behind a "(native)" frame it does not look past). `__midday_trigger_entity`
+  / `__midday_trigger_named` back `events.trigger`'s two key flavors
+  (an `EntityRef` or a symbolic/group string). TS-authored `@component`
+  instances have no C++ type — they live in `ts/lib/component.ts`'s own
+  per-entity object directory, never a typed `ecs::Pool<T>` (which
+  `core/ecs/world.h` aborts on for an unregistered type by construction).

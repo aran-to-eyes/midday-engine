@@ -126,10 +126,11 @@ ONE deterministic number writer — core `base::Json::dump()` natively,
 File = header (4 `//` lines: fixed first line; then
 `// engine_version <v>, api_compat_hash <h> (signatures only; docs excluded).`;
 then two fixed pointer lines) + blank line + `declare namespace midday {` +
-five sections + `}` + newline. Namespace members are indented 4 spaces,
-interface/function bodies 8. Every block (banner comment, interface,
-function, `namespace expr`) is separated from the next by exactly one blank
-line.
+five sections + `}` + blank line + one banner comment + `declare module
+"midday" {` + the Script component API body + `}` + newline. Namespace
+members are indented 4 spaces, interface/function bodies 8. Every block
+(banner comment, interface, function, `namespace expr`) is separated from
+the next by exactly one blank line.
 
 Section banners (fixed strings, in order):
 
@@ -142,8 +143,18 @@ Section banners (fixed strings, in order):
 Section contents:
 
 1. **Value types**: a fixed preamble (see the emitter/golden): `Vec2` `Vec3`
-   `Vec4` `Quat` `Color` interfaces with `number` fields, `EntityRef` with
-   `readonly alive: boolean;`, `type AssetRef = string;`.
+   `Vec4` `Quat` `Color` interfaces with `number` fields; `type AssetRef =
+   string;`; `EntityRef` with `readonly index: number;`,
+   `readonly generation: number;`, `readonly alive: boolean;`, and the
+   m1-ts-components typed-access methods `get<T extends
+   import("midday").Component>(ctor: import("midday").ComponentCtor<T>): T;`,
+   `tryGet<T extends import("midday").Component>(ctor:
+   import("midday").ComponentCtor<T>): T | undefined;`, `has(ctor:
+   import("midday").ComponentCtor<import("midday").Component>): boolean;`,
+   `root(): EntityRef;` — the `import("midday")` type-query resolves the
+   ambient module below (self-referential within this same generated file;
+   TypeScript resolves ambient module declarations by name across the
+   whole program, not per-file).
 2. **Classes**: per class `interface <Pascal(name)> { ... }` — properties
    first (declaration order; `read_only` flag ⇒ `readonly ` prefix; always
    required — runtime state is fully populated, defaults apply at load),
@@ -164,6 +175,29 @@ Section contents:
    ignoring `required`; else `?` unless required). Then map
    `interface VerbArgsByName { "<name>": <Pascal>VerbArgs; }`, JSDoc
    `/** Verb name -> parsed-argument type. */`.
+6. **Script component API** (m1-ts-components, trailing `declare module
+   "midday" { ... }` block, OUTSIDE `declare namespace midday`): re-exports
+   of the value types (`export type Vec2 = midday.Vec2;` ... `EntityRef`,
+   `AssetRef`), then the FIXED (non-data-driven) component-authoring
+   surface — `FieldOptions`, `ComponentCtor<T>`, `Component`, `StateScript`,
+   `Transform`, `component()`/`field()` decorator declarations, `events`,
+   `world.query` — byte-identical between the two generators (`COMPONENT_API`
+   in `ts/codegen/dts.ts`, `kComponentApi` in
+   `tools/codegen_bootstrap/dts_emit.cpp`; NOT derived from
+   `engine_api.json`, so unaffected by drift in it beyond re-export shape),
+   then one DATA-DRIVEN line per registered event, source order:
+   `export type <Pascal(name)> = midday.EventPayloads["<name>"];` — the
+   bare, `...Event`-suffix-free name a component's `onEvent`-shaped method
+   names its payload with (`import('midday').TriggerEntered`). Never
+   collides with section 3's `<Pascal(name)>Event` claim (same
+   `pascalCase(name)` prefix, so the existing uniqueness check already
+   covers it). This block is deliberately ambient with NO backing file:
+   tsc always prefers an in-program ambient module declaration over a
+   `paths`-based file resolution for an EXACT specifier match (confirmed
+   empirically), so `ts/lib/component.ts` (the real runtime
+   implementation, `ts/lib/index.ts` re-exporting it as the bare `midday`
+   RUNTIME resolution target) is a separate, hand-synchronized surface —
+   see `ts/toolchain/README.md`.
 
 Generated interface names must be unique across the whole file (checked;
 collision is a `codegen.duplicate_symbol` validation error).

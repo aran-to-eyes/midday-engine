@@ -91,6 +91,21 @@ struct BuildStats {
     std::int64_t cache_hits = 0;
 };
 
+// extract(): AST-only component-schema extraction (m1-ts-components) — the
+// code is NEVER run (validate-before-write). `check.ok` gates `components`
+// exactly like every other CheckOutcome: a schema a diagnostic (unresolved
+// field/param/return type, a non-literal @field(...) argument) reports
+// through the SAME diagnostics array a type error or lint hit would, so an
+// unextractable component fails clean the same way. `components` is the
+// entry file's `@component()`-decorated classes, source order, each
+// `{name, file, fields: [{name, type, default?, ...decoratorArgs}],
+// methods: [{name, params: [{name, type}], returns?}]}` — `type` is a
+// canonical reflect TypeDesc spelling (api/CODEGEN.md's mapping table).
+struct ExtractOutcome {
+    CheckOutcome check;
+    base::Json components; // array; empty unless check.ok
+};
+
 class Toolchain {
 public:
     explicit Toolchain(ToolchainConfig config = {});
@@ -102,6 +117,13 @@ public:
 
     // Typecheck + lint (no emit, no cache traffic).
     CheckOutcome check(const std::string& path);
+
+    // Typecheck + lint, then (only if clean) the AST schema-extraction walk
+    // over `path` alone — imports are typechecked but never walked for
+    // components (schema extraction is a property of the entry file an
+    // agent authored, not its whole import graph). No emit, no cache
+    // traffic, no execution — see ExtractOutcome.
+    ExtractOutcome extract(const std::string& path);
 
     // check + transpile + populate the content-hash cache. A cache hit skips
     // the compiler entirely (the key covers everything that could change the

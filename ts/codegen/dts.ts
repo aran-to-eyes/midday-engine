@@ -28,7 +28,15 @@ const VALUE_TYPES =
     "        a: number;\n    }\n" +
     "\n" +
     '    /** TypeDesc "entity_ref": generational entity handle; a stale handle reads alive == false. */\n' +
-    "    interface EntityRef {\n        readonly alive: boolean;\n    }\n" +
+    "    interface EntityRef {\n" +
+    "        readonly index: number;\n" +
+    "        readonly generation: number;\n" +
+    "        readonly alive: boolean;\n" +
+    "        get<T extends import(\"midday\").Component>(ctor: import(\"midday\").ComponentCtor<T>): T;\n" +
+    "        tryGet<T extends import(\"midday\").Component>(ctor: import(\"midday\").ComponentCtor<T>): T | undefined;\n" +
+    "        has(ctor: import(\"midday\").ComponentCtor<import(\"midday\").Component>): boolean;\n" +
+    "        root(): EntityRef;\n" +
+    "    }\n" +
     "\n" +
     '    /** TypeDesc "asset_ref": project-root-relative asset path. */\n' +
     "    type AssetRef = string;\n";
@@ -124,6 +132,93 @@ function exprBlock(document: JObject): string {
     return "    namespace expr {\n" + body + "    }\n";
 }
 
+// The fixed component-authoring surface: api/CODEGEN.md "Script component
+// API". Declared AMBIENTLY (never a real backing file) because tsc always
+// prefers an in-program ambient module declaration over paths-based file
+// resolution for an EXACT specifier match, so a competing "midday" paths
+// entry would sit inert (proven empirically) — ts/lib/component.ts is the
+// real runtime implementation this block must stay in sync with by hand
+// (ts/toolchain/toolchain.cpp resolves "midday" to it at RUNTIME only).
+const COMPONENT_API =
+    "    export type Vec2 = midday.Vec2;\n" +
+    "    export type Vec3 = midday.Vec3;\n" +
+    "    export type Vec4 = midday.Vec4;\n" +
+    "    export type Quat = midday.Quat;\n" +
+    "    export type Color = midday.Color;\n" +
+    "    export type EntityRef = midday.EntityRef;\n" +
+    "    export type AssetRef = midday.AssetRef;\n" +
+    "\n" +
+    "    export interface FieldOptions {\n" +
+    "        min?: number;\n" +
+    "        max?: number;\n" +
+    "        save?: boolean;\n" +
+    "        event?: boolean;\n" +
+    "    }\n" +
+    "\n" +
+    "    export interface ComponentCtor<T extends Component> {\n" +
+    "        new (): T;\n" +
+    "        readonly name: string;\n" +
+    "    }\n" +
+    "\n" +
+    "    export abstract class Component {\n" +
+    "        readonly entity: midday.EntityRef;\n" +
+    "        emit(name: string, payload?: Record<string, unknown>): void;\n" +
+    "    }\n" +
+    "\n" +
+    "    export abstract class StateScript {\n" +
+    "        readonly entity: midday.EntityRef;\n" +
+    "        emit(name: string, payload?: Record<string, unknown>): void;\n" +
+    "        onEnter?(from: string): void;\n" +
+    "        onExit?(to: string): void;\n" +
+    "        onUpdate?(dt: number): void;\n" +
+    "        onFixedUpdate?(dt: number): void;\n" +
+    "    }\n" +
+    "\n" +
+    "    export class Transform extends Component {\n" +
+    "        position: midday.Vec3;\n" +
+    "        rotation: midday.Quat;\n" +
+    "        scale: midday.Vec3;\n" +
+    "    }\n" +
+    "\n" +
+    "    export function component(): (\n" +
+    "        ctor: new (...args: any[]) => Component,\n" +
+    "        context: ClassDecoratorContext,\n" +
+    "    ) => void;\n" +
+    "    export function field(\n" +
+    "        options?: FieldOptions,\n" +
+    "    ): (value: undefined, context: ClassFieldDecoratorContext) => void;\n" +
+    "\n" +
+    "    export const events: {\n" +
+    "        trigger(\n" +
+    "            name: string,\n" +
+    "            payload: Record<string, unknown>,\n" +
+    "            opts: { key: midday.EntityRef | string },\n" +
+    "        ): void;\n" +
+    "    };\n" +
+    "\n" +
+    "    export const world: {\n" +
+    "        query<T extends readonly ComponentCtor<Component>[]>(\n" +
+    "            ...ctors: T\n" +
+    "        ): IterableIterator<\n" +
+    "            [midday.EntityRef, ...{ [K in keyof T]: T[K] extends ComponentCtor<infer C> ? C : never }]\n" +
+    "        >;\n" +
+    "    };\n";
+
+// One bare, ergonomic payload-type alias per registered event:
+// `import('midday').TriggerEntered` is how a component's `onEvent`-shaped
+// method names the payload it wants, without the `...Event` suffix the
+// reflected-classes/docs surface keeps (section 3 stays untouched). Never
+// collides: two events cannot already share a pascalCase(name) (section 3's
+// existing uniqueness claim on "<Pascal>Event" implies uniqueness of the
+// bare "<Pascal>" prefix too).
+function eventAliasBlock(document: JObject): string {
+    let body = "";
+    for (const entry of entries(document, "events"))
+        body += "    export type " + pascalCase(str(entry, "name")) + ' = midday.EventPayloads["' +
+            str(entry, "name") + '"];\n';
+    return body;
+}
+
 function verbBlock(entry: JValue): string {
     let body = "";
     for (const flag of entries(entry, "flags")) {
@@ -195,6 +290,14 @@ export function emitDts(document: JObject): string {
         "// Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.\n\n" +
         "declare namespace midday {\n" +
         blocks.join("\n") +
+        "}\n\n" +
+        '// -- Script component API (ambient; ts/lib/component.ts is the real ' +
+            "runtime surface kept in sync by hand — api/CODEGEN.md \"Script component " +
+            'API") --\n' +
+        'declare module "midday" {\n' +
+        COMPONENT_API +
+        "\n" +
+        eventAliasBlock(document) +
         "}\n"
     );
 }
