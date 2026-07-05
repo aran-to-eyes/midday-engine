@@ -38,6 +38,13 @@
 // `*.input_profile.yaml` (the runtime rebinding overlay) loads as a single
 // file, no project merge, and still runs the same conflict scan over its
 // own rebinds.
+// A SIXTH and SEVENTH path (m1-project-new, core/loader/project_schema.h):
+// `*.project.yaml` / `*.import.yaml` run through the SAME generic engine as
+// `--schema-file`, just against a compiled-in format-entry document instead
+// of one read from disk — a single file, no project-wide merge (a project
+// has exactly one `midday.project.yaml`/`midday.import.yaml`, never a
+// namespace of them). Neither schema is a schema_manifest.json `formats[]`
+// citizen (that array stays scene/machine/prefab only, m1-scene-format's).
 // Every failure here is the validation class (exit 3): an unreadable or
 // malformed schema is DATA, exactly like `api diff`'s baseline document
 // (api.cpp precedent) — usage errors (exit 2) are reserved for the flag
@@ -47,6 +54,7 @@
 #include "core/base/file_io.h"
 #include "core/loader/format_schema.h"
 #include "core/loader/loader.h"
+#include "core/loader/project_schema.h"
 #include "core/loader/yaml.h"
 #include "core/reflect/builtin_events.h"
 #include "core/reflect/registry.h"
@@ -63,6 +71,8 @@ constexpr std::string_view kDefaultManifest = "api/schema_manifest.json";
 constexpr std::string_view kEventsSuffix = ".events.yaml";
 constexpr std::string_view kInputSuffix = ".input.yaml";
 constexpr std::string_view kInputProfileSuffix = ".input_profile.yaml";
+constexpr std::string_view kProjectConfigSuffix = ".project.yaml";
+constexpr std::string_view kImportPolicySuffix = ".import.yaml";
 
 VerbOutcome usage(std::string code, std::string message) {
     VerbOutcome out;
@@ -236,6 +246,44 @@ VerbOutcome validate_input_profile(const std::string& path) {
     return out;
 }
 
+// The single-file, no-project-merge validation shape every schema-driven
+// path ends in (both the --schema/--schema-file paths below AND the
+// m1-project-new dispatch reuse this — one render, one envelope shape,
+// never copy-pasted per caller).
+VerbOutcome validate_against_schema(const loader::FormatSchema& schema, const std::string& path) {
+    loader::YamlParseResult parsed = loader::parse_yaml_file(path);
+    if (parsed.error.has_value())
+        return refuse(std::move(*parsed.error));
+
+    loader::ValidateResult result = loader::validate_document(schema, parsed.root, path);
+    if (result.error.has_value())
+        return refuse(std::move(*result.error));
+
+    VerbOutcome out;
+    out.payload.set("file", path);
+    out.payload.set("schema", schema.name);
+    Json version = Json::object();
+    version.set("authored", result.authored_version);
+    version.set("current", result.current_version);
+    version.set("migrated", result.migrated);
+    out.payload.set("format_version", std::move(version));
+    out.human =
+        path + ": valid (" + schema.name + ", format " + std::to_string(result.current_version) +
+        (result.migrated ? " — migrated from " + std::to_string(result.authored_version) : "") +
+        ")";
+    return out;
+}
+
+// m1-project-new's two dispatch entries: the project's config and import
+// policy, each exactly one compiled-in schema, no --schema flag needed.
+VerbOutcome validate_project_config(const std::string& path) {
+    return validate_against_schema(loader::project_config_schema(), path);
+}
+
+VerbOutcome validate_import_policy(const std::string& path) {
+    return validate_against_schema(loader::import_policy_schema(), path);
+}
+
 VerbOutcome validate_verb(const VerbArgs& args) {
     const bool by_name = args.present("schema");
     const bool by_file = args.present("schema-file");
@@ -249,6 +297,10 @@ VerbOutcome validate_verb(const VerbArgs& args) {
             return validate_input_profile(path);
         if (!by_file && path.ends_with(kInputSuffix))
             return validate_input(path);
+        if (!by_file && path.ends_with(kProjectConfigSuffix))
+            return validate_project_config(path);
+        if (!by_file && path.ends_with(kImportPolicySuffix))
+            return validate_import_policy(path);
         return usage("usage.bad_schema_selector",
                      "exactly one of --schema <name> or --schema-file <path> is required");
     }
@@ -261,30 +313,7 @@ VerbOutcome validate_verb(const VerbArgs& args) {
     if (!resolution.schema.has_value())
         return std::move(resolution.failure);
 
-    const std::string& path = args.get_string("file");
-    loader::YamlParseResult parsed = loader::parse_yaml_file(path);
-    if (parsed.error.has_value())
-        return refuse(std::move(*parsed.error));
-
-    loader::ValidateResult result =
-        loader::validate_document(*resolution.schema, parsed.root, path);
-    if (result.error.has_value())
-        return refuse(std::move(*result.error));
-
-    VerbOutcome out;
-    out.payload.set("file", path);
-    out.payload.set("schema", resolution.schema->name);
-    Json version = Json::object();
-    version.set("authored", result.authored_version);
-    version.set("current", result.current_version);
-    version.set("migrated", result.migrated);
-    out.payload.set("format_version", std::move(version));
-    out.human =
-        path + ": valid (" + resolution.schema->name + ", format " +
-        std::to_string(result.current_version) +
-        (result.migrated ? " — migrated from " + std::to_string(result.authored_version) : "") +
-        ")";
-    return out;
+    return validate_against_schema(*resolution.schema, args.get_string("file"));
 }
 
 constexpr FlagSpec kFlags[] = {

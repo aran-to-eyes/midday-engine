@@ -4,6 +4,7 @@
 
 #include "core/base/file_io.h"
 #include "core/loader/parse_util.h"
+#include "core/loader/yaml_build.h"
 #include "core/loader/yaml_emit.h"
 
 #include <array>
@@ -21,21 +22,6 @@ constexpr int kTextWidth = 13; // ceil(log36(2^64)) = 13; covers the full 64-bit
 int digit_of(char c) {
     const std::string_view::size_type pos = kAlphabet.find(c);
     return pos == std::string_view::npos ? -1 : static_cast<int>(pos);
-}
-
-// A leaf {format, uid} map, built directly (never parsed) for write_uid_sidecar.
-YamlNode make_scalar(std::string text) {
-    YamlNode node;
-    node.kind = YamlNode::Kind::kScalar;
-    node.scalar = std::move(text);
-    return node;
-}
-
-YamlEntry make_entry(std::string key, YamlNode value) {
-    YamlEntry entry;
-    entry.key = std::move(key);
-    entry.value.push_back(std::move(value));
-    return entry;
 }
 
 constexpr std::array<std::string_view, 2> kSidecarKeys = {"format", "uid"};

@@ -17,6 +17,7 @@ add_library(midday_loader STATIC
     uid.cpp
     uid_registry.cpp
     asset_ref.cpp
+    project_schema.cpp
 )
 add_library(midday::loader ALIAS midday_loader)
 target_link_libraries(midday_loader
@@ -39,6 +40,7 @@ add_library(midday_loader_tests OBJECT
     uid_test.cpp
     uid_registry_test.cpp
     asset_ref_test.cpp
+    project_schema_test.cpp
 )
 target_link_libraries(midday_loader_tests
     PRIVATE midday::loader midday::journal midday::tick doctest::doctest)

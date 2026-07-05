@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `a12b4221e3231d69`
+- api_compat_hash: `204ffe872e263449`
 
 ## Classes
 
@@ -566,3 +566,21 @@ Positionals:
 | --- | --- | --- | --- | --- |
 | `src` | `string` | yes | no | the asset's current path |
 | `dst` | `string` | yes | no | the asset's new path |
+
+### `midday new`
+
+scaffold a fresh project: config, import policy, input map, and a first empty scene
+
+- compat_hash: `53e06b733082d58e`
+
+Flags:
+
+| flag | type | required | default | doc |
+| --- | --- | --- | --- | --- |
+| `--name` | `string` | no |  | project display name (default: the target directory's own name) |
+
+Positionals:
+
+| positional | type | required | variadic | doc |
+| --- | --- | --- | --- | --- |
+| `dir` | `string` | yes | no | target directory for the new project (must not exist, or be empty) |

@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash a12b4221e3231d69 (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash 204ffe872e263449 (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -383,6 +383,14 @@ declare namespace midday {
         dst: string;
     }
 
+    /** scaffold a fresh project: config, import policy, input map, and a first empty scene */
+    interface NewVerbArgs {
+        /** project display name (default: the target directory's own name) */
+        name?: string;
+        /** target directory for the new project (must not exist, or be empty) */
+        dir: string;
+    }
+
     /** Verb name -> parsed-argument type. */
     interface VerbArgsByName {
         "version": VersionVerbArgs;
@@ -398,6 +406,7 @@ declare namespace midday {
         "fmt": FmtVerbArgs;
         "check": CheckVerbArgs;
         "mv": MvVerbArgs;
+        "new": NewVerbArgs;
     }
 }
 

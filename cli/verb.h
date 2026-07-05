@@ -147,5 +147,6 @@ const VerbSpec& validate_spec();
 const VerbSpec& fmt_spec();
 const VerbSpec& check_spec();
 const VerbSpec& mv_spec();
+const VerbSpec& new_spec();
 
 } // namespace midday::cli
