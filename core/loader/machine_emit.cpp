@@ -10,12 +10,11 @@
 
 #include "core/loader/machine_emit.h"
 
+#include "core/base/float_format.h"
 #include "core/expr/value.h"
 #include "core/loader/yaml_build.h"
 #include "core/statechart/machine_desc.h"
 
-#include <array>
-#include <charconv>
 #include <string>
 #include <utility>
 #include <vector>
@@ -68,13 +67,14 @@ YamlNode json_to_yaml(const base::Json& value) {
 // shortest-round-trip-for-double algorithm then has to spell out the
 // widened value exactly (`1.2f` widens to `1.2000000476837158`, a real
 // double with no shorter double spelling — not a bug, just the wrong
-// precision to be shortest FOR). std::to_chars<float> computes the
-// shortest decimal that round-trips to the SAME float32 value instead.
+// precision to be shortest FOR). base::append_shortest_float computes the
+// shortest decimal that round-trips to the SAME float32 value instead —
+// via dragonbox (core/base/float_format.h), NEVER the FP std::to_chars
+// overload, which the iOS SDK marks unavailable below its 16.3 floor.
 YamlNode float_scalar(float value) {
-    std::array<char, 32> buffer{};
-    const std::to_chars_result result =
-        std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
-    return make_scalar(std::string(buffer.data(), result.ptr), /*quoted=*/false);
+    std::string text;
+    base::append_shortest_float(text, value);
+    return make_scalar(std::move(text), /*quoted=*/false);
 }
 
 YamlNode vec3_to_yaml(const math::Vec3& value) {

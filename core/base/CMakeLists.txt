@@ -4,6 +4,7 @@
 add_library(midday_base STATIC
     arena.cpp
     error.cpp
+    float_format.cpp
     json_parse.cpp
     json_write.cpp
     log.cpp
@@ -23,6 +24,7 @@ midday_apply_deterministic_fp(midday_base)
 add_library(midday_base_tests OBJECT
     arena_test.cpp
     error_test.cpp
+    float_format_test.cpp
     json_test.cpp
     log_test.cpp
     name_test.cpp
