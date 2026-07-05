@@ -14,9 +14,8 @@
 //   * Single-threaded by contract (one arena per owner); the job system
 //     (m2-jobs) gives workers their own arenas rather than sharing one.
 //
-// Consumers: none yet — the tick loop and loader shipped without it. It awaits
-// m2-jobs frame packets, where each worker gets its own arena for per-frame
-// scratch (the single-threaded-per-owner contract above is why).
+// Consumers: named by the M0 plan — tick-loop frame packets (m0-tick-loop)
+// and loader parse scratch (m0-yaml-loader-run) allocate from this type.
 
 #pragma once
 

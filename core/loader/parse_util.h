@@ -51,6 +51,8 @@ FieldResult require_field(const YamlNode& map,
 template <typename T> struct Parsed {
     T value{};
     std::optional<base::Error> error;
+
+    explicit operator bool() const { return !error.has_value(); }
 };
 
 Parsed<std::string> get_string(const YamlNode& node, std::string_view file);

@@ -27,7 +27,7 @@ std::optional<base::Error> Hierarchy::set_local(ecs::EntityRef entity,
     if (node == nullptr)
         return detail::not_adopted_error(entity);
     world_->try_get<LocalTransform>(entity)->value = local;
-    mark_transform_dirty(*node);
+    mark_transform_dirty(entity, *node);
     return std::nullopt;
 }
 
@@ -41,9 +41,10 @@ const math::Mat4* Hierarchy::world_of(ecs::EntityRef entity) const {
     return world == nullptr ? nullptr : &world->value;
 }
 
-void Hierarchy::mark_transform_dirty(Node& node) {
+void Hierarchy::mark_transform_dirty(ecs::EntityRef entity, Node& node) {
     node.transform_dirty = true;
     any_transform_dirty_ = true;
+    (void)entity;
     for (ecs::EntityRef at = node.parent; !at.is_null();) {
         Node& ancestor = *node_of(at);
         if (ancestor.transform_dirty_below)
@@ -57,15 +58,19 @@ void Hierarchy::propagate() {
     if (!any_transform_dirty_)
         return;
 
-    std::vector<PropagateItem>& stack = propagate_stack_;
-    stack.clear();
+    struct Item {
+        ecs::EntityRef entity;
+        bool parent_changed = false;
+    };
+
+    std::vector<Item> stack;
     // Roots pushed reversed so the first root is processed first — parents
     // always precede children on any DFS; traversal order is cosmetic and
     // results are order-independent, but we keep it canonical anyway.
     for (ecs::EntityRef root = last_root_; !root.is_null(); root = node_of(root)->prev_sibling)
-        stack.push_back(PropagateItem{root, false});
+        stack.push_back(Item{root, false});
     while (!stack.empty()) {
-        const PropagateItem item = stack.back();
+        const Item item = stack.back();
         stack.pop_back();
         Node& node = *node_of(item.entity);
         const bool recompute = item.parent_changed || node.transform_dirty;
@@ -81,7 +86,7 @@ void Hierarchy::propagate() {
             node.transform_dirty_below = false;
             for (ecs::EntityRef child = node.last_child; !child.is_null();
                  child = node_of(child)->prev_sibling)
-                stack.push_back(PropagateItem{child, recompute});
+                stack.push_back(Item{child, recompute});
         }
     }
     any_transform_dirty_ = false;

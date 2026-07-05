@@ -106,6 +106,10 @@ public:
 
     [[nodiscard]] std::uint32_t live_count() const { return live_count_; }
 
+    [[nodiscard]] std::uint32_t slot_count() const {
+        return static_cast<std::uint32_t>(slots_.size());
+    }
+
     // Deterministic teardown sweep (device destruction): visits every live
     // value in ascending slot order.
     template <typename Fn> void for_each_live(Fn&& fn) {

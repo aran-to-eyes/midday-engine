@@ -38,6 +38,8 @@ struct Writer::State {
     std::uint64_t next_id = 1;
     std::uint64_t written = 0; // records physically in the stream
     std::uint64_t last_tick = 0;
+    bool any_submitted = false;
+    bool any_written = false;
     std::uint64_t next_index_tick = 0;
     std::uint64_t plain_bytes = 0;      // decompressed stream size so far
     std::uint64_t compressed_bytes = 0; // journal.jsonl.zst size so far
@@ -177,7 +179,7 @@ std::uint64_t Writer::record(std::uint64_t tick,
         return 0;
     // Validation is tier-independent so behavior never varies with the tier
     // config (D-BUILD-032).
-    if (tick < s.last_tick) {
+    if (s.any_submitted && tick < s.last_tick) {
         s.fail("journal.tick_order",
                "tick " + std::to_string(tick) + " after tick " + std::to_string(s.last_tick));
         return 0;
@@ -187,12 +189,13 @@ std::uint64_t Writer::record(std::uint64_t tick,
                "cause_id " + std::to_string(cause_id) + " has not been assigned yet");
         return 0;
     }
+    s.any_submitted = true;
     s.last_tick = tick;
     const std::uint64_t id = s.next_id++;
     if (!s.header.tiers.enabled(tier))
         return id; // id consumed, nothing written: FLIGHT bytes stay invariant
 
-    if (tick >= s.next_index_tick) {
+    if (!s.any_written || tick >= s.next_index_tick) {
         s.end_frame();
         if (s.error)
             return 0;
@@ -202,20 +205,17 @@ std::uint64_t Writer::record(std::uint64_t tick,
                                        .frame_offset = s.compressed_bytes});
         s.next_index_tick = tick + s.header.index_stride_ticks;
         s.frame_open = true;
+        s.any_written = true;
     }
 
-    // Same key order and empty-payload elision as to_jsonl (record.cpp), built
-    // directly so the hot path never deep-copies the payload into a Record.
-    base::Json json = base::Json::object();
-    json.set("tick", static_cast<std::int64_t>(tick));
-    json.set("tier", to_string(tier));
-    json.set("kind", kind);
-    json.set("cause_id", static_cast<std::int64_t>(cause_id));
-    json.set("id", static_cast<std::int64_t>(id));
-    if (!(payload.is_object() && payload.items().empty()))
-        json.set("payload", std::move(payload));
-    std::string line = json.dump();
-    line.push_back('\n');
+    Record entry;
+    entry.tick = tick;
+    entry.tier = tier;
+    entry.kind = std::string(kind);
+    entry.cause_id = cause_id;
+    entry.id = id;
+    entry.payload = std::move(payload);
+    const std::string line = to_jsonl(entry) + "\n";
 
     s.pump(line.data(), line.size(), ZSTD_e_continue);
     if (s.error)

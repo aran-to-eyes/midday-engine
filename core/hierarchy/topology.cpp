@@ -217,7 +217,7 @@ void Hierarchy::link_last(ecs::EntityRef entity, Node& node, ecs::EntityRef pare
     }
 }
 
-void Hierarchy::unlink(Node& node) {
+void Hierarchy::unlink(ecs::EntityRef entity, Node& node) {
     Node* parent_node = node.parent.is_null() ? nullptr : node_of(node.parent);
     if (!node.prev_sibling.is_null()) {
         node_of(node.prev_sibling)->next_sibling = node.next_sibling;
@@ -236,6 +236,7 @@ void Hierarchy::unlink(Node& node) {
     node.parent = ecs::EntityRef{};
     node.prev_sibling = ecs::EntityRef{};
     node.next_sibling = ecs::EntityRef{};
+    (void)entity;
 }
 
 bool Hierarchy::subtree_contains(ecs::EntityRef root, ecs::EntityRef entity) const {
@@ -289,11 +290,11 @@ void Hierarchy::apply_reparent(ecs::EntityRef child, ecs::EntityRef new_parent) 
     const std::int64_t new_cover =
         new_parent.is_null() ? 0 : static_cast<std::int64_t>(node_of(new_parent)->dormant_depth);
 
-    unlink(child_node);
+    unlink(child, child_node);
     link_last(child, child_node, new_parent);
     if (new_cover != old_cover)
         apply_dormancy_delta(child, new_cover - old_cover);
-    mark_transform_dirty(child_node);
+    mark_transform_dirty(child, child_node);
     order_dirty_ = true;
     ++stats_.applied;
 }
@@ -313,7 +314,7 @@ void Hierarchy::on_despawn(ecs::EntityRef entity) {
         [[maybe_unused]] auto error = world_->despawn(child);
         assert(!error); // alive by tree invariant; despawn paths never iterate
     }
-    unlink(*node_of(entity));
+    unlink(entity, *node_of(entity));
     --adopted_count_;
     order_dirty_ = true;
 }

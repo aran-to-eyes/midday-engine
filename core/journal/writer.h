@@ -38,7 +38,7 @@ namespace midday::journal {
 struct WriterConfig {
     // identity (covered by the replay-identity hash)
     std::string engine_version;                       // e.g. "0.1.0"
-    std::string api_compat_hash = "0000000000000000"; // neutral default; run wires the real hash
+    std::string api_compat_hash = "0000000000000000"; // slot until m0-api-json
     std::uint64_t seed = 0;
     TierConfig tiers;                                            // FLIGHT is not a knob: always on
     std::uint32_t index_stride_ticks = kDefaultIndexStrideTicks; // >= 1

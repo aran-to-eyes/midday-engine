@@ -36,13 +36,13 @@ if [ -n "$FIRST_PARTY_CXX" ]; then
         # The pinned (non-Apple) clang-tidy has no implicit macOS sysroot.
         TIDY_EXTRA=(--extra-arg="-isysroot$(xcrun --show-sdk-path)")
     fi
-    # One file per process, all cores: the serial invocation crossed 30
-    # minutes on 2-core CI runners once the tree passed 150 TUs. -n 1 (not
-    # batched) keeps each TU independent so a finding is attributed to its
-    # file with no cross-batch diagnostic cascade; xargs -P preserves the
-    # exit contract (any failing TU fails the step).
+    # One process per TU, all cores: the serial invocation crossed 30 minutes
+    # on 2-core CI runners once the tree passed 150 TUs. xargs -P preserves
+    # the exit contract (any failing TU fails the step); output interleaving
+    # is acceptable — findings carry file:line.
     JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
-    echo "$FIRST_PARTY_TUS" | xargs -n 1 -P "$JOBS" \
+    # shellcheck disable=SC2086
+    echo "$FIRST_PARTY_TUS" | xargs -n 4 -P "$JOBS" \
         "$VENV/bin/clang-tidy" -p build/dev --quiet "${TIDY_EXTRA[@]}"
 fi
 
@@ -228,8 +228,7 @@ echo "$TAINT_OUT" | jq -e '.error.code == "script.lint"
     and .error.details.diagnostics[0].line > 0' >/dev/null
 
 step "license scan (+ negative fixture)"
-# test_license_scan.py runs the negative fixture AND a full repo pass, so it is
-# the single license gate — no separate license_scan.py invocation needed.
+scripts/license_scan.py >/dev/null
 scripts/test_license_scan.py >/dev/null
 
 step "deterministic-FP flag scan"

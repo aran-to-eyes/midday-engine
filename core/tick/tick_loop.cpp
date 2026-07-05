@@ -9,7 +9,6 @@
 #include "core/journal/writer.h"
 
 #include <algorithm>
-#include <cassert>
 #include <string>
 #include <utility>
 
@@ -19,11 +18,6 @@ namespace {
 
 [[nodiscard]] std::size_t index_of(Phase phase) {
     return static_cast<std::size_t>(phase);
-}
-
-[[nodiscard]] double dt_from(std::uint32_t ticks_per_second) {
-    assert(ticks_per_second > 0); // TickLoopConfig defaults to 60; 0 is a caller bug
-    return 1.0 / static_cast<double>(ticks_per_second);
 }
 
 [[nodiscard]] base::Json phase_details(Phase phase) {
@@ -73,7 +67,7 @@ TickLoop::TickLoop(ecs::World& world,
                    journal::Writer& journal,
                    TickLoopConfig config)
     : world_(&world), hierarchy_(&hierarchy), bus_(&bus), journal_(&journal), config_(config),
-      dt_(dt_from(config.ticks_per_second)) {}
+      dt_(1.0 / static_cast<double>(config.ticks_per_second == 0 ? 60 : config.ticks_per_second)) {}
 
 // ---- phase hooks -----------------------------------------------------------
 

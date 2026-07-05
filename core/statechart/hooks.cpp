@@ -73,6 +73,7 @@ void Statechart::run_update_hooks(bool fixed, double dt, std::uint64_t cause_id)
                                                              base::Name(),
                                                              cause_id,
                                                              journal::Tier::Trace);
+                stats_.hook_calls += 1;
                 const StateHookContext context =
                     hook_context(instance, s, base::Name(), dt, record_id);
                 if (fixed)

@@ -45,6 +45,8 @@ jobs:
           build/ci/midday version --json | scripts/validate_envelope.py
       - name: Selftest
         run: build/ci/midday selftest
+      - name: License scan (incl. negative fixture)
+        run: scripts/test_license_scan.py
       - name: FP flag scan
         run: scripts/check_fp_flags.py build/ci/compile_commands.json
 
@@ -80,7 +82,7 @@ jobs:
       - name: Configure
         run: cmake --preset ci
       - name: Build
-        run: ninja -C build/ci midday
+        run: ninja -C build/ci midday codegen_bootstrap
       - name: engine_api.json drift (dump twice, byte-compare, committed diff)
         run: |
           build/ci/midday api dump --out build/ci/engine_api.json

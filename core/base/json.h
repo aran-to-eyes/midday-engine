@@ -104,10 +104,6 @@ public:
 
     // Object: insert or replace in place; insertion order is serialization order.
     Json& set(std::string_view key, Json value);
-    // Object: append a pair WITHOUT the duplicate scan set() performs — the
-    // caller guarantees `key` is absent (the JSON parser, having already
-    // rejected duplicates). Insertion order is serialization order.
-    Json& append_new(std::string key, Json value);
     // Object: pointer to the value for `key`; nullptr if absent or not an object.
     [[nodiscard]] const Json* find(std::string_view key) const;
     // Array: append.

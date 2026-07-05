@@ -197,12 +197,6 @@ Json& Json::set(std::string_view key, Json value) {
     return *this;
 }
 
-Json& Json::append_new(std::string key, Json value) {
-    assert(is_object());
-    std::get<Object>(value_).emplace_back(std::move(key), std::move(value));
-    return *this;
-}
-
 const Json* Json::find(std::string_view key) const {
     if (!is_object())
         return nullptr;

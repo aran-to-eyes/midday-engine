@@ -40,13 +40,20 @@
 namespace midday::script {
 
 struct ToolchainConfig {
-    // The only two knobs any caller sets. The vendored-compiler paths, the
-    // driver, and the engine TS library dir are fixed constants (kTypescriptJs
-    // etc. in toolchain.cpp): they are canonical parts of the toolchain
-    // fingerprint, so nothing may vary them. Repo-root-relative (M0 verbs run
-    // from the project root).
+    // Repo-root-relative defaults (M0 verbs run from the project root).
+    std::string typescript_js = "third_party/typescript/typescript.js";
+    std::string lib_dir = "third_party/typescript/lib";
     std::string engine_dts = "api/engine.d.ts";
+    std::string driver_js = "ts/toolchain/driver.js";
     std::string cache_dir = ".midday-cache/ts"; // regenerable, gitignored, never drift-gated
+    // The engine-side TS library: bare "midday/<name>" specifiers resolve to
+    // "<lib_ts_dir>/<name>.ts" (typecheck via the canonical paths mapping,
+    // runtime via load_module's resolver — D-BUILD-072). Every *.ts here is
+    // part of the toolchain fingerprint: editing the engine library soundly
+    // invalidates every cached script build. NOTE: the tsc paths mapping is
+    // canonical (part of the cache key), so this stays "ts/lib" in practice;
+    // it is configurable only for toolchain doctests.
+    std::string lib_ts_dir = "ts/lib";
 };
 
 // One diagnostic, structured: kind "type" (tsc, code "TS<n>") or "lint"

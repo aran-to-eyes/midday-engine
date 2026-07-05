@@ -138,7 +138,7 @@ struct Parser {
             Json value = parse_value();
             if (failed)
                 return {};
-            object.append_new(std::move(key), std::move(value)); // dup already rejected above
+            object.set(key, std::move(value));
             skip_ws();
             if (at_end())
                 return fail(pos, "unterminated object, expected ',' or '}'");

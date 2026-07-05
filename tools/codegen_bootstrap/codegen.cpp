@@ -281,6 +281,14 @@ std::vector<std::string> dts_shape_errors(std::string_view dts, const Json& docu
     return errors;
 }
 
+int exit_code_for(const Error& error) {
+    if (error.code.starts_with("usage."))
+        return 2;
+    if (error.code == "codegen.io.write" || error.code == "codegen.selfcheck")
+        return 1;
+    return 3;
+}
+
 std::string pascal_case(std::string_view name) {
     std::string out;
     out.reserve(name.size());

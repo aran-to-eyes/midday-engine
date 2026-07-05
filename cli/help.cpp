@@ -11,6 +11,10 @@
 namespace midday::cli {
 namespace {
 
+bool is_bool_flag(const FlagSpec& flag) {
+    return flag.type == "bool";
+}
+
 Json flag_schema(const FlagSpec& flag) {
     Json schema = Json::object();
     schema.set("name", flag.name);
@@ -36,7 +40,7 @@ Json positional_schema(const PositionalSpec& pos) {
 
 std::string flag_column(const FlagSpec& flag) {
     std::string text = "--" + std::string(flag.name);
-    if (flag.type != "bool")
+    if (!is_bool_flag(flag))
         text += " <" + std::string(flag.type) + ">";
     return text;
 }

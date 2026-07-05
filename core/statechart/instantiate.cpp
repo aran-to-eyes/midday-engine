@@ -278,7 +278,7 @@ std::optional<base::Error> Statechart::validate_and_compile(const MachineDesc& d
                                                      origin + "/when",
                                                      "statechart.bad_watcher",
                                                      "statechart.watcher_not_bool");
-                if (compiled.error.has_value())
+                if (compiled.error.has_value() || !compiled.program.has_value())
                     return compiled.error;
                 RtWatcher watcher{std::move(*compiled.program), watcher_desc.event, s, false};
                 staged.watchers.push_back(std::move(watcher));

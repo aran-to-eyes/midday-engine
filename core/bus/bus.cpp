@@ -8,7 +8,6 @@
 #include "core/reflect/registry.h"
 #include "core/reflect/type_model.h"
 
-#include <algorithm>
 #include <cassert>
 #include <string>
 #include <utility>
@@ -48,54 +47,47 @@ bool runtime_accepts(const reflect::TypeDesc& type, const Json& value) {
     }
 }
 
+// Appends the refusal diagnosis (reason[, field][, expected]) to `diag` when
+// the payload does not inhabit the event's schema. Strict both ways: every
+// declared field present and typed, no undeclared fields (agents deserve
+// refusal over silent tolerance — the D-BUILD-012 ethos).
+bool payload_invalid(const reflect::EventDesc& desc, const Json& payload, Json& diag) {
+    if (!payload.is_object()) {
+        diag.set("reason", "not_object");
+        return true;
+    }
+    for (const reflect::EventFieldDesc& field : desc.payload) {
+        const Json* value = payload.find(field.name.view());
+        if (value == nullptr) {
+            diag.set("reason", "missing_field");
+            diag.set("field", field.name.view());
+            return true;
+        }
+        if (!runtime_accepts(field.type, *value)) {
+            diag.set("reason", "field_type");
+            diag.set("field", field.name.view());
+            diag.set("expected", field.type.canonical());
+            return true;
+        }
+    }
+    for (const auto& [key, value] : payload.items()) {
+        bool declared = false;
+        for (const reflect::EventFieldDesc& field : desc.payload)
+            declared = declared || key == field.name.view();
+        if (!declared) {
+            diag.set("reason", "unknown_field");
+            diag.set("field", key);
+            return true;
+        }
+    }
+    return false;
+}
+
 Json diag_base(base::Name event, const EventKey& key) {
     Json diag = Json::object();
     diag.set("event", event.view());
     diag.set("key", key.journal_form());
     return diag;
-}
-
-// Returns the refusal diagnosis (event, key, reason[, field][, expected]) when
-// the payload does not inhabit the event's schema; nullopt on the happy path
-// (which then allocates no diagnostic at all). Strict both ways: every
-// declared field present and typed, no undeclared fields (agents deserve
-// refusal over silent tolerance — the D-BUILD-012 ethos).
-std::optional<Json> payload_invalid(const reflect::EventDesc& desc,
-                                    const Json& payload,
-                                    base::Name event,
-                                    const EventKey& event_key) {
-    if (!payload.is_object()) {
-        Json diag = diag_base(event, event_key);
-        diag.set("reason", "not_object");
-        return diag;
-    }
-    for (const reflect::EventFieldDesc& field : desc.payload) {
-        const Json* value = payload.find(field.name.view());
-        if (value == nullptr) {
-            Json diag = diag_base(event, event_key);
-            diag.set("reason", "missing_field");
-            diag.set("field", field.name.view());
-            return diag;
-        }
-        if (!runtime_accepts(field.type, *value)) {
-            Json diag = diag_base(event, event_key);
-            diag.set("reason", "field_type");
-            diag.set("field", field.name.view());
-            diag.set("expected", field.type.canonical());
-            return diag;
-        }
-    }
-    for (const auto& [key, value] : payload.items()) {
-        const bool declared = std::ranges::any_of(
-            desc.payload, [&](const auto& field) { return key == field.name.view(); });
-        if (!declared) {
-            Json diag = diag_base(event, event_key);
-            diag.set("reason", "unknown_field");
-            diag.set("field", key);
-            return diag;
-        }
-    }
-    return std::nullopt;
 }
 
 Error null_key_error(std::string_view operation) {
@@ -286,10 +278,11 @@ Bus::trigger(EventKey key, base::Name event, const Json& payload, std::uint64_t 
     // Typed validation for vocabulary events (unknown names pass through:
     // custom key-scoped vocabularies are legal, D-BUILD-046).
     if (const auto* entry = registry_->find_event(event)) {
-        if (auto diag = payload_invalid(entry->desc, payload, event, key)) {
+        Json diag = diag_base(event, key);
+        if (payload_invalid(entry->desc, payload, diag)) {
             result.error = refuse("bus.payload_invalid",
                                   "payload does not inhabit the event's schema",
-                                  std::move(*diag),
+                                  std::move(diag),
                                   cause_id);
             return result;
         }

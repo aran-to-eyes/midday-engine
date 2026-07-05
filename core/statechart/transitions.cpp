@@ -229,6 +229,7 @@ void Statechart::exit_state(MachineInstance& instance,
     if (state.hooks != nullptr) {
         const std::uint64_t record_id =
             journal_hook(instance, state_index, "exit", to, cause_id, journal::Tier::Flight);
+        stats_.hook_calls += 1;
         state.hooks->on_exit(*this, hook_context(instance, state_index, to, 0.0, record_id));
     }
     // A.2.1 exit 2 — open sequence spans close (reverse open order — spans
@@ -294,6 +295,7 @@ void Statechart::enter_state(MachineInstance& instance,
     if (state.hooks != nullptr) {
         const std::uint64_t record_id =
             journal_hook(instance, state_index, "enter", from, cause_id, journal::Tier::Flight);
+        stats_.hook_calls += 1;
         state.hooks->on_enter(*this, hook_context(instance, state_index, from, 0.0, record_id));
     }
 }
@@ -304,11 +306,6 @@ std::uint64_t Statechart::journal_hook(MachineInstance& instance,
                                        base::Name peer,
                                        std::uint64_t cause_id,
                                        journal::Tier tier) {
-    // A disabled tier still consumes its id with unchanged written bytes
-    // (D-BUILD-032) — skip building the payload the writer would discard.
-    if (!journal_->header().tiers.enabled(tier))
-        return journal_->record(
-            bus_->tick(), tier, "statechart.hook", cause_id, base::Json::object());
     const RtState& state = instance.states[state_index];
     base::Json payload = base::Json::object();
     payload.set("machine", instance.name.view());

@@ -43,6 +43,12 @@ Validation order (all failures are structured errors, tool exit 3):
    consume is checked here — `codegen.malformed` — so emitters never see
    garbage.
 
+Tool exit classes: `usage.*` → 2; `codegen.io.write`, `codegen.selfcheck`
+(post-generation d.ts shape self-check failed — a generator bug, not bad
+input) → 1; every other error → 3. Success prints
+`{"ok":true,"out_dir":...,"api_compat_hash":...,"files":[...]}` on stdout;
+errors print `{"ok":false,"error":{...}}` on stdout (D-BUILD-038).
+
 ## Shared text rules
 
 - **pascal_case(name)**: split on `.`, `_`, `-`; uppercase the first ASCII
