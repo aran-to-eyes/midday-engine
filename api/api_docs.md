@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `dc65021bc627e185`
+- api_compat_hash: `5d6d9dc571cd6a30`
 
 ## Classes
 
@@ -493,7 +493,7 @@ Positionals:
 
 validate a strict-YAML file against a schema_manifest.json format entry
 
-- compat_hash: `88aa1796cf79b6f3`
+- compat_hash: `6baca5770ec4a116`
 
 Flags:
 
@@ -502,12 +502,13 @@ Flags:
 | `--schema` | `name` | no |  | format name to look up in the schema manifest's formats[] table |
 | `--manifest` | `string` | no |  | schema manifest path, used with --schema (default: api/schema_manifest.json) |
 | `--schema-file` | `string` | no |  | a standalone format-entry JSON document (bypasses the manifest) |
+| `--audit-missing` | `bool` | no |  | treat `file` as a Warden-shaped example directory: present files validate, missing referenced files/components/wiring report as a known-completion manifest (exit 3 iff non-empty; incompatible with --schema/--schema-file) |
 
 Positionals:
 
 | positional | type | required | variadic | doc |
 | --- | --- | --- | --- | --- |
-| `file` | `string` | yes | no | the strict-YAML file to validate |
+| `file` | `string` | yes | no | the strict-YAML file to validate (a directory with --audit-missing) |
 
 ### `midday fmt`
 

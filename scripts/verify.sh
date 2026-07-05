@@ -548,6 +548,48 @@ build/dev/midday validate examples/appendix_a/boss.machine.yaml --schema machine
 build/dev/midday validate examples/warden/prefabs/warden.entity.yaml --schema entity --json \
     | jq -e '.ok' >/dev/null
 
+step "warden contract audit (m1-warden-contract-audit: known-completion manifest, exact-set assertion)"
+# Exit-test #1: `midday validate examples/warden --audit-missing --json`
+# exits 3 with EXACTLY the plan.yaml-enumerated known-missing set (Zenith
+# D023/N068) — no more, no fewer. Exit-test #2: present files carry zero
+# parser/schema errors (proven by the refusal being validate.audit_missing,
+# the audit's OWN "N known-missing" summary, never a loader.*/script.*
+# parse refusal).
+AUDIT=build/dev/warden_audit.json
+AUDIT_STATUS=0
+build/dev/midday validate examples/warden --audit-missing --json >"$AUDIT" || AUDIT_STATUS=$?
+[ "$AUDIT_STATUS" -eq 3 ]
+jq -e '.error.code == "validate.audit_missing" and .missing_count == 11' "$AUDIT" >/dev/null
+jq -e '(.missing.files | map(.path) | sort) == [
+    "goldens/warden_dead.png",
+    "models/arena_floor.model.yaml",
+    "models/warden_body.model.yaml",
+    "prefabs/player.entity.yaml",
+    "prefabs/warden_mace.entity.yaml",
+    "states/chase.ts",
+    "states/staggered.ts"
+  ]' "$AUDIT" >/dev/null
+jq -e '(.missing.components | map(.name) | sort) == ["NavFollow","Perception","StaggerTimer"]' \
+    "$AUDIT" >/dev/null
+jq -e '(.missing.wiring | length) == 1 and .missing.wiring[0].kind == "animator_rig"
+    and (.missing.wiring[0].implied_by == "models/warden_body.model.yaml")' "$AUDIT" >/dev/null
+# Health/DamageOnTouch (present TS components) resolve — never reported
+# missing; MeshRenderer/Spline/VirtualCamera (engine-roadmap primitives,
+# MIDDAY_ENGINE_SPEC.md) and the native span-activation gap are transparently
+# excluded, never folded into the completion manifest.
+jq -e '[.missing.components[].name] | inside(["NavFollow","Perception","StaggerTimer"])
+    and (index("Health") == null) and (index("DamageOnTouch") == null)' "$AUDIT" >/dev/null
+jq -e '([.out_of_scope[].what] | unique | sort) ==
+    ["MeshRenderer","SlashAttack.initial","Spline","VirtualCamera","self.recovered"]' \
+    "$AUDIT" >/dev/null
+# Present-files-validate: the whole corpus's *.yaml parses (5 files) and its
+# two authored TS components typecheck+lint clean (present_scripts lists the
+# rest — states/tests — without re-validating them, out of this audit's scope).
+jq -e '(.present_files | length) == 5 and (.present_scripts | length) == 5' "$AUDIT" >/dev/null
+# Once the corpus is completed (m4-warden-assets-complete), the SAME command
+# exits 0 — proven here by construction rather than a second fixture: an
+# empty --audit-missing manifest is exactly `missing_count == 0`.
+
 step "prefab spawn (m1-prefab-spawn: 100-prefab mid-tick spawn + enter-chain trace, "\
 "despawn-mid-query, alive-after-phase-8, world.spawn/despawn TS boundary)"
 # m1-prefab-spawn exit tests #1-#3, pure doctests (core/loader/

@@ -20,6 +20,7 @@ add_executable(midday
     verbs/rhi.cpp
     verbs/shot.cpp
     verbs/validate.cpp
+    verbs/validate_audit.cpp
     verbs/fmt.cpp
     verbs/check.cpp
     verbs/mv.cpp

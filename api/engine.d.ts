@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash dc65021bc627e185 (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash 5d6d9dc571cd6a30 (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -347,7 +347,9 @@ declare namespace midday {
         manifest?: string;
         /** a standalone format-entry JSON document (bypasses the manifest) */
         "schema-file"?: string;
-        /** the strict-YAML file to validate */
+        /** treat `file` as a Warden-shaped example directory: present files validate, missing referenced files/components/wiring report as a known-completion manifest (exit 3 iff non-empty; incompatible with --schema/--schema-file) */
+        "audit-missing"?: boolean;
+        /** the strict-YAML file to validate (a directory with --audit-missing) */
         file: string;
     }
 

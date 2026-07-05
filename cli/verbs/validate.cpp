@@ -49,8 +49,17 @@
 // malformed schema is DATA, exactly like `api diff`'s baseline document
 // (api.cpp precedent) — usage errors (exit 2) are reserved for the flag
 // combination itself being wrong.
+//
+// An EIGHTH path (m1-warden-contract-audit, cli/verbs/validate_audit.cpp):
+// `--audit-missing` takes `file` as a DIRECTORY instead — a Warden-shaped
+// example root — and reports its known-completion manifest (missing
+// referenced files/components/wiring) instead of validating one document;
+// see that file's header for the full design. Mutually exclusive with
+// --schema/--schema-file/--manifest (a usage error, not folded into the
+// audit's own validation-class refusals).
 
 #include "cli/verb.h"
+#include "cli/verbs/validate_audit.h"
 #include "core/base/file_io.h"
 #include "core/loader/format_schema.h"
 #include "core/loader/loader.h"
@@ -285,6 +294,12 @@ VerbOutcome validate_import_policy(const std::string& path) {
 }
 
 VerbOutcome validate_verb(const VerbArgs& args) {
+    if (args.get_bool("audit-missing")) {
+        if (args.present("schema") || args.present("schema-file") || args.present("manifest"))
+            return usage("usage.unexpected_flag",
+                         "--audit-missing does not combine with --schema/--schema-file/--manifest");
+        return run_audit_missing(args.get_string("file"));
+    }
     const bool by_name = args.present("schema");
     const bool by_file = args.present("schema-file");
     if (!by_name && args.present("manifest"))
@@ -326,10 +341,17 @@ constexpr FlagSpec kFlags[] = {
     {.name = "schema-file",
      .type = "string",
      .doc = "a standalone format-entry JSON document (bypasses the manifest)"},
+    {.name = "audit-missing",
+     .type = "bool",
+     .doc = "treat `file` as a Warden-shaped example directory: present files validate, "
+            "missing referenced files/components/wiring report as a known-completion "
+            "manifest (exit 3 iff non-empty; incompatible with --schema/--schema-file)"},
 };
 
 constexpr PositionalSpec kPositionals[] = {
-    {.name = "file", .type = "string", .doc = "the strict-YAML file to validate"},
+    {.name = "file",
+     .type = "string",
+     .doc = "the strict-YAML file to validate (a directory with --audit-missing)"},
 };
 
 } // namespace
