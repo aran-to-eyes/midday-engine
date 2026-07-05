@@ -11,6 +11,7 @@
 #include "testkit/doctest_unwrap.h"
 #include "testkit/temp_dir.h"
 
+#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -19,6 +20,13 @@ using namespace midday::loader;
 using midday::testkit::unwrap;
 
 namespace {
+
+// TempDir::file() returns a NATIVE path; load_project_events emits generic
+// (forward-slash) paths so the merge order and diagnostics are byte-identical
+// on every platform (Windows accepts '/' for I/O). Compare in that form.
+std::string generic(const std::string& native) {
+    return std::filesystem::path(native).generic_string();
+}
 
 struct EventsFixture {
     testkit::TempDir dir{"loader-events"};
@@ -131,8 +139,8 @@ TEST_CASE("loader.events: load_project_events merges every *.events.yaml under a
     ProjectEventsResult merged = load_project_events(dir.path.string(), registry);
     REQUIRE_FALSE(merged.error.has_value());
     REQUIRE(merged.files.size() == 2);
-    CHECK(merged.files[0] == dir.file("a.events.yaml"));
-    CHECK(merged.files[1] == dir.file("b.events.yaml"));
+    CHECK(merged.files[0] == generic(dir.file("a.events.yaml")));
+    CHECK(merged.files[1] == generic(dir.file("b.events.yaml")));
     CHECK(merged.decl.events.size() == 2);
     CHECK(merged.decl.has_event("a.one"));
     CHECK(merged.decl.has_event("b.two"));
@@ -153,7 +161,8 @@ TEST_CASE("loader.events: load_project_events refuses a same-name event across t
     ProjectEventsResult merged = load_project_events(dir.path.string(), registry);
     REQUIRE(merged.error.has_value());
     CHECK(unwrap(merged.error).code == "loader.duplicate");
-    CHECK(unwrap(merged.error).message.find(dir.file("b.events.yaml")) != std::string::npos);
+    CHECK(unwrap(merged.error).message.find(generic(dir.file("b.events.yaml"))) !=
+          std::string::npos);
     CHECK(unwrap(merged.error).message.find("dup.name") != std::string::npos);
 }
 
