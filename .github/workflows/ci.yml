@@ -1,10 +1,18 @@
-# Midday Engine CI — M0 lanes that exist today (MILESTONE_0.md "M0 CI lanes"):
+# Midday Engine CI — M0 lanes (MILESTONE_0.md "M0 CI lanes"):
 #   build-linux (+ sanitizer job), build-macos, build-windows, drift,
 #   determinism (two Linux x86_64 hosts — m0-appendix-a-determinism;
 #   m0-determinism-spike extends the lane with the kata scene),
 #   boundaries + golden-software (m0-rhi-vulkan: RHI seam scan + headless
 #   software-Vulkan goldens; golden-software is EXPECTED RED until the first
 #   inspected goldens are committed — see the lane's bootstrap comment).
+#
+# M1 lanes (m1-xplat, Meridian D18): build-android, build-ios. COMPILE-ONLY
+# cross-compile gates for core+rhi+cli — no device/emulator/simulator run
+# (that is m7-android / m7-ios). They activate the two toolchain files
+# annotated "Compile lane activates at m1-xplat" (cmake/toolchains/
+# {android-arm64,ios-arm64}.cmake); linux-x86_64/macos-arm64/windows-x86_64
+# stay dormant because build-linux/build-macos/build-windows already prove
+# those targets natively.
 #
 # Declared host tools (Aurora D-22): cmake, ninja, python3, git, jq, zstd,
 # platform SDK tools. GitHub-hosted runners ship cmake/python3/git/jq/zstd;
@@ -465,3 +473,86 @@ jobs:
       - name: FP flag scan (MSVC /fp:precise falsifiably checked — CONCERNS #4)
         shell: bash
         run: scripts/check_fp_flags.py build/ci/compile_commands.json
+
+  # build-android (m1-xplat): NDK cross-compile of core+rhi+cli to arm64-v8a.
+  # COMPILE-ONLY — no emulator/device run (m7-android owns execution). Proves
+  # the codebase's POSIX-leaning seams (std::filesystem, fopen, dlopen-via-
+  # volk) hold against bionic libc and that the Vulkan headers/volk loader
+  # build without a system Vulkan library present (volk resolves everything
+  # through dlopen at RUNTIME, so link-time success here does not depend on
+  # the runner having a GPU or driver — there is neither).
+  #
+  # ANDROID_NDK_ROOT is left at the runner image's own default rather than
+  # pinned to an exact NDK build number: build-macos/build-windows already
+  # accept the same "hosted image's current default toolchain" risk class
+  # for Xcode/MSVC (neither pins a compiler version either), so this lane
+  # stays consistent with that precedent instead of inventing a stricter one.
+  # The toolchain file (cmake/toolchains/android-arm64.cmake) requires NDK
+  # r26+; GitHub's ubuntu-24.04 image ships r27+ by default as of this node.
+  build-android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure (arm64-v8a via the NDK's own toolchain file, chainloaded)
+        run: cmake --preset android
+      - name: Build (core + rhi + cli)
+        run: ninja -C build/android
+      - name: FP flag scan (deterministic-FP contract applies on every lane)
+        run: scripts/check_fp_flags.py build/android/compile_commands.json
+
+  # build-ios (m1-xplat): Xcode-SDK cross-compile of core+rhi+cli to iOS
+  # arm64. COMPILE-ONLY — no simulator/device run (m7-ios owns execution).
+  # midday_rhi_metal compiles its REAL Objective-C++ backend here (APPLE is
+  # true for iOS, same as macOS), so this is also the first proof that the
+  # Metal backend builds against the iphoneos SDK, not just macosx.
+  #
+  # Xcode version is left at the runner image's own default (macos-14 ships
+  # several side by side); build-macos already accepts this same risk class
+  # rather than hardcoding an Xcode_<version>.app path that goes stale the
+  # day the image drops it. Any Xcode on macos-14 ships an iphoneos SDK well
+  # above the toolchain's 16.0 deployment floor (Meridian D18 staging).
+  build-ios:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ninja
+        run: brew install ninja
+      - name: Show resolved iOS SDK (build-log visibility, non-gating)
+        run: xcrun --sdk iphoneos --show-sdk-path
+      - name: Configure (iOS arm64, static-lib try-compile — no signing at configure time)
+        run: cmake --preset ios
+      - name: Build (core + rhi + cli, incl. the real Metal .mm backend)
+        run: ninja -C build/ios
+      - name: FP flag scan (deterministic-FP contract applies on every lane)
+        run: scripts/check_fp_flags.py build/ios/compile_commands.json
+      - name: QuickJS JIT-off proof (compiled-object symbol scan, asserted from the build log)
+        run: |
+          # quickjs-ng ships with NO JIT backend at all (grep-verified at
+          # m1-xplat: zero mmap/mprotect/PROT_EXEC anywhere in the vendored
+          # source) — MIDDAY_ENGINE_SPEC.md section 16 records this as a
+          # deliberate choice ("the App Store bans JIT — QuickJS ships
+          # as-is"), so there is no config macro to flip (nothing to
+          # disable that exists to enable). The falsifiable compile-time
+          # proof instead scans the COMPILED object for the OS APIs an
+          # executable-memory JIT would need on Apple platforms
+          # (mmap/mprotect for the exec mapping, pthread_jit_write_protect_np
+          # + sys_icache_invalidate for the hardened-runtime/i-cache dance
+          # every Apple-platform JIT — JavaScriptCore included — must use).
+          # None may appear; if a future quickjs-ng bump ever adds a JIT
+          # backend, this step goes red the day it starts compiling in.
+          QJS_OBJS=$(find build/ios -name 'quickjs.c.o')
+          COUNT=$(echo "$QJS_OBJS" | grep -c . || true)
+          if [ "$COUNT" -ne 1 ]; then
+            echo "::error::expected exactly one compiled quickjs.c.o, found $COUNT — build layout changed, update this scan"
+            exit 1
+          fi
+          echo "scanning: $QJS_OBJS"
+          nm "$QJS_OBJS" > build/ios/quickjs-symbols.txt
+          cat build/ios/quickjs-symbols.txt
+          if grep -qiE '\b(mmap|mprotect|pthread_jit_write_protect_np|sys_icache_invalidate)\b' build/ios/quickjs-symbols.txt; then
+            echo "::error::compiled QuickJS references a JIT-enabling / exec-page API — JIT-less proof broken"
+            exit 1
+          fi
+          echo "confirmed: no exec-page/JIT-enabling API referenced by the compiled QuickJS object"

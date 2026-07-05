@@ -37,11 +37,33 @@
         "MIDDAY_WERROR": "ON",
         "MIDDAY_SANITIZE": "address,undefined"
       }
+    },
+    {
+      "name": "android",
+      "displayName": "Android arm64 (NDK cross-compile, release, warnings are errors)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MIDDAY_WERROR": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/android-arm64.cmake"
+      }
+    },
+    {
+      "name": "ios",
+      "displayName": "iOS arm64 (Xcode SDK cross-compile, release, warnings are errors)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MIDDAY_WERROR": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/ios-arm64.cmake"
+      }
     }
   ],
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev" },
     { "name": "ci", "configurePreset": "ci" },
-    { "name": "sanitizer", "configurePreset": "sanitizer" }
+    { "name": "sanitizer", "configurePreset": "sanitizer" },
+    { "name": "android", "configurePreset": "android" },
+    { "name": "ios", "configurePreset": "ios" }
   ]
 }
