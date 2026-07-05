@@ -1,0 +1,62 @@
+{
+  "core/reflect/fatal.h": [
+    {
+      "line": 15,
+      "reason": "reflect registry loud-abort helper (contract: registry paths never throw). An invariant break here (duplicate registration, malformed descriptor, misused init ladder) prints one diagnostic line and aborts immediately — no structured Logger sink is safe to reach for from a state the process is about to tear down from."
+    }
+  ],
+  "core/ecs/world.cpp": [
+    {
+      "line": 52,
+      "reason": "fail_component_reregistered: ECS invariant break (a component type registered twice) — loud-abort precedent shared with fatal.h, prints then aborts before the pool table can be corrupted further."
+    },
+    {
+      "line": 59,
+      "reason": "fail_unregistered_pool: ECS invariant break (pool access for a component type never registered via World::register_component) — same loud-abort precedent."
+    }
+  ],
+  "core/statechart/statechart.cpp": [
+    {
+      "line": 31,
+      "reason": "detail::fatal: statechart invariant break (unbalanced activation scopes, impossible hook wiring) — the reflect-fatal precedent: never throw, never corrupt, print one line and abort."
+    }
+  ],
+  "core/expr/env.cpp": [
+    {
+      "line": 10,
+      "reason": "EnvSpec::declare: unnamed variable declaration is an authoring-time invariant break in engine-authored expression environments (never end-user input) — loud-abort precedent."
+    },
+    {
+      "line": 14,
+      "reason": "EnvSpec::declare: duplicate variable declaration — same invariant-break/loud-abort precedent as line 10."
+    }
+  ],
+  "core/loader/project_schema.cpp": [
+    {
+      "line": 47,
+      "reason": "load_builtin: a built-in schema JSON constant (compiled into the engine, never user-authored content) failed to parse — an engine bug, not a recoverable user error, so it loud-aborts like the other registry-path invariants."
+    },
+    {
+      "line": 55,
+      "reason": "load_builtin: a built-in schema JSON constant failed to load as a FormatSchema — same engine-bug/loud-abort rationale as line 47."
+    }
+  ],
+  "core/base/name.cpp": [
+    {
+      "line": 54,
+      "reason": "Name hash-collision guard: a 64-bit content-hash collision would break the id<->content bijection that journals and goldens depend on. Fails loudly and immediately, before the collision can silently corrupt a journal or golden."
+    }
+  ],
+  "core/rhi/vulkan/vk_device.cpp": [
+    {
+      "line": 32,
+      "reason": "Vulkan validation-layer debug callback: forwards the DRIVER's own validation diagnostic text to stderr. This is the loader/validation layer's message, not midday telemetry — there is no engine LogRecord to emit, only a developer/CI diagnostic surface for a validation-layer complaint."
+    }
+  ],
+  "core/rhi/conformance_test.cpp": [
+    {
+      "line": 475,
+      "reason": "rhi.conformance.zz_backend_report: the RHI conformance corpus's own doctest reporting line, naming which backend skipped how many cases and why. A test-harness diagnostic (paired with a doctest MESSAGE/CHECK in the same block), not production telemetry."
+    }
+  ]
+}

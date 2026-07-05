@@ -359,22 +359,29 @@ jobs:
           echo "normalized kata journal sha256 (report only, non-gating):"
           zstdcat build/det/kata1.mrj/journal.jsonl.zst | shasum -a 256 | cut -d' ' -f1
 
-  # boundaries (m0-rhi-vulkan): no backend headers above the RHI seam —
-  # vulkan/volk/VMA only under core/rhi/vulkan/, glslang/SPIRV only under
-  # core/rhi/shadercomp/, Metal only under core/rhi/metal/. Pure source
-  # scan, any runner, no build. The lane table's second clause — "no public
-  # code-assembled entity API" (spec section 7) — is now a real scan
-  # (check_entity_api.py), stood up at the M0->M1 boundary AHEAD of the public
-  # scene/spawn API so the invariant is policed the week m1-scene-format and
+  # boundaries (m0-rhi-vulkan + CONCERNS #6 + M1-exit Phase 1 CRLF guard):
+  # check_include_boundaries.py now carries THREE mechanical, self-testing
+  # rules — no backend headers above the RHI seam (vulkan/volk/VMA only
+  # under core/rhi/vulkan/, glslang/SPIRV only under core/rhi/shadercomp/,
+  # Metal only under core/rhi/metal/); core/ logging purity (no printf/
+  # fprintf/cout/cerr/<iostream> under core/**, except the reviewed 11 sites
+  # in scripts/core_stderr_allowlist.json); and the structural CRLF guard
+  # (core/journal/** may reach the filesystem only through
+  # core/base/file_io.h's binary-mode open_file — a direct fopen or a
+  # text-mode open_file call fails the scan). Pure source scan, any runner,
+  # no build. The lane table's second clause — "no public code-assembled
+  # entity API" (spec section 7) — is a separate real scan (check_entity_
+  # api.py), stood up at the M0->M1 boundary AHEAD of the public scene/spawn
+  # API so the invariant is policed the week m1-scene-format and
   # m1-prefab-spawn add code, not after. Each self-test proves its scanner
   # still catches planted violations before the clean scan is trusted.
   boundaries:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Boundary scanner self-test
+      - name: Boundary scanner self-test (RHI seam + core/ logging purity + journal binary-mode)
         run: python3 scripts/check_include_boundaries.py --self-test
-      - name: RHI include boundaries
+      - name: RHI include boundaries + core/ logging purity + journal binary-mode
         run: python3 scripts/check_include_boundaries.py
       - name: Entity-API scanner self-test
         run: python3 scripts/check_entity_api.py --self-test
@@ -449,6 +456,29 @@ jobs:
           path: build/ci/goldens-candidate
           retention-days: 14
 
+  # build-windows: MSVC compile (as before) PLUS a real D-9 BEHAVIORAL lane
+  # (M1-exit Phase 1 — "asymmetric gate geography" cure). Before this, every
+  # native lane but Linux/macOS was compile-only-shadow, so CRLF / path-
+  # semantics / Windows-side nondeterminism could only surface as
+  # red-on-main. windows-2022 ships Git-Bash, jq, and python3, so the
+  # `shell: bash` steps below source the SAME scripts/lib/verify_behavioral.sh
+  # verify.sh sources on Linux/macOS — one shared behavioral core, not a
+  # hand-kept copy — and call it at EXACTLY macOS's recorded D-9 scope
+  # (compare the "Appendix A golden" / "Determinism kata" semantic-report
+  # steps on build-macos above): the five A.3 semantic verdicts plus a
+  # same-host independent dual-run `midday journal diff` (engine-internal;
+  # must be identical — this is what catches Windows-side nondeterminism or
+  # uninitialized reads, without ever needing a byte). Deliberately ABSENT:
+  # a cross-host byte-cmp (MSVC `/fp:precise` self-consistent float-
+  # formatting drift would permanent-red it — already scanned by the FP flag
+  # step below) and any comparison against the committed api/engine_api.json
+  # (that artifact stays Linux's contract; the Windows step below proves API
+  # dump self-consistency only — two dumps on the SAME host, byte-compared).
+  # The structural CRLF guard for the byte-cmp we correctly decline here
+  # lives in the `boundaries` job (scripts/check_include_boundaries.py's
+  # journal_binary_mode scan): a pure source-text scan is platform-
+  # independent by construction, so running it a second time on Windows
+  # would add no coverage the Linux scan doesn't already have.
   build-windows:
     runs-on: windows-2022
     steps:
@@ -473,6 +503,26 @@ jobs:
       - name: FP flag scan (MSVC /fp:precise falsifiably checked — CONCERNS #4)
         shell: bash
         run: scripts/check_fp_flags.py build/ci/compile_commands.json
+      - name: D-9 behavioral — Appendix A golden (5 semantic verdicts + same-host dual-run diff)
+        shell: bash
+        run: |
+          source scripts/lib/verify_behavioral.sh
+          behavioral_appendix_a_golden build/ci/midday.exe build/ci
+      - name: D-9 behavioral — determinism kata (exercised asserts + same-host dual-run diff)
+        shell: bash
+        run: |
+          source scripts/lib/verify_behavioral.sh
+          behavioral_determinism_kata_semantic build/ci/midday.exe build/ci
+      - name: D-9 behavioral — engine_api dump self-consistency (NOT vs Linux's committed engine_api.json)
+        shell: bash
+        run: |
+          source scripts/lib/verify_behavioral.sh
+          behavioral_api_dump_self_consistency build/ci/midday.exe build/ci
+      - name: D-9 behavioral — batch-binding budgets at 1k (crossings_constant + zero GC bytes/tick)
+        shell: bash
+        run: |
+          source scripts/lib/verify_behavioral.sh
+          behavioral_batch_budget_check build/ci/midday.exe build/ci 1000 >/dev/null
 
   # build-android (m1-xplat): NDK cross-compile of core+rhi+cli to arm64-v8a.
   # COMPILE-ONLY — no emulator/device run (m7-android owns execution). Proves
