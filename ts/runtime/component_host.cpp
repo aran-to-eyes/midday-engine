@@ -4,6 +4,7 @@
 #include "ts/runtime/component_host.h"
 
 #include "core/base/name.h"
+#include "ts/runtime/host_json.h"
 
 #include <cstdint>
 #include <utility>
@@ -12,30 +13,6 @@ namespace midday::script {
 
 using base::Error;
 using base::Json;
-
-namespace {
-
-std::uint32_t as_u32(const Json& value) {
-    return static_cast<std::uint32_t>(value.as_double());
-}
-
-ecs::EntityRef entity_arg(const Json::Array& args, std::size_t index_pos, std::size_t gen_pos) {
-    return ecs::EntityRef{as_u32(args[index_pos]), as_u32(args[gen_pos])};
-}
-
-Json ref_json(ecs::EntityRef ref) {
-    Json out = Json::object();
-    out.set("index", static_cast<std::int64_t>(ref.index));
-    out.set("generation", static_cast<std::int64_t>(ref.generation));
-    return out;
-}
-
-Error bad_args(std::string_view fn, std::string_view shape) {
-    return Error{.code = "script.host",
-                 .message = std::string(fn) + " expects (" + std::string(shape) + ")"};
-}
-
-} // namespace
 
 ComponentHost::ComponentHost(ScriptRuntime& runtime,
                              ecs::World& world,
@@ -59,10 +36,10 @@ void ComponentHost::note_despawn(ecs::EntityRef ref, std::uint64_t tick) {
 HostResult ComponentHost::status(const Json::Array& args) const {
     HostResult result;
     if (args.size() != 2 || !args[0].is_number() || !args[1].is_number()) {
-        result.error = bad_args(kStatusFn, "index: number, generation: number");
+        result.error = host_bad_args(kStatusFn, "index: number, generation: number");
         return result;
     }
-    const ecs::EntityRef ref = entity_arg(args, 0, 1);
+    const ecs::EntityRef ref = host_entity_arg(args, 0, 1);
     Json out = Json::object();
     const bool alive = world_->alive(ref);
     out.set("alive", alive);
@@ -80,12 +57,12 @@ HostResult ComponentHost::status(const Json::Array& args) const {
 HostResult ComponentHost::root(const Json::Array& args) const {
     HostResult result;
     if (args.size() != 2 || !args[0].is_number() || !args[1].is_number()) {
-        result.error = bad_args(kRootFn, "index: number, generation: number");
+        result.error = host_bad_args(kRootFn, "index: number, generation: number");
         return result;
     }
-    const ecs::EntityRef ref = entity_arg(args, 0, 1);
+    const ecs::EntityRef ref = host_entity_arg(args, 0, 1);
     ecs::EntityRef owner = hierarchy_ != nullptr ? hierarchy_->owner_of(ref) : ecs::EntityRef{};
-    result.value = ref_json(owner.is_null() ? ref : owner);
+    result.value = host_ref_json(owner.is_null() ? ref : owner);
     return result;
 }
 
@@ -103,17 +80,17 @@ ComponentHost::fire(bus::EventKey key, std::string_view event, const Json& paylo
 HostResult ComponentHost::trigger_entity(const Json::Array& args) {
     if (args.size() != 4 || !args[0].is_string() || !args[2].is_number() || !args[3].is_number()) {
         HostResult result;
-        result.error =
-            bad_args(kTriggerEntityFn, "event: string, payload, index: number, generation: number");
+        result.error = host_bad_args(kTriggerEntityFn,
+                                     "event: string, payload, index: number, generation: number");
         return result;
     }
-    return fire(bus::EventKey::entity(entity_arg(args, 2, 3)), args[0].as_string(), args[1]);
+    return fire(bus::EventKey::entity(host_entity_arg(args, 2, 3)), args[0].as_string(), args[1]);
 }
 
 HostResult ComponentHost::trigger_named(const Json::Array& args) {
     if (args.size() != 3 || !args[0].is_string() || !args[2].is_string()) {
         HostResult result;
-        result.error = bad_args(kTriggerNamedFn, "event: string, payload, name: string");
+        result.error = host_bad_args(kTriggerNamedFn, "event: string, payload, name: string");
         return result;
     }
     return fire(

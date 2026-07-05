@@ -10,6 +10,7 @@
 #include "core/hierarchy/hierarchy.h"
 #include "core/journal/writer.h"
 #include "core/loader/loader.h"
+#include "core/loader/prefab_instantiate.h"
 #include "core/physics/physics_server.h"
 
 #include <string>
@@ -106,17 +107,70 @@ SpawnResult spawn_scene(const SceneFile& scene,
 
     for (const SceneEntityDesc& desc : scene.entities) {
         // Prefab entities (m1-scene-format's `prefab:` + `at:` + `override:`
-        // grammar) parse and resolve fully, but SPAWNING one into the World
-        // is m1-prefab-spawn's job, not this node's (SCOPE) — refuse loudly
-        // rather than silently spawning an empty entity with none of the
-        // prefab's base components.
+        // grammar): the resolved *.entity.yaml materializes onto a directly-
+        // spawned root (this node's boot-path precedent, unchanged for
+        // inline entities below) via core/loader/prefab_instantiate.h — the
+        // SAME override-application + machine-instantiate engine the
+        // runtime's world.spawn(prefab) rides (core/loader/prefab_spawn.h).
+        // A missing prefab FILE is a lenient-only Gap in `scene print`
+        // (core/loader/scene_prefab.cpp); spawn_scene has no lenient mode,
+        // so an unresolved reference here is a hard boot-time refusal.
         if (desc.kind == SceneEntityKind::kPrefab) {
-            base::Error unsupported;
-            unsupported.code = "loader.unsupported";
-            unsupported.message = "entity '" + std::string(desc.name.view()) +
-                                  "': prefab-instanced entities do not spawn yet "
-                                  "(m1-prefab-spawn); `midday scene print` describes them";
-            return fail(std::move(unsupported));
+            const PrefabInstanceDesc& prefab = *desc.prefab;
+            if (!prefab.resolved) {
+                base::Error missing;
+                missing.code = "loader.bad_ref";
+                missing.message = "entity '" + std::string(desc.name.view()) + "': prefab '" +
+                                  prefab.prefab_ref.path_authored + "' did not resolve";
+                return fail(std::move(missing));
+            }
+            const EntityFile& entity_file = scene.entity_prefabs.at(prefab.entity_index);
+
+            base::Error prefab_spawn_error;
+            const ecs::EntityRef entity = world.spawn(&prefab_spawn_error);
+            if (entity.is_null())
+                return fail(internal_error("spawn refused", prefab_spawn_error));
+            if (auto error = hierarchy.adopt(entity))
+                return fail(internal_error("adopt refused", *error));
+            if (auto error = world.emplace<SceneEntity>(entity, SceneEntity{desc.name}))
+                return fail(internal_error("marker refused", *error));
+            if (auto error = hierarchy.set_local(entity, prefab.at))
+                return fail(internal_error("transform refused", *error));
+
+            ResolvedMachinesResult resolved =
+                resolve_prefab_machines(entity_file, prefab.overrides, entity_file.path);
+            if (resolved.error.has_value())
+                return fail(internal_error("prefab override refused", *resolved.error));
+
+            MaterializeResult materialized = materialize_prefab(world,
+                                                                hierarchy,
+                                                                chart,
+                                                                journal,
+                                                                /*tick=*/0,
+                                                                resolved.machines,
+                                                                entity,
+                                                                prefab.prefab_ref.path_resolved,
+                                                                cause_id);
+            if (materialized.error.has_value())
+                return fail(internal_error("prefab instantiate refused", *materialized.error));
+
+            result.stats.entities += 1;
+            for (const MaterializedMachine& seat : materialized.machines) {
+                result.machines.push_back(MachineSeat{
+                    .id = seat.id, .machine = seat.machine, .entity = desc.name, .host = entity});
+                result.stats.machines += 1;
+                for (const StateScriptRef& script : seat.scripts)
+                    result.scripts.push_back(ScriptSeat{.machine = seat.id,
+                                                        .region = script.region,
+                                                        .state = script.state,
+                                                        .ref = script.ref,
+                                                        .path = script.path});
+            }
+            for (const PrefabChild& child : materialized.children) {
+                pending_children.push_back(PendingChild{child.ref, child.at});
+                result.stats.state_children += 1;
+            }
+            continue;
         }
         base::Error spawn_error;
         const ecs::EntityRef entity = world.spawn(&spawn_error);

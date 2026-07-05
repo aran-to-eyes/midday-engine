@@ -548,6 +548,36 @@ build/dev/midday validate examples/appendix_a/boss.machine.yaml --schema machine
 build/dev/midday validate examples/warden/prefabs/warden.entity.yaml --schema entity --json \
     | jq -e '.ok' >/dev/null
 
+step "prefab spawn (m1-prefab-spawn: 100-prefab mid-tick spawn + enter-chain trace, "\
+"despawn-mid-query, alive-after-phase-8, world.spawn/despawn TS boundary)"
+# m1-prefab-spawn exit tests #1-#3, pure doctests (core/loader/
+# prefab_spawn_test.cpp: the engine mechanics — 100 prefabs spawn MID-TICK
+# and go live at phase 8 with a journaled enter-chain trace, a despawn
+# queued mid-query never invalidates that iteration, handles read
+# alive==false right up until phase 8 in both directions; ts/runtime/
+# world_host_test.cpp: the SAME contract through the real TS host boundary)
+# — named here explicitly (they already ran once, unfiltered, in "selftest").
+build/dev/midday selftest --filter 'loader.prefab_spawn*' >/dev/null
+build/dev/midday selftest --filter 'script.world_host*' >/dev/null
+
+# The loader's OWN load-time seam (core/loader/spawn.cpp): a `prefab:` scene
+# entity actually spawns now (previously a hard loader.unsupported refusal),
+# through the real CLI, on a self-contained corpus that fully resolves
+# (never examples/warden/, whose Player prefab / mace attachment stay
+# intentionally unresolved — m1-warden-contract-audit's remit, not this
+# node's SCOPE).
+rm -rf build/dev/prefab_probe
+mkdir -p build/dev/prefab_probe
+printf 'format: 1\nmachine: goblin\nregions:\n  main:\n    initial: Idle\n    states:\n'\
+'      Idle: {}\n' >build/dev/prefab_probe/goblin.machine.yaml
+printf 'format: 1\nentity: Goblin\nmachines:\n  - instance: {path: goblin.machine.yaml}\n' \
+    >build/dev/prefab_probe/goblin.entity.yaml
+printf 'format: 1\nscene: arena\nentities:\n  - entity: Grunt\n'\
+'    prefab: {path: goblin.entity.yaml}\n    at: [1, 0, 0]\n' \
+    >build/dev/prefab_probe/arena.scene.yaml
+build/dev/midday run build/dev/prefab_probe/arena.scene.yaml --ticks 1 --json \
+    | jq -e '.ok and .entities==1 and .machines==1' >/dev/null
+
 step "appendix A golden (3200-tick assert pack + independent dual-run diff)"
 # m0-appendix-a-determinism exit tests: the flagship golden — the authored
 # A.3 corpus driven to tick 3200 with the assertion pack; the five item-21

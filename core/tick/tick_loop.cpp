@@ -163,9 +163,11 @@ std::optional<base::Error> TickLoop::tick() {
     }
 
     // Phase 8: structural apply — THE deterministic mutation point.
-    if (phase_marker(Phase::kStructuralApply, tick_record_id) == 0)
+    const std::uint64_t structural_record_id =
+        phase_marker(Phase::kStructuralApply, tick_record_id);
+    if (structural_record_id == 0)
         return finish(refused(Phase::kStructuralApply));
-    if (auto error = run_structural_apply())
+    if (auto error = run_structural_apply(structural_record_id))
         return finish(std::move(error));
 
     // Phase 9: tick-end — frame-packet capture, journal flush cadence.
@@ -211,12 +213,22 @@ void TickLoop::run_hooks(Phase phase, std::uint64_t phase_record_id, std::uint64
         hook->on_phase(*this, context);
 }
 
-std::optional<base::Error> TickLoop::run_structural_apply() {
+std::optional<base::Error> TickLoop::run_structural_apply(std::uint64_t phase_record_id) {
     // Queued spawns/despawns/reparents apply in queue order; the hierarchy's
     // reparent handler and despawn observer run inside the flush, and tree
     // order indices rebuild lazily off the new topology.
     if (auto error = world_->flush_structural())
         return error;
+    // The ONE structural-apply extension slot (m1-prefab-spawn): realizes
+    // queued prefab spawns (adopt, machine instantiate — the enter chain,
+    // A.1 phase 8) and fires despawn lifecycle events, now that the entities
+    // it reserved are provably alive/dead. Runs strictly AFTER the flush
+    // above returns (never reentrant into it) and BEFORE propagate, so a
+    // realized prefab's local transform lands in this tick's settle.
+    if (realizer_) {
+        if (auto error = realizer_(phase_record_id))
+            return error;
+    }
     // World transforms recompute parents-before-children — after this point
     // the tick's spatial state is final and the frame packet may capture it.
     hierarchy_->propagate();

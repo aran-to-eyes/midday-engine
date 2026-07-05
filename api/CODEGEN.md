@@ -181,7 +181,8 @@ Section contents:
    `AssetRef`), then the FIXED (non-data-driven) component-authoring
    surface — `FieldOptions`, `ComponentCtor<T>`, `Component`, `StateScript`,
    `Transform`, `component()`/`field()` decorator declarations, `events`,
-   `world.query` — byte-identical between the two generators (`COMPONENT_API`
+   `world.query`/`world.spawn`/`world.despawn` — byte-identical between the
+   two generators (`COMPONENT_API`
    in `ts/codegen/dts.ts`, `kComponentApi` in
    `tools/codegen_bootstrap/dts_emit.cpp`; NOT derived from
    `engine_api.json`, so unaffected by drift in it beyond re-export shape),

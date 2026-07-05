@@ -74,6 +74,7 @@ target_link_libraries(midday PRIVATE
     midday::batch_bench
     midday::state_script
     midday::component_host
+    midday::world_host
     midday::ts_toolchain
     midday::rhi
     midday::rhi_shadercomp

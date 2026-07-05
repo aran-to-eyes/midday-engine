@@ -202,6 +202,11 @@ const COMPONENT_API =
     "        ): IterableIterator<\n" +
     "            [midday.EntityRef, ...{ [K in keyof T]: T[K] extends ComponentCtor<infer C> ? C : never }]\n" +
     "        >;\n" +
+    "        spawn(\n" +
+    "            prefab: AssetRef,\n" +
+    "            opts?: { at?: midday.Vec3; overrides?: Record<string, Record<string, unknown>> },\n" +
+    "        ): midday.EntityRef;\n" +
+    "        despawn(ref: midday.EntityRef): void;\n" +
     "    };\n";
 
 // One bare, ergonomic payload-type alias per registered event:

@@ -56,6 +56,20 @@ target_link_libraries(midday_component_host
            midday::ecs midday::bus midday::hierarchy)
 midday_apply_deterministic_fp(midday_component_host)
 
+# The TS world-spawn binding (m1-prefab-spawn): world.spawn(prefab)/
+# despawn's native primitive — the ONE script-facing seam that queues a
+# prefab spawn/despawn through the ECS structural queue (core/loader/
+# prefab_spawn.h). Needs midday::loader (prefab resolution + override
+# application) — own target, same rationale as component_host/state_script.
+add_library(midday_world_host STATIC
+    world_host.cpp
+)
+add_library(midday::world_host ALIAS midday_world_host)
+target_link_libraries(midday_world_host
+    PUBLIC midday::options midday::base midday::script_runtime
+           midday::ecs midday::loader)
+midday_apply_deterministic_fp(midday_world_host)
+
 # Tests as an OBJECT library so doctest self-registration survives linking
 # into the midday binary (D-BUILD-014 pattern).
 add_library(midday_script_runtime_tests OBJECT
@@ -64,10 +78,11 @@ add_library(midday_script_runtime_tests OBJECT
     batch_bench_test.cpp
     state_script_test.cpp
     component_host_test.cpp
+    world_host_test.cpp
 )
 target_link_libraries(midday_script_runtime_tests
     PRIVATE midday::script_runtime midday::batch_bench midday::state_script
-            midday::component_host midday::statechart
+            midday::component_host midday::world_host midday::statechart
             midday_ts_toolchain midday::journal midday::tick midday::hierarchy
             doctest::doctest)
 midday_apply_deterministic_fp(midday_script_runtime_tests)

@@ -247,6 +247,11 @@ constexpr std::string_view kComponentApi =
         ): IterableIterator<
             [midday.EntityRef, ...{ [K in keyof T]: T[K] extends ComponentCtor<infer C> ? C : never }]
         >;
+        spawn(
+            prefab: AssetRef,
+            opts?: { at?: midday.Vec3; overrides?: Record<string, Record<string, unknown>> },
+        ): midday.EntityRef;
+        despawn(ref: midday.EntityRef): void;
     };
 )";
 

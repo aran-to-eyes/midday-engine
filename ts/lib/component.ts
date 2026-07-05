@@ -56,6 +56,12 @@ declare function __midday_trigger_named(
     payload: Record<string, unknown>,
     name: string,
 ): number;
+declare function __midday_world_spawn(
+    prefab: string,
+    at: { x: number; y: number; z: number } | null,
+    overrides: Record<string, Record<string, unknown>>,
+): { index: number; generation: number };
+declare function __midday_world_despawn(index: number, generation: number): void;
 
 // index -> { generation, components: {name -> instance} }. Slot reuse
 // (core/ecs/entity.h, LIFO) means a bucket must be re-validated against the
@@ -250,5 +256,33 @@ export const world = {
                     ...ComponentsOf<T>,
                 ];
         }
+    },
+
+    /** Prefab-ONLY spawning (spec §7 "no code-assembled entities"): `prefab`
+     *  names a resolved `*.entity.yaml` file — the SAME instancing +
+     *  override mechanism scenes/machines already use (m1-scene-format) —
+     *  never a caller-assembled component list (there is no other way to
+     *  bring an entity into existence from script). `at` is the entity's
+     *  local translation; `overrides` is the SAME `<machine>/<Region>/...`
+     *  property-diff grammar an authored `prefab: ... override:` block uses.
+     *  Queues through the deferred structural queue (native seat:
+     *  ts/runtime/world_host.h -> core/loader/prefab_spawn.h): the returned
+     *  handle reads `.alive === false` until the tick's structural-apply
+     *  phase (Appendix A.1 phase 8), when the prefab's machines' enter
+     *  chains run and it goes live. */
+    spawn(
+        prefab: string,
+        opts?: { at?: midday.Vec3; overrides?: Record<string, Record<string, unknown>> },
+    ): EntityRef {
+        const at = opts?.at ?? null;
+        const atArg = at !== null ? { x: at.x, y: at.y, z: at.z } : null;
+        const r = __midday_world_spawn(prefab, atArg, opts?.overrides ?? {});
+        return new EntityRef(r.index, r.generation);
+    },
+
+    /** Queues a despawn through the SAME deferred structural queue every
+     *  despawn rides — `ref` stays alive until the structural-apply phase. */
+    despawn(ref: EntityRef): void {
+        __midday_world_despawn(ref.index, ref.generation);
     },
 };

@@ -24,6 +24,8 @@ add_library(midday_loader STATIC
     asset_ref_parse.cpp
     machine_emit.cpp
     spawn.cpp
+    prefab_instantiate.cpp
+    prefab_spawn.cpp
     uid.cpp
     uid_registry.cpp
     asset_ref.cpp
@@ -52,6 +54,7 @@ add_library(midday_loader_tests OBJECT
     generic_components_test.cpp
     machine_emit_test.cpp
     spawn_test.cpp
+    prefab_spawn_test.cpp
     uid_test.cpp
     uid_registry_test.cpp
     asset_ref_test.cpp
