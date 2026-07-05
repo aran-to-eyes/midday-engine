@@ -47,6 +47,9 @@ std::optional<base::Error> MetalDevice::initialize(const MetalDeviceOptions& /*o
     return guarded_call("initialize", [&]() -> std::optional<base::Error> {
         // Deterministic selection on multi-GPU hosts: lowest registryID wins
         // (stable across enumeration order, the type_rank/first-index ethos).
+        // MTLCopyAllDevices is macOS-only (API_UNAVAILABLE(ios)); iOS/tvOS
+        // expose exactly one system GPU, so selection there is trivial.
+#if TARGET_OS_OSX
         NSArray<id<MTLDevice>>* devices = MTLCopyAllDevices();
         if (devices.count == 0)
             return unavailable("no Metal devices on this host");
@@ -55,6 +58,11 @@ std::optional<base::Error> MetalDevice::initialize(const MetalDeviceOptions& /*o
             if (candidate.registryID < best.registryID)
                 best = candidate;
         device_ = best;
+#else
+        device_ = MTLCreateSystemDefaultDevice();
+        if (device_ == nil)
+            return unavailable("no Metal device on this host");
+#endif
 
         queue_ = [device_ newCommandQueue];
         if (queue_ == nil)
@@ -63,7 +71,7 @@ std::optional<base::Error> MetalDevice::initialize(const MetalDeviceOptions& /*o
         caps_.backend = "metal";
         caps_.device_name = device_.name.UTF8String;
         caps_.driver_info = "Apple Metal";
-        if (@available(macOS 14.0, *)) {
+        if (@available(macOS 14.0, iOS 17.0, *)) {
             // The architecture name (e.g. "applegpu_g16p") is the closest
             // Metal analogue to a driver build string — recorded for
             // reports; goldens never hash-gate on Metal (D-BUILD-090).
