@@ -166,7 +166,6 @@ SpawnResult spawn_scene(const SceneFile& scene,
                 result.scripts.push_back(ScriptSeat{.machine = instantiated.machine,
                                                     .region = script.region,
                                                     .state = script.state,
-                                                    .ref = script.ref,
                                                     .path = script.path});
 
             for (const StateChildren& children : machine.children) {

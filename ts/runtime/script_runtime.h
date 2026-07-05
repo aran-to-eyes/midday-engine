@@ -34,7 +34,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 struct JSContext; // quickjs.h's own tag — the batch seam below hands it out
 

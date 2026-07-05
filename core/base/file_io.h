@@ -18,6 +18,7 @@
 #include "core/base/error.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <iterator>
@@ -27,6 +28,15 @@
 #include <utility>
 
 namespace midday::base {
+
+// 64-bit-safe absolute seek (plain fseek takes a 32-bit long on Windows).
+inline int seek_absolute(FILE* file, std::uint64_t offset) {
+#if defined(_WIN32)
+    return _fseeki64(file, static_cast<long long>(offset), SEEK_SET);
+#else
+    return fseeko(file, static_cast<off_t>(offset), SEEK_SET);
+#endif
+}
 
 inline FILE* open_file(const std::filesystem::path& path, const char* mode) {
 #if defined(_WIN32)

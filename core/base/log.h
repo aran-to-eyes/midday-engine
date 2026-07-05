@@ -1,7 +1,11 @@
 // core/base/log.h — machine-readable logging: every record is one JSONL line
 // conforming to formats/log_record.schema.json (keep the two in sync).
-// This is the ONLY sanctioned logging path — no printf-style logging anywhere
-// in engine code from m0-core-primitives on.
+//
+// This is the diagnostics seam, spec-staged ahead of its consumers: it awaits
+// the editor and the language/asset servers (the tools that surface diagnostics
+// to humans). Sim-side records are NOT logged here — core/journal owns the
+// causality skeleton (record-before-effect). "No printf in sim code" stays a
+// convention until a scanner lands to enforce it.
 //
 // Determinism (spec section 4.3): `ts` is a per-logger monotonic counter
 // (sim subsystems will carry the tick number once the tick loop exists) —

@@ -92,7 +92,6 @@ void parse_script(MachineCtx& ctx, RegionCtx& region, base::Name state, const Ya
     script.region = region.region;
     script.state = state;
     script.ref = ref.value;
-    script.line = node.line;
     script.path = (std::filesystem::path(ctx.root_dir) / ref.value).generic_string();
     if (!std::filesystem::exists(script.path)) {
         ctx.fail(err_node("loader.bad_ref",
@@ -379,7 +378,7 @@ MachineLoadResult load_machine_file(const std::string& path,
         return result;
     }
 
-    MachineCtx ctx{.path = path, .root_dir = root_dir, .registry = registry, .vocab = vocab};
+    MachineCtx ctx{.path = path, .root_dir = root_dir, .vocab = vocab};
     ctx.out.path = path;
 
     detail::FieldResult name = detail::require_field(root, path, "machine", "a machine file");

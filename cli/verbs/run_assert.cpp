@@ -289,9 +289,6 @@ RunAssertPack::Verdict AppendixAGoldenPack::evaluate(statechart::Statechart& cha
     const auto id_of = [](const std::optional<Record>& record) {
         return record.has_value() ? record->id : std::uint64_t{0};
     };
-    const auto cause_of = [](const std::optional<Record>& record) {
-        return record.has_value() ? record->cause_id : std::uint64_t{0};
-    };
     const auto cites = [&](const std::optional<Record>& effect,
                            const std::optional<Record>& cause) {
         return effect.has_value() && cause.has_value() && effect->cause_id == cause->id;
@@ -361,7 +358,7 @@ RunAssertPack::Verdict AppendixAGoldenPack::evaluate(statechart::Statechart& cha
                                   id_of(facts.voided_hitbox_closed) < id_of(facts.hook_enter_dead);
     const bool boss_died_broadcast = facts.boss_died.has_value() &&
                                      payload_is(*facts.boss_died, "key", "global") &&
-                                     cause_of(facts.boss_died) != 0;
+                                     facts.boss_died->cause_id != 0;
     const bool dead_at_end = chart.in_state(machine_, base::Name("combat"), base::Name("Dead"));
 
     struct Named {

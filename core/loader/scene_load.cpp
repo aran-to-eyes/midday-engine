@@ -351,7 +351,6 @@ SceneLoadResult load_scene(const std::string& scene_path, const reflect::Registr
     }
 
     SceneCtx ctx{.path = scene_path, .registry = registry};
-    ctx.out.path = scene_path;
     const std::filesystem::path parent = std::filesystem::path(scene_path).parent_path();
     ctx.out.root_dir = parent.empty() ? std::string(".") : parent.generic_string();
 

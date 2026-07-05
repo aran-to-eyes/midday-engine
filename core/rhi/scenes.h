@@ -74,7 +74,6 @@ inline constexpr std::array<float, 15> kTriangleVertices = {
 // Textured quad: axis-aligned, NDC [-0.75, 0.75]^2 (pixel columns/rows
 // [32, 224) at 256px), uv (0,0) at the top-left corner. Two triangles,
 // interleaved [x, y, u, v] * 6.
-inline constexpr float kQuadHalfExtentNdc = 0.75F;
 inline constexpr std::array<float, 24> kQuadVertices = {
     -0.75F, -0.75F, 0.0F, 0.0F, /**/ 0.75F, -0.75F, 1.0F, 0.0F, /**/ 0.75F,  0.75F, 1.0F, 1.0F,
     -0.75F, -0.75F, 0.0F, 0.0F, /**/ 0.75F, 0.75F,  1.0F, 1.0F, /**/ -0.75F, 0.75F, 0.0F, 1.0F,

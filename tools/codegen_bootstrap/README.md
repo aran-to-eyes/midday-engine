@@ -9,18 +9,12 @@ gate (`midday api codegen --verify-equivalence`, verify.sh, CI drift lane;
 `--bootstrap` runs its library path) and is deleted once that gate retires
 post-M0. No subsystem ever gets hand-written bindings.
 
-```
-codegen_bootstrap [<engine_api.json>] [--out-dir <dir>]
-```
-
-- Input defaults to `api/engine_api.json`; a CLI envelope
-  (`midday api dump --json > f`) is unwrapped automatically.
-- Outputs to `--out-dir` (default `api`): `engine.d.ts`,
-  `schema_manifest.json`, `api_docs.md`, `bindings_spec.json` — byte
-  deterministic and byte-identical to the self-hosted generator's output.
-- Exit codes: 0 ok · 1 write/self-check failure · 2 usage · 3 invalid input
-  (bad JSON, unknown `format_version`, unknown type spelling). Errors are
-  structured JSON on stdout.
+Library-only: the emitters are driven exclusively through
+`midday::codegen_bootstrap` (`emit_dts`/`emit_manifest`/`emit_docs`/
+`emit_bindings`) — there is no standalone CLI. Input is `api/engine_api.json`
+(or a `midday api dump --json` envelope, unwrapped); outputs are `engine.d.ts`,
+`schema_manifest.json`, `api_docs.md`, `bindings_spec.json` — byte
+deterministic and byte-identical to the self-hosted generator's output.
 
 Every formatting rule (the byte contract both generators obey):
 `api/CODEGEN.md`. Library: `midday::codegen_bootstrap` (`codegen.h` + one

@@ -26,15 +26,7 @@ base::Error make_error(std::string_view code, std::string message) {
 constexpr std::string_view kIoCode = "journal.io";
 
 using base::ReadFileResult;
-
-// 64-bit-safe absolute seek (plain fseek takes a 32-bit long on Windows).
-int seek_absolute(FILE* file, std::uint64_t offset) {
-#if defined(_WIN32)
-    return _fseeki64(file, static_cast<long long>(offset), SEEK_SET);
-#else
-    return fseeko(file, static_cast<off_t>(offset), SEEK_SET);
-#endif
-}
+using base::seek_absolute;
 
 base::Error refusal(std::string_view field,
                     std::string_view expected,
@@ -67,6 +59,7 @@ check_expectations(const Expectations& expect, const Header& header, const fs::p
 
 struct Reader::State {
     fs::path dir;
+    std::string journal_origin; // (dir / kJournalFile).string(), computed at open
     Header header;
     Index index;
     FILE* file = nullptr;
@@ -139,6 +132,7 @@ ReaderOpenResult Reader::open(std::string_view bundle_dir, const Expectations& e
                 make_error("journal.index_corrupt", "index stride disagrees with header")};
 
     const fs::path journal_path = state->dir / kJournalFile;
+    state->journal_origin = journal_path.string();
     state->file = base::open_file(journal_path, "rb");
     if (state->file == nullptr)
         return {std::nullopt,
@@ -171,11 +165,9 @@ Reader::NextResult Reader::next() {
         if (newline != std::string::npos) {
             const std::string_view line(s.buf.data() + s.buf_pos, newline - s.buf_pos);
             s.buf_pos = newline + 1;
-            RecordParseResult parsed = record_from_line(line, (s.dir / kJournalFile).string());
+            RecordParseResult parsed = record_from_line(line, s.journal_origin);
             if (!parsed.record.has_value()) {
                 s.error = std::move(parsed.error);
-                if (!s.error.has_value())
-                    s.error = make_error("journal.record_corrupt", "record line failed to parse");
                 return {std::nullopt, s.error};
             }
             if (parsed.record->tick < s.skip_below)

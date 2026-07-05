@@ -17,18 +17,8 @@
 
 namespace midday::rhi {
 
-enum class CommandListPhase : std::uint8_t {
-    kInitial,   // freshly created, or reset by a completed submit
-    kRecording, // between begin() and end()
-    kReady,     // ended; exactly one submit consumes it back to kInitial
-};
-
 class CommandListState {
 public:
-    [[nodiscard]] CommandListPhase phase() const { return phase_; }
-
-    [[nodiscard]] bool pass_open() const { return pass_open_; }
-
     // begin(): kInitial -> kRecording. Beginning a kReady list is a
     // deliberate RESET (backends reset the underlying buffer); only a list
     // that is mid-recording refuses.
@@ -114,6 +104,12 @@ public:
     }
 
 private:
+    enum class CommandListPhase : std::uint8_t {
+        kInitial,   // freshly created, or reset by a completed submit
+        kRecording, // between begin() and end()
+        kReady,     // ended; exactly one submit consumes it back to kInitial
+    };
+
     static base::Error err(std::string_view code, std::string_view message) {
         return base::Error{.code = std::string(code), .message = std::string(message)};
     }

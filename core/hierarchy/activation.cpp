@@ -58,11 +58,6 @@ bool Hierarchy::is_dormant(ecs::EntityRef entity) const {
     return node != nullptr && node->dormant_depth > 0;
 }
 
-bool Hierarchy::is_deactivated(ecs::EntityRef entity) const {
-    const Node* node = node_of(entity);
-    return node != nullptr && node->deactivated;
-}
-
 void Hierarchy::apply_dormancy_delta(ecs::EntityRef root, std::int64_t delta) {
     std::vector<ecs::EntityRef> entities;
     collect_subtree(root, entities);

@@ -25,6 +25,15 @@ namespace {
 constexpr std::string_view kIoCode = "script.io";
 constexpr std::string_view kCacheSchema = "midday.ts.cache/1 midday-lint/1";
 
+// Fixed toolchain paths (formerly ToolchainConfig knobs, D-BUILD-10x): each is
+// a canonical part of the toolchain fingerprint, so nothing may vary them.
+// Repo-root-relative (M0 verbs run from the project root). lib_ts_dir is
+// "ts/lib" to match the canonical tsc paths mapping in kCompilerOptionsJson.
+constexpr std::string_view kTypescriptJs = "third_party/typescript/typescript.js";
+constexpr std::string_view kLibDir = "third_party/typescript/lib";
+constexpr std::string_view kDriverJs = "ts/toolchain/driver.js";
+constexpr std::string_view kLibTsDir = "ts/lib";
+
 // Canonical compiler options — part of the cache key, mapped by driver.js via
 // ts.convertCompilerOptionsFromJson (tsconfig spellings). Deterministic emit:
 // LF newlines, no source maps, no timestamps. skipLibCheck stays OFF on
@@ -121,8 +130,9 @@ struct Toolchain::Impl {
             std::error_code inner;
             return std::filesystem::weakly_canonical(p, inner);
         };
-        return canon == canon_of(config.engine_dts) || within(canon, canon_of(config.lib_dir)) ||
-               within(canon, canon_of(config.lib_ts_dir)) ||
+        return canon == canon_of(config.engine_dts) ||
+               within(canon, canon_of(std::string(kLibDir))) ||
+               within(canon, canon_of(std::string(kLibTsDir))) ||
                (!entry_root.empty() && within(canon, entry_root));
     }
 
@@ -131,7 +141,7 @@ struct Toolchain::Impl {
     [[nodiscard]] std::vector<std::filesystem::path> lib_ts_sources() const {
         std::vector<std::filesystem::path> sources;
         std::error_code ec;
-        for (const auto& entry : std::filesystem::directory_iterator(config.lib_ts_dir, ec))
+        for (const auto& entry : std::filesystem::directory_iterator(std::string(kLibTsDir), ec))
             if (entry.path().extension() == ".ts")
                 sources.push_back(entry.path());
         std::ranges::sort(sources);

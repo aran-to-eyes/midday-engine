@@ -69,8 +69,6 @@ class PhysicsServer;
 
 namespace midday::loader {
 
-inline constexpr std::int64_t kFormatVersion = 1; // every text format carries format: N
-
 // ---- events files -----------------------------------------------------------
 struct EventFieldDecl {
     std::string name = {};
@@ -90,11 +88,6 @@ struct EventsDecl {
 
     [[nodiscard]] bool has_event(std::string_view name) const;
     [[nodiscard]] bool has_group(std::string_view name) const;
-};
-
-struct EventsLoadResult {
-    EventsDecl decl;
-    std::optional<base::Error> error;
 };
 
 // Parse ONE events file, appending into `decl` (cross-file duplicates
@@ -132,7 +125,6 @@ struct StateScriptRef {
     base::Name state;
     std::string ref;  // as authored (project-root-relative)
     std::string path; // resolved against the project root
-    int line = 0;     // authoring location (diagnostics)
 };
 
 struct StateChildren {
@@ -170,7 +162,6 @@ struct SceneEntityDesc {
 
 struct SceneFile {
     base::Name name;
-    std::string path;                  // the scene file as given
     std::string root_dir;              // project root = the scene file's directory
     EventsDecl events;                 // merged from every listed events file
     std::vector<MachineFile> machines; // deduplicated by resolved path
@@ -207,7 +198,6 @@ struct ScriptSeat {
     statechart::MachineId machine = statechart::kInvalidMachine;
     base::Name region;
     base::Name state;
-    std::string ref;
     std::string path;
 };
 

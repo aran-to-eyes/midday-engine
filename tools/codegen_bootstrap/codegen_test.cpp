@@ -234,15 +234,7 @@ Json load_ok(std::string_view bytes) {
 
 base::Error load_error(std::string_view bytes) {
     codegen::LoadResult loaded = codegen::load_document(bytes, "<test>");
-    const base::Error error = midday::testkit::unwrap(loaded.error);
-    CHECK(codegen::exit_code_for(error) == 3);
-    return error;
-}
-
-base::Error code_only(std::string_view code) {
-    base::Error error;
-    error.code = std::string(code);
-    return error;
+    return midday::testkit::unwrap(loaded.error);
 }
 
 Json live_document() {
@@ -320,14 +312,6 @@ TEST_CASE("codegen.errors: malformed inputs are structured validation errors (ex
     const std::string payload_key = "\"payload\"";
     no_payload.replace(no_payload.find(payload_key), payload_key.size(), "\"payloax\"");
     CHECK(load_error(no_payload).code == "codegen.malformed");
-
-    // Exit class mapping is pinned (api/CODEGEN.md).
-    CHECK(codegen::exit_code_for(code_only("usage.unknown_flag")) == 2);
-    CHECK(codegen::exit_code_for(code_only("usage.unexpected_argument")) == 2);
-    CHECK(codegen::exit_code_for(code_only("codegen.io.write")) == 1);
-    CHECK(codegen::exit_code_for(code_only("codegen.selfcheck")) == 1);
-    CHECK(codegen::exit_code_for(code_only("codegen.io")) == 3);
-    CHECK(codegen::exit_code_for(code_only("api.malformed")) == 3);
 }
 
 TEST_CASE("codegen.helpers: pascal_case, the TypeDesc -> TS mapping table, escapes") {

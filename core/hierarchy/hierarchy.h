@@ -170,8 +170,6 @@ public:
 
     // Covered by at least one deactivation scope (ancestor-or-self).
     [[nodiscard]] bool is_dormant(ecs::EntityRef entity) const;
-    // Explicit scope root (deactivate() called, not yet activate()d).
-    [[nodiscard]] bool is_deactivated(ecs::EntityRef entity) const;
 
 private:
     [[nodiscard]] Node* node_of(ecs::EntityRef entity);
@@ -181,7 +179,7 @@ private:
     // fetched AFTER any emplace (pool growth moves rows).
     std::optional<base::Error> adopt_now(ecs::EntityRef entity);
     void link_last(ecs::EntityRef entity, Node& node, ecs::EntityRef parent);
-    void unlink(ecs::EntityRef entity, Node& node);
+    void unlink(Node& node);
     [[nodiscard]] bool subtree_contains(ecs::EntityRef root, ecs::EntityRef entity) const;
     void collect_subtree(ecs::EntityRef root, std::vector<ecs::EntityRef>& out) const;
     void apply_reparent(ecs::EntityRef child, ecs::EntityRef new_parent);
@@ -191,7 +189,16 @@ private:
     void rebuild_order();
 
     // transforms.cpp
-    void mark_transform_dirty(ecs::EntityRef entity, Node& node);
+    void mark_transform_dirty(Node& node);
+
+    // Reused DFS work list for propagate() (cleared per call — the clean-forest
+    // path never touches it).
+    struct PropagateItem {
+        ecs::EntityRef entity;
+        bool parent_changed = false;
+    };
+
+    std::vector<PropagateItem> propagate_stack_;
 
     // activation.cpp — the one primitive under deactivate/activate/reparent:
     // adds `delta` covering scopes to every entity in the subtree, capturing

@@ -219,7 +219,6 @@ struct StatechartStats {
     std::uint64_t transitions = 0;   // executed transitions
     std::uint64_t voided = 0;        // voided candidates journaled
     std::uint64_t watcher_fires = 0; // rising-edge watcher triggers
-    std::uint64_t hook_calls = 0;    // hook invocations (all four kinds)
     std::uint64_t filter_faults = 0; // runtime eval faults (journaled, pair skipped)
     // Sequences (m0-sequences).
     std::uint64_t sequence_triggers = 0; // trigger-track keyframes fired

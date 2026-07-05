@@ -113,10 +113,6 @@ public:
 
     [[nodiscard]] bool is_null() const { return kind_ == Kind::kNamed && name_.empty(); }
 
-    [[nodiscard]] base::Name name() const { return name_; } // empty unless kNamed
-
-    [[nodiscard]] ecs::EntityRef entity_ref() const { return entity_; } // null unless kEntity
-
     // Channel identity bits: name id / EntityRef::to_bits().
     [[nodiscard]] std::uint64_t bits() const {
         return kind_ == Kind::kNamed ? name_.id() : entity_.to_bits();

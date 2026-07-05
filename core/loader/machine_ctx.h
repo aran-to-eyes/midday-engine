@@ -37,7 +37,6 @@ struct TargetRef {
 struct MachineCtx {
     const std::string& path;
     const std::string& root_dir;
-    const reflect::Registry& registry;
     const EventsDecl& vocab;
     MachineFile out = {};
     expr::EnvSpec env = {}; // the declared vars — `if:` filters compile here

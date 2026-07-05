@@ -54,10 +54,6 @@ Outputs generate(const base::Json& document);
 // every generation (failure = codegen.selfcheck, exit 1).
 std::vector<std::string> dts_shape_errors(std::string_view dts, const base::Json& document);
 
-// Tool exit classes (api/CODEGEN.md): usage.* -> 2; codegen.io.write /
-// codegen.selfcheck -> 1; every other error -> 3 (validation).
-int exit_code_for(const base::Error& error);
-
 // Shared text rules (exposed for the codegen.* selftests).
 std::string pascal_case(std::string_view name); // "trigger.entered" -> "TriggerEntered"
 std::string ts_type(std::string_view spelling); // pre: valid TypeDesc spelling
