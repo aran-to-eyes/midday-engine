@@ -10,6 +10,7 @@
 #include "testkit/doctest.h"
 #include "testkit/temp_dir.h"
 
+#include <filesystem>
 #include <string>
 
 namespace midday::loader::test {
@@ -30,7 +31,12 @@ inline std::string write_goblin_prefab(const testkit::TempDir& dir) {
                                    "      Idle: {}\n",
                                    "t")
                       .has_value());
-    const std::string entity_path = dir.file("goblin.entity.yaml");
+    // Forward-slash form: this path is embedded verbatim into a TS string
+    // literal (world.spawn('<path>')) where a native Windows backslash is a JS
+    // escape and mangles the path; '/' is valid for file I/O on every platform
+    // (D-BUILD-113: native-vs-generic broke the Windows lane before).
+    const std::string entity_path =
+        std::filesystem::path(dir.file("goblin.entity.yaml")).generic_string();
     REQUIRE_FALSE(base::write_file(entity_path,
                                    "format: 1\n"
                                    "entity: Goblin\n"

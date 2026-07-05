@@ -116,6 +116,18 @@ SpawnResult spawn_scene(const SceneFile& scene,
         // (core/loader/scene_prefab.cpp); spawn_scene has no lenient mode,
         // so an unresolved reference here is a hard boot-time refusal.
         if (desc.kind == SceneEntityKind::kPrefab) {
+            // kPrefab always carries a prefab descriptor, but the explicit guard
+            // is what bugprone-unchecked-optional-access needs: it cannot
+            // correlate the `kind` discriminant with the sibling optional, and
+            // libstdc++'s model flags the deref where libc++'s does not — so
+            // verify-linux caught what the macOS local gate's libc++ tidy missed.
+            if (!desc.prefab.has_value()) {
+                base::Error broken;
+                broken.code = "loader.bad_ref";
+                broken.message = "entity '" + std::string(desc.name.view()) +
+                                 "': prefab kind carries no prefab descriptor (loader invariant)";
+                return fail(std::move(broken));
+            }
             const PrefabInstanceDesc& prefab = *desc.prefab;
             if (!prefab.resolved) {
                 base::Error missing;
