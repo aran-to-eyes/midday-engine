@@ -242,6 +242,14 @@ step "RHI include boundaries (self-test + scan)"
 scripts/check_include_boundaries.py --self-test >/dev/null
 scripts/check_include_boundaries.py >/dev/null
 
+step "entity-API boundary (self-test + scan: no code-assembled entities, spec section 7)"
+# Entities are born from data (the loader is the sole spawn path); nothing above
+# the runtime may call World::spawn/queue_spawn/emplace directly. The self-test
+# proves the scanner still catches a planted assembler before the clean scan is
+# trusted (same falsifiability contract as the include boundary above).
+scripts/check_entity_api.py --self-test >/dev/null
+scripts/check_entity_api.py >/dev/null
+
 step "golden compare (fixture regen byte-compare + two-tier exit tests via the CLI)"
 # m0-golden-compare exit tests: the committed triplet under
 # testkit/fixtures/goldens/ is regenerated from scratch and byte-compared

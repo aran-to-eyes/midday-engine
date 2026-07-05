@@ -354,11 +354,12 @@ jobs:
   # boundaries (m0-rhi-vulkan): no backend headers above the RHI seam —
   # vulkan/volk/VMA only under core/rhi/vulkan/, glslang/SPIRV only under
   # core/rhi/shadercomp/, Metal only under core/rhi/metal/. Pure source
-  # scan, any runner, no build. (The lane table's second clause — "no public
-  # code-assembled entity API" — is currently structural: the loader is the
-  # only spawn path; a scan for it joins when a public C++ scene API exists
-  # to police.) The self-test proves the scanner still catches planted
-  # violations before the clean scan is trusted.
+  # scan, any runner, no build. The lane table's second clause — "no public
+  # code-assembled entity API" (spec section 7) — is now a real scan
+  # (check_entity_api.py), stood up at the M0->M1 boundary AHEAD of the public
+  # scene/spawn API so the invariant is policed the week m1-scene-format and
+  # m1-prefab-spawn add code, not after. Each self-test proves its scanner
+  # still catches planted violations before the clean scan is trusted.
   boundaries:
     runs-on: ubuntu-24.04
     steps:
@@ -367,6 +368,10 @@ jobs:
         run: python3 scripts/check_include_boundaries.py --self-test
       - name: RHI include boundaries
         run: python3 scripts/check_include_boundaries.py
+      - name: Entity-API scanner self-test
+        run: python3 scripts/check_entity_api.py --self-test
+      - name: No code-assembled entities (spec section 7)
+        run: python3 scripts/check_entity_api.py
 
   # golden-software (m0-rhi-vulkan): headless GPU render on SOFTWARE Vulkan
   # (Mesa lavapipe) inside a plain ubuntu:24.04 container — no X11/Wayland

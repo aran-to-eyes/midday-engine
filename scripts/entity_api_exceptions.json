@@ -1,0 +1,3 @@
+{
+  "ts/runtime/batch_bench.cpp": "batch-binding throughput micro-benchmark — assembles entities directly to measure the ECS/binding hot path; a perf harness, not game content, so it does not go through the loader"
+}
