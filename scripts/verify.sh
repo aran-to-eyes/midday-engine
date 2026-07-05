@@ -262,6 +262,13 @@ FMT_FIXTURES=(
     testkit/fixtures/events/wrong_payload.scene.yaml
     testkit/fixtures/schema/valid_v1.widget.yaml
     testkit/fixtures/schema/valid_v2.widget.yaml
+    testkit/fixtures/input/clean/a.input.yaml
+    testkit/fixtures/input/clean/b.input.yaml
+    testkit/fixtures/input/conflict/a.input.yaml
+    testkit/fixtures/input/conflict/b.input.yaml
+    testkit/fixtures/input/profile/base.input.yaml
+    testkit/fixtures/input/profile/rebind.input_profile.yaml
+    testkit/fixtures/input/profile/rebind_conflict.input_profile.yaml
 )
 for f in "${FMT_FIXTURES[@]}"; do
     name=$(basename "$f")
@@ -331,6 +338,40 @@ HALT_OUT=$(build/dev/midday run testkit/fixtures/events/wrong_payload.scene.yaml
 echo "$HALT_OUT" | jq -e '.error.code == "script.exception"
     and (.error.message | contains("bus.payload_invalid"))
     and (.error.details.tick // -1) >= 0' >/dev/null
+
+step "input actions (m1-input-actions: synthetic injection journaled at the injected tick, get_vector numeric fixture, project-wide conflict validation)"
+# Exit-test #1 (a synthetic input at tick 42 triggers action.pressed at tick
+# 42, journaled as a root record — core/input/inject_test.cpp) and exit-test
+# #2 (the virtual-stick get_vector numeric fixture, hand-computed against the
+# Godot InputMap::get_vector formula — core/input/action_state_test.cpp) are
+# pure doctests; named here explicitly (they already ran once, unfiltered,
+# in the "selftest" step above).
+build/dev/midday selftest --filter 'input.*' >/dev/null
+
+# Exit-test #3: two DIFFERENT actions anywhere under a project root binding
+# the SAME (device, control) refuse "input.conflict", exit 3 — the cross-file
+# case (testkit/fixtures/input/conflict/{a,b}.input.yaml, neither lists the
+# other; the collision check runs from either file's own directory,
+# load_project_input, the load_project_events precedent).
+build/dev/midday validate testkit/fixtures/input/clean/a.input.yaml --json \
+    | jq -e '.ok and .actions==7 and .sticks==1 and (.files|length)==2' >/dev/null
+INPUT_STATUS=0
+INPUT_OUT=$(build/dev/midday validate testkit/fixtures/input/conflict/a.input.yaml --json) \
+    || INPUT_STATUS=$?
+[ "$INPUT_STATUS" -eq 3 ]
+echo "$INPUT_OUT" | jq -e '.error.code == "input.conflict"
+    and (.error.message | contains("jump")) and (.error.message | contains("crouch"))' >/dev/null
+
+# The runtime rebinding overlay (spec section 13 "a user-profile overlay"):
+# a clean rebind validates; an overlay whose OWN two rebinds collide with
+# EACH OTHER refuses identically, independent of any base map.
+build/dev/midday validate testkit/fixtures/input/profile/rebind.input_profile.yaml --json \
+    | jq -e '.ok and .actions==1' >/dev/null
+PROFILE_STATUS=0
+PROFILE_OUT=$(build/dev/midday validate \
+    testkit/fixtures/input/profile/rebind_conflict.input_profile.yaml --json) || PROFILE_STATUS=$?
+[ "$PROFILE_STATUS" -eq 3 ]
+echo "$PROFILE_OUT" | jq -e '.error.code == "input.conflict"' >/dev/null
 
 step "uid system (m1-uid-system: check --fix repairs drift + mints; a hand-minted uid refuses; the cache regenerates byte-identical)"
 # m1-uid-system exit tests, all three over testkit/fixtures/uid (self-

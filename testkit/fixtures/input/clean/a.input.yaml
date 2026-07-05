@@ -1,0 +1,20 @@
+# m1-input-actions fixture corpus — a self-contained action map (widget.
+# schema.json precedent: NOT a real scene/machine, m1-scene-format's job).
+# Validated with `midday validate testkit/fixtures/input/clean/a.input.yaml`.
+format: 1
+actions:
+  jump:
+    bindings:
+      - {device: keyboard, control: space}
+      - {device: gamepad, control: button_south}
+  move_up: {bindings: [{device: keyboard, control: w}]}
+  move_down: {bindings: [{device: keyboard, control: s}]}
+  move_left: {bindings: [{device: keyboard, control: a}]}
+  move_right: {bindings: [{device: keyboard, control: d}]}
+sticks:
+  move:
+    up: move_up
+    down: move_down
+    left: move_left
+    right: move_right
+    deadzone: 0.2

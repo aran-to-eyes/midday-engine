@@ -30,6 +30,14 @@
 // file's directory" convention, loader_yaml.md, until m1-project-new
 // defines a real one) — cross-file collisions anywhere under that root
 // refuse exactly like a single file's own duplicates.
+// A FOURTH and FIFTH path (m1-input-actions, the same extension-dispatch
+// mechanism): `*.input.yaml` gets the identical project-wide treatment
+// (core/loader/loader.h load_project_input) — two DIFFERENT actions
+// anywhere under the root binding the SAME (device, control) refuse
+// "input.conflict" (the validator refusal spec section 13 calls for).
+// `*.input_profile.yaml` (the runtime rebinding overlay) loads as a single
+// file, no project merge, and still runs the same conflict scan over its
+// own rebinds.
 // Every failure here is the validation class (exit 3): an unreadable or
 // malformed schema is DATA, exactly like `api diff`'s baseline document
 // (api.cpp precedent) — usage errors (exit 2) are reserved for the flag
@@ -53,6 +61,8 @@ namespace {
 
 constexpr std::string_view kDefaultManifest = "api/schema_manifest.json";
 constexpr std::string_view kEventsSuffix = ".events.yaml";
+constexpr std::string_view kInputSuffix = ".input.yaml";
+constexpr std::string_view kInputProfileSuffix = ".input_profile.yaml";
 
 VerbOutcome usage(std::string code, std::string message) {
     VerbOutcome out;
@@ -175,6 +185,57 @@ VerbOutcome validate_events(const std::string& path) {
     return out;
 }
 
+// The input-map dispatch (m1-input-actions), the events dispatch's sibling:
+// no schema flag at all, project-wide (core/loader/loader.h
+// load_project_input walks `path`'s own directory recursively for every
+// *.input.yaml under it) — two DIFFERENT actions anywhere under that root
+// binding the SAME (device, control) refuse "input.conflict", exit 3 (the
+// validator refusal exit-test).
+VerbOutcome validate_input(const std::string& path) {
+    const std::filesystem::path parent = std::filesystem::path(path).parent_path();
+    const std::string root = parent.empty() ? std::string(".") : parent.generic_string();
+
+    loader::ProjectInputResult project = loader::load_project_input(root);
+    if (project.error.has_value())
+        return refuse(std::move(*project.error));
+
+    VerbOutcome out;
+    out.payload.set("file", path);
+    out.payload.set("schema", "input");
+    out.payload.set("root", root);
+    Json files = Json::array();
+    for (const std::string& file : project.files)
+        files.push(file);
+    out.payload.set("files", std::move(files));
+    out.payload.set("actions", static_cast<std::int64_t>(project.decl.actions.size()));
+    out.payload.set("sticks", static_cast<std::int64_t>(project.decl.sticks.size()));
+    out.human = path + ": valid (input, " + std::to_string(project.decl.actions.size()) +
+                " action(s), " + std::to_string(project.decl.sticks.size()) + " stick(s) across " +
+                std::to_string(project.files.size()) + " file(s) under " + root + ")";
+    return out;
+}
+
+// The rebinding-overlay dispatch: ONE file, no project-wide merge (a
+// player's profile is not a project-config namespace) — still runs the SAME
+// conflict scan over its own rebinds (two rebound actions colliding with
+// each other is exactly as real a conflict as two base actions colliding;
+// a rebind-vs-BASE collision is apply_overlay's job, core/loader/loader.h).
+VerbOutcome validate_input_profile(const std::string& path) {
+    loader::ActionMapDecl overlay;
+    if (auto error = loader::load_input_profile_file(path, overlay))
+        return refuse(std::move(*error));
+    if (auto error = loader::find_conflict(overlay.actions))
+        return refuse(std::move(*error));
+
+    VerbOutcome out;
+    out.payload.set("file", path);
+    out.payload.set("schema", "input_profile");
+    out.payload.set("actions", static_cast<std::int64_t>(overlay.actions.size()));
+    out.human =
+        path + ": valid (input_profile, " + std::to_string(overlay.actions.size()) + " rebind(s))";
+    return out;
+}
+
 VerbOutcome validate_verb(const VerbArgs& args) {
     const bool by_name = args.present("schema");
     const bool by_file = args.present("schema-file");
@@ -184,6 +245,10 @@ VerbOutcome validate_verb(const VerbArgs& args) {
         const std::string& path = args.get_string("file");
         if (!by_file && path.ends_with(kEventsSuffix))
             return validate_events(path);
+        if (!by_file && path.ends_with(kInputProfileSuffix))
+            return validate_input_profile(path);
+        if (!by_file && path.ends_with(kInputSuffix))
+            return validate_input(path);
         return usage("usage.bad_schema_selector",
                      "exactly one of --schema <name> or --schema-file <path> is required");
     }

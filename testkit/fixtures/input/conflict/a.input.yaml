@@ -1,0 +1,8 @@
+# EXIT-TEST #3 fixture: paired with b.input.yaml (same directory = the same
+# project-wide root), two DIFFERENT actions bind keyboard:space — a
+# cross-file conflict, refused "input.conflict" at exit 3.
+format: 1
+actions:
+  jump:
+    bindings:
+      - {device: keyboard, control: space}

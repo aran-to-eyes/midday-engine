@@ -1,0 +1,13 @@
+# A second file under the SAME root as a.input.yaml — proves the action
+# namespace is project-wide (load_project_input merges every *.input.yaml
+# under the target file's directory), not just the one file named on the
+# command line. Positive proof, mirroring m1-events-format's a.one/b.two split.
+format: 1
+actions:
+  crouch:
+    bindings:
+      - {device: keyboard, control: left_ctrl}
+  interact:
+    bindings:
+      - {device: keyboard, control: e}
+      - {device: gamepad, control: button_west}

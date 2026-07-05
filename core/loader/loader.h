@@ -122,6 +122,122 @@ struct ProjectEventsResult {
 ProjectEventsResult load_project_events(const std::string& root_dir,
                                         const reflect::Registry& registry);
 
+// ---- input action maps (m1-input-actions) -----------------------------------
+// `*.input.yaml`: named actions -> raw device bindings, plus named virtual-
+// stick composites (spec section 4.3 "Input": event hierarchy + named action
+// maps; action maps abstract touch). SPEC-GAP: the spec fixes no file
+// convention for action maps (exactly like `*.events.yaml` before it) —
+// `*.input.yaml` / `*.input_profile.yaml` (the runtime rebinding overlay,
+// spec section 13 "input rebinding is data ... a user-profile overlay") are
+// this node's call: project-config documents merged project-wide exactly
+// like events (load_project_events precedent) — one namespace of action
+// names across every *.input.yaml a project owns.
+//
+// Raw controls are opaque device-specific strings (a real OS/device backend
+// is m7-platform territory; this node is the DATA plus the synthetic
+// injection seam, core/input/inject.h) — device KINDS are the only closed
+// vocabulary.
+enum class DeviceKind : std::uint8_t {
+    kKeyboard = 0,
+    kMouse = 1,
+    kGamepad = 2,
+    kTouch = 3,
+};
+
+std::string_view to_string(DeviceKind kind);
+// nullopt for anything outside {keyboard, mouse, gamepad, touch}.
+std::optional<DeviceKind> device_kind_from_string(std::string_view text);
+
+struct BindingDesc {
+    DeviceKind device = DeviceKind::kKeyboard;
+    std::string control; // opaque device-specific control id, e.g. "space", "button_south"
+
+    friend bool operator==(const BindingDesc&, const BindingDesc&) = default;
+};
+
+struct ActionDesc {
+    std::string name;
+    std::vector<BindingDesc> bindings;
+};
+
+// A named 2D composite over four DECLARED actions (the Godot InputMap::
+// get_vector precedent, core/input/action_state.h): up/down/left/right name
+// actions already known when the stick is parsed (this file, or an earlier-
+// sorted *.input.yaml under the same project root — single-pass discipline,
+// no forward refs across files).
+struct StickDesc {
+    std::string name;
+    std::string up;
+    std::string down;
+    std::string left;
+    std::string right;
+    float deadzone = 0.2f; // Godot's InputMap default; valid range [0, 1)
+};
+
+struct ActionMapDecl {
+    std::vector<ActionDesc> actions;
+    std::vector<StickDesc> sticks;
+
+    [[nodiscard]] const ActionDesc* find_action(std::string_view name) const;
+
+    [[nodiscard]] bool has_action(std::string_view name) const {
+        return find_action(name) != nullptr;
+    }
+
+    [[nodiscard]] bool has_stick(std::string_view name) const;
+};
+
+// Parse ONE `*.input.yaml` file, appending into `decl` (cross-file duplicate
+// action/stick names refuse, exactly like load_events_file). Two DIFFERENT
+// actions claiming the same (device, control) binding anywhere under the
+// merged project refuse "input.conflict" at the offending (second)
+// binding's file:line:col — the validator refusal exit-test rides this
+// (`midday validate <f>.input.yaml`, extension dispatch, cli/verbs/
+// validate.cpp).
+std::optional<base::Error> load_input_file(const std::string& path, ActionMapDecl& decl);
+
+struct ProjectInputResult {
+    ActionMapDecl decl;
+    std::vector<std::string> files = {}; // discovered *.input.yaml paths, sorted
+    std::optional<base::Error> error;
+};
+
+// The project-wide namespace (load_project_events precedent): every
+// *.input.yaml under `root_dir` (recursive, lexicographically sorted for
+// determinism), merged via repeated load_input_file calls on the SAME
+// accumulator.
+ProjectInputResult load_project_input(const std::string& root_dir);
+
+// ---- the runtime rebinding overlay (spec section 13: "a user-profile
+// overlay") -------------------------------------------------------------------
+// `*.input_profile.yaml`: `overlay: {<action>: {bindings: [...]}}` — the
+// SAME action/binding grammar a base map's `actions:` uses (no `sticks:`: a
+// rebind changes which raw control drives an action, never which actions
+// feed a stick). One file, one profile — no project-wide merge (a player's
+// profile is not a project-config namespace).
+std::optional<base::Error> load_input_profile_file(const std::string& path, ActionMapDecl& overlay);
+
+struct ApplyOverlayResult {
+    ActionMapDecl map;
+    std::optional<base::Error> error; // loader.bad_ref (rebinds an undeclared
+                                      // action) | input.conflict (the rebind
+                                      // collides with another action's binding)
+};
+
+// `base` with every action the overlay mentions REPLACED wholesale by the
+// overlay's binding list (full replacement — the simplest, least-surprising
+// rebind semantics; partial add/remove is a game-UI concern, spec section
+// 13). The result is re-validated for conflicts: a rebind can introduce a
+// collision the original authoring never had.
+ApplyOverlayResult apply_overlay(const ActionMapDecl& base, const ActionMapDecl& overlay);
+
+// The post-merge conflict scan `apply_overlay` (and the `.input_profile.yaml`
+// CLI self-check) reuse: two DIFFERENT actions in `actions` sharing a
+// (device, control) binding. No file:line:col (not tied to a parse site) —
+// load_input_file's own incremental, file:line:col-carrying check is the
+// authoring-time path.
+std::optional<base::Error> find_conflict(const std::vector<ActionDesc>& actions);
+
 // ---- the M0 component vocabulary (scene entities) ---------------------------
 // Exactly the base components that EXIST in the runtime today: Transform
 // (hierarchy local TRS), Collider + RigidBody (the M0 physics surface:

@@ -1,0 +1,6 @@
+# See a.input.yaml: 'crouch' here collides with 'jump' there on keyboard:space.
+format: 1
+actions:
+  crouch:
+    bindings:
+      - {device: keyboard, control: space}

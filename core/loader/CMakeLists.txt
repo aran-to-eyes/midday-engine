@@ -9,6 +9,7 @@ add_library(midday_loader STATIC
     parse_util.cpp
     format_schema.cpp
     events_load.cpp
+    input_load.cpp
     machine_load.cpp
     machine_parts.cpp
     scene_load.cpp
@@ -31,6 +32,7 @@ add_library(midday_loader_tests OBJECT
     yaml_emit_test.cpp
     format_schema_test.cpp
     events_load_test.cpp
+    input_load_test.cpp
     machine_load_test.cpp
     scene_load_test.cpp
     spawn_test.cpp

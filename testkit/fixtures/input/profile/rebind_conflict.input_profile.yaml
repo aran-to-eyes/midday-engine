@@ -1,0 +1,8 @@
+# The overlay's OWN rebinds can conflict with EACH OTHER, independent of any
+# base map — 'jump' and 'crouch' both rebound onto keyboard:enter here.
+# `midday validate` runs the same find_conflict() scan over a profile's own
+# actions, exit 3, "input.conflict".
+format: 1
+overlay:
+  jump: {bindings: [{device: keyboard, control: enter}]}
+  crouch: {bindings: [{device: keyboard, control: enter}]}

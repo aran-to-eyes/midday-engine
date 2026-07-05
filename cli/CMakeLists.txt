@@ -40,6 +40,7 @@ add_executable(midday
     $<TARGET_OBJECTS:midday_tick_tests>
     $<TARGET_OBJECTS:midday_statechart_tests>
     $<TARGET_OBJECTS:midday_loader_tests>
+    $<TARGET_OBJECTS:midday_input_tests>
     $<TARGET_OBJECTS:midday_physics_tests>
     $<TARGET_OBJECTS:midday_api_tests>
     $<TARGET_OBJECTS:midday_codegen_bootstrap_tests>
@@ -62,6 +63,7 @@ target_link_libraries(midday PRIVATE
     midday::tick
     midday::statechart
     midday::loader
+    midday::input
     midday::physics
     midday::api
     midday::codegen_bootstrap

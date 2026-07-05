@@ -51,6 +51,59 @@ mechanism; `midday run` still loads each scene's explicitly-listed events
 files unchanged (this layer only widens VALIDATION's view, not runtime
 scene loading).
 
+## `*.input.yaml` / `*.input_profile.yaml` (m1-input-actions)
+
+```yaml
+format: 1
+actions:
+  jump:
+    bindings:
+      - {device: keyboard, control: space}
+      - {device: gamepad, control: button_south}
+  move_up: {bindings: [{device: keyboard, control: w}]}
+  move_down: {bindings: [{device: keyboard, control: s}]}
+  move_left: {bindings: [{device: keyboard, control: a}]}
+  move_right: {bindings: [{device: keyboard, control: d}]}
+sticks:
+  move:                     # a named 2D composite (Godot InputMap::get_vector precedent)
+    up: move_up             # up/down/left/right must already be declared actions
+    down: move_down
+    left: move_left
+    right: move_right
+    deadzone: 0.2           # optional, default 0.2; valid range [0, 1)
+```
+
+Device kinds are a closed vocabulary (`keyboard`, `mouse`, `gamepad`,
+`touch`); `control` is an opaque device-specific string — a real OS/device
+backend is `m7-platform` territory, so this format is DATA plus the
+synthetic injection seam (`core/input/inject.h`), never a hardware mapping.
+Action names are a **project-wide namespace**, exactly like events:
+`midday validate <f>.input.yaml` (extension dispatch, no `--schema` flag)
+walks `<f>`'s own directory recursively for every `*.input.yaml` under it
+and merges them (`core/loader/loader.h` `load_project_input`) — two
+DIFFERENT actions anywhere under that root binding the same
+`(device, control)` refuse `input.conflict`, exit 3 (spec section 13:
+"conflict detection in the validator").
+
+**Runtime rebinding overlay** (spec section 13: "a user-profile overlay"):
+
+```yaml
+format: 1
+overlay:
+  jump:
+    bindings:
+      - {device: keyboard, control: enter}
+```
+
+`*.input_profile.yaml` loads as a single file (no project merge — a
+player's profile is not a project namespace) with the SAME action/binding
+grammar under `overlay:` instead of `actions:` (no `sticks:`: a rebind
+changes which control drives an action, never which actions feed a stick).
+`apply_overlay()` combines a loaded profile against a base `ActionMapDecl`:
+every action the overlay mentions has its bindings REPLACED wholesale, then
+the merged result is re-validated for conflicts (a rebind can introduce a
+collision the original authoring never had).
+
 ## `*.machine.yaml`
 
 ```yaml

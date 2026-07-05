@@ -1,0 +1,14 @@
+# The base action map a player's rebinding overlay (rebind.input_profile.yaml,
+# same directory) rebinds against. apply_overlay() (core/loader/loader.h) is
+# the C++ path that combines the two; `midday validate` only sees each file's
+# own shape (the CLI has no "load this profile against that base" verb — that
+# composition is the embedder's job, spec section 13: the engine owns the
+# data path, not the rebinding UI).
+format: 1
+actions:
+  jump:
+    bindings:
+      - {device: keyboard, control: space}
+  crouch:
+    bindings:
+      - {device: keyboard, control: left_ctrl}

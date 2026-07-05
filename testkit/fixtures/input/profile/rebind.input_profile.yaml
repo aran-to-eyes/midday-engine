@@ -1,0 +1,9 @@
+# A runtime rebinding overlay: `jump` moves from space to enter. Validates
+# clean on its own (`midday validate` checks the overlay's OWN shape + its
+# own internal conflicts — see rebind_conflict.input_profile.yaml for the
+# refusal case); apply_overlay() re-validates against base.input.yaml too.
+format: 1
+overlay:
+  jump:
+    bindings:
+      - {device: keyboard, control: enter}
