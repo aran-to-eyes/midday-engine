@@ -1,4 +1,5 @@
 # Entity prefab — base components (always live) + instanced machine + socket attachment.
+format: 1
 entity: Warden
 base:
   - Transform: {}
@@ -6,15 +7,15 @@ base:
   - RigidBody: {kinematic: true}
   - Health: {max: 120}
   - Perception: {fov: 110, range: 18, spotted: player.spotted, lost: player.lost, inRange: player.inRange, rangeNear: 2.4}
-  - MeshRenderer: {model: {uid: "m:wrdn01", path: examples/warden/models/warden_body.model.yaml}}
+  - MeshRenderer: {model: {uid: "m:wrdn01", path: ../models/warden_body.model.yaml}}
 
 machines:
-  - instance: {uid: "m:brn7q2", path: examples/warden/brains/warden.machine.yaml}
+  - instance: {uid: "m:brn7q2", path: ../brains/warden.machine.yaml}
     override:
       # property-diff override into the machine subtree, path-addressed
       combat/SlashAttack/HitboxLive/Hurtbox/DamageOnTouch: {amount: 55}
 
 attachments:
   - socket: grip        # anchor exported by warden_mace.model.yaml
-    of: {uid: "m:mace09", path: examples/warden/models/warden_mace.model.yaml}
-    entity: {prefab: examples/warden/prefabs/warden_mace.entity.yaml}
+    of: {uid: "m:mace09", path: ../models/warden_mace.model.yaml}
+    entity: {prefab: warden_mace.entity.yaml}

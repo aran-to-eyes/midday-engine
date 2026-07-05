@@ -164,3 +164,78 @@ TEST_CASE("loader.format_schema: a gap in the migration chain refuses") {
     CHECK_FALSE(result.ok);
     CHECK(unwrap(result.error).code == "schema.no_migration_path");
 }
+
+// m1-scene-format's "modest" nested-shape extension (format_schema.h):
+// `kind: object` / `kind: array_of_object` fields carry their own `fields`
+// (empty = opaque, contents unchecked) — this is the mechanism the scene/
+// machine/entity formats[] entries (api/schema_manifest.json) use for a
+// scene's `entities:` list.
+namespace {
+
+constexpr std::string_view kCrateSchemaJson = R"({
+  "name": "crate",
+  "current_version": 1,
+  "fields": [
+    {"name": "items", "kind": "array_of_object", "fields": [
+      {"name": "sku", "type": "name", "required": true},
+      {"name": "count", "type": "int"}
+    ]},
+    {"name": "shipping", "kind": "object", "fields": [
+      {"name": "weight", "type": "float", "required": true}
+    ]},
+    {"name": "metadata", "kind": "object", "fields": []}
+  ]
+})";
+
+FormatSchema crate_schema() {
+    base::Json::ParseResult parsed = base::Json::parse(kCrateSchemaJson);
+    REQUIRE_FALSE(parsed.error.has_value());
+    SchemaLoadResult loaded = load_format_schema(parsed.value, "crate.schema.json");
+    REQUIRE_FALSE(loaded.error.has_value());
+    return std::move(unwrap(loaded.schema));
+}
+
+} // namespace
+
+TEST_CASE("loader.format_schema: kind: array_of_object validates each element's own shape") {
+    const FormatSchema schema = crate_schema();
+    YamlNode good = parse("format: 1\n"
+                          "items:\n"
+                          "  - {sku: widget-1, count: 3}\n"
+                          "  - {sku: widget-2}\n"
+                          "shipping: {weight: 1.5}\n"
+                          "metadata: {anything: goes, here: 1}\n");
+    ValidateResult result = validate_document(schema, good, "crate.yaml");
+    REQUIRE(result.ok);
+}
+
+TEST_CASE("loader.format_schema: kind: array_of_object refuses an unknown nested key") {
+    const FormatSchema schema = crate_schema();
+    YamlNode bad = parse("format: 1\nitems:\n  - {sku: widget-1, weight: 3}\n");
+    ValidateResult result = validate_document(schema, bad, "crate.yaml");
+    CHECK_FALSE(result.ok);
+    CHECK(unwrap(result.error).code == "loader.unknown_key");
+}
+
+TEST_CASE("loader.format_schema: kind: array_of_object refuses a missing required nested field") {
+    const FormatSchema schema = crate_schema();
+    YamlNode bad = parse("format: 1\nitems:\n  - {count: 3}\n");
+    ValidateResult result = validate_document(schema, bad, "crate.yaml");
+    CHECK_FALSE(result.ok);
+    CHECK(unwrap(result.error).code == "loader.bad_value");
+}
+
+TEST_CASE("loader.format_schema: kind: object with empty fields is opaque (any contents pass)") {
+    const FormatSchema schema = crate_schema();
+    YamlNode doc = parse("format: 1\nmetadata: {whatever: [1, 2, {nested: true}]}\n");
+    ValidateResult result = validate_document(schema, doc, "crate.yaml");
+    REQUIRE(result.ok);
+}
+
+TEST_CASE("loader.format_schema: kind: object still refuses a non-object value") {
+    const FormatSchema schema = crate_schema();
+    YamlNode bad = parse("format: 1\nshipping: [1, 2]\n");
+    ValidateResult result = validate_document(schema, bad, "crate.yaml");
+    CHECK_FALSE(result.ok);
+    CHECK(unwrap(result.error).code == "loader.bad_value");
+}

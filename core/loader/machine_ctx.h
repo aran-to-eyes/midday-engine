@@ -7,6 +7,8 @@
 
 #include "core/base/error.h"
 #include "core/expr/env.h"
+#include "core/loader/component_vocab.h"
+#include "core/loader/gaps.h"
 #include "core/loader/loader.h"
 #include "core/loader/yaml.h"
 #include "core/statechart/machine_desc.h"
@@ -39,6 +41,8 @@ struct MachineCtx {
     const std::string& root_dir;
     const reflect::Registry& registry;
     const EventsDecl& vocab;
+    const ComponentVocab& components_vocab; // m1-scene-format: state components:
+    bool lenient = false;                   // m1-scene-format: report, don't refuse
     MachineFile out = {};
     expr::EnvSpec env = {}; // the declared vars — `if:` filters compile here
     std::vector<EventUse> uses = {};
@@ -55,6 +59,27 @@ struct MachineCtx {
     void derive(std::string name) { derived.push_back(std::move(name)); }
 
     void add_channel(std::string_view name);
+
+    // A gap in lenient mode; a hard refusal (`hard_error`) otherwise — the
+    // ONE place machine_load.cpp/machine_parts.cpp decide which of the two
+    // a "content the engine doesn't implement yet" finding becomes.
+    void gap_or_fail(std::string kind,
+                     std::string what,
+                     int line,
+                     int col,
+                     std::string detail,
+                     base::Error hard_error) {
+        if (!lenient) {
+            fail(std::move(hard_error));
+            return;
+        }
+        out.gaps.push_back(Gap{.kind = std::move(kind),
+                               .what = std::move(what),
+                               .file = path,
+                               .line = line,
+                               .col = col,
+                               .detail = std::move(detail)});
+    }
 };
 
 struct RegionCtx {
@@ -76,5 +101,13 @@ struct SequenceParse {
 };
 
 SequenceParse parse_sequence(MachineCtx& ctx, RegionCtx& region, const YamlNode& node);
+
+// machine_components.cpp — the generic `components:` list a state or a
+// state child may carry (m1-scene-format, spec 4.1 "states owning
+// component sets"), and `children:` parsing (components-aware).
+std::vector<statechart::StateComponentDesc> parse_state_components(MachineCtx& ctx,
+                                                                   const YamlNode& node);
+std::vector<GenericComponentEntry> parse_child_components(MachineCtx& ctx, const YamlNode& node);
+void parse_children(MachineCtx& ctx, RegionCtx& region, base::Name state, const YamlNode& node);
 
 } // namespace midday::loader::detail

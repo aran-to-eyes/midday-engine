@@ -1,0 +1,3 @@
+{
+  "api/engine.d.ts": "GENERATED artifact (ts/codegen/manifest.ts + tools/codegen_bootstrap, drift-gated byte-for-byte against both generators) — one section per registered CLI verb/class/event, so it grows monotonically as the engine does; m1-scene-format's new `scene` verb pushed it from 488 to 501 lines. Never hand-edited (regenerate via `midday api codegen`), so the 500-line ratchet's real purpose (bounding a HAND-MAINTAINED module's complexity) does not apply — recorded here rather than trimmed doc strings to satisfy a line count."
+}

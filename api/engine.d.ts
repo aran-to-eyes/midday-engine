@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash 204ffe872e263449 (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash dc65021bc627e185 (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -391,6 +391,18 @@ declare namespace midday {
         dir: string;
     }
 
+    /** inspect a scene/machine/entity file: canonical text, effective state, gaps */
+    interface SceneVerbArgs {
+        /** print the EFFECTIVE state: on: desugars to Transition:, defaults filled in, overrides resolved and applied */
+        full?: boolean;
+        /** a project component-schema manifest (`midday script extract --out`) — extends the native vocabulary a component name is checked against */
+        components?: string;
+        /** operation: print */
+        op: string;
+        /** a *.scene.yaml / *.machine.yaml / *.entity.yaml file */
+        file: string;
+    }
+
     /** Verb name -> parsed-argument type. */
     interface VerbArgsByName {
         "version": VersionVerbArgs;
@@ -407,6 +419,7 @@ declare namespace midday {
         "check": CheckVerbArgs;
         "mv": MvVerbArgs;
         "new": NewVerbArgs;
+        "scene": SceneVerbArgs;
     }
 }
 

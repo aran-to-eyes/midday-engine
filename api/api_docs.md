@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `204ffe872e263449`
+- api_compat_hash: `dc65021bc627e185`
 
 ## Classes
 
@@ -584,3 +584,23 @@ Positionals:
 | positional | type | required | variadic | doc |
 | --- | --- | --- | --- | --- |
 | `dir` | `string` | yes | no | target directory for the new project (must not exist, or be empty) |
+
+### `midday scene`
+
+inspect a scene/machine/entity file: canonical text, effective state, gaps
+
+- compat_hash: `c32d56d9921f9513`
+
+Flags:
+
+| flag | type | required | default | doc |
+| --- | --- | --- | --- | --- |
+| `--full` | `bool` | no |  | print the EFFECTIVE state: on: desugars to Transition:, defaults filled in, overrides resolved and applied |
+| `--components` | `string` | no |  | a project component-schema manifest (`midday script extract --out`) — extends the native vocabulary a component name is checked against |
+
+Positionals:
+
+| positional | type | required | variadic | doc |
+| --- | --- | --- | --- | --- |
+| `op` | `string` | yes | no | operation: print |
+| `file` | `string` | yes | no | a *.scene.yaml / *.machine.yaml / *.entity.yaml file |

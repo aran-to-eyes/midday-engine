@@ -1,6 +1,7 @@
 # Machine prefab — a subtree asset; entities instance it and override per-instance.
 # `on:` is sugar for a Transition component pair list. [SPEC-GAP #5: sugar↔component
 #  equivalence was implied, never stated]
+format: 1
 machine: warden
 
 regions:
@@ -11,7 +12,7 @@ regions:
         on:
           - {event: player.spotted, key: self, goto: Chase}
       Chase:
-        script: states/chase.ts
+        script: ../states/chase.ts
         components:
           - NavFollow: {speed: 4.5, repathEvery: 0.25}
         on:
@@ -27,7 +28,7 @@ regions:
           - {event: player.inRange, key: self, goto: SlashAttack}
 
       SlashAttack:
-        script: states/slash_attack.ts
+        script: ../states/slash_attack.ts
         sequence:
           duration: 1.2          # resolves to 72 ticks @60Hz, tick-locked
           end: hold              # `then: Passive` would be sugar for the finished-pair below
@@ -47,11 +48,11 @@ regions:
                   - DamageOnTouch: {amount: 40, stagger: 8}
 
       Staggered:
-        script: states/staggered.ts
+        script: ../states/staggered.ts
         components:
           - StaggerTimer: {duration: 0.9}
         on:
           - {event: self.recovered, goto: Passive}
 
       Dead:
-        script: states/dead.ts
+        script: ../states/dead.ts

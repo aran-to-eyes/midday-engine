@@ -27,61 +27,6 @@ using detail::RegionCtx;
 
 namespace {
 
-void parse_children(MachineCtx& ctx, RegionCtx& region, base::Name state, const YamlNode& node) {
-    if (!node.is_seq()) {
-        ctx.fail(err_node(
-            "loader.bad_value", ctx.path, node, "expected a list of {entity[, at]} children"));
-        return;
-    }
-    StateChildren children;
-    children.region = region.region;
-    children.state = state;
-    for (const YamlNode& child : node.seq) {
-        if (!child.is_map()) {
-            ctx.fail(
-                err_node("loader.bad_value", ctx.path, child, "expected an {entity[, at]} map"));
-            return;
-        }
-        static constexpr std::array<std::string_view, 2> kAllowed = {"entity", "at"};
-        if (auto error = detail::check_keys(child, ctx.path, kAllowed)) {
-            ctx.fail(std::move(*error));
-            return;
-        }
-        detail::FieldResult entity =
-            detail::require_field(child, ctx.path, "entity", "a state child");
-        if (entity.error.has_value()) {
-            ctx.fail(std::move(*entity.error));
-            return;
-        }
-        Parsed<std::string> name = detail::get_name(*entity.node, ctx.path);
-        if (name.error.has_value()) {
-            ctx.fail(std::move(*name.error));
-            return;
-        }
-        StateChildDesc desc;
-        desc.entity = base::Name(name.value);
-        for (const StateChildDesc& existing : children.children) {
-            if (existing.entity == desc.entity) {
-                ctx.fail(err_node("loader.duplicate",
-                                  ctx.path,
-                                  *entity.node,
-                                  "child entity '" + name.value + "' is already declared"));
-                return;
-            }
-        }
-        if (const YamlNode* at = child.find("at")) {
-            Parsed<math::Vec3> translation = detail::get_vec3(*at, ctx.path);
-            if (translation.error.has_value()) {
-                ctx.fail(std::move(*translation.error));
-                return;
-            }
-            desc.at.translation = translation.value;
-        }
-        children.children.push_back(desc);
-    }
-    ctx.out.children.push_back(std::move(children));
-}
-
 void parse_script(MachineCtx& ctx, RegionCtx& region, base::Name state, const YamlNode& node) {
     Parsed<std::string> ref = detail::get_name(node, ctx.path);
     if (ref.error.has_value()) {
@@ -95,11 +40,19 @@ void parse_script(MachineCtx& ctx, RegionCtx& region, base::Name state, const Ya
     script.line = node.line;
     script.path = (std::filesystem::path(ctx.root_dir) / ref.value).generic_string();
     if (!std::filesystem::exists(script.path)) {
-        ctx.fail(err_node("loader.bad_ref",
-                          ctx.path,
-                          node,
-                          "state script '" + ref.value + "' not found (resolved: " + script.path +
-                              "; script paths are project-root-relative)"));
+        // Lenient mode: the script seat is skipped entirely (nothing to bind
+        // at run time) and the gap is reported instead of refused.
+        ctx.gap_or_fail(
+            "script",
+            ref.value,
+            node.line,
+            node.col,
+            "state script '" + ref.value + "' not found (resolved: " + script.path + ")",
+            err_node("loader.bad_ref",
+                     ctx.path,
+                     node,
+                     "state script '" + ref.value + "' not found (resolved: " + script.path +
+                         "; script paths are project-root-relative)"));
         return;
     }
     ctx.out.scripts.push_back(std::move(script));
@@ -135,8 +88,15 @@ statechart::StateDesc parse_state(MachineCtx& ctx, RegionCtx& region, const Yaml
         ctx.fail(err_node("loader.bad_value", ctx.path, body, "expected a state mapping"));
         return state;
     }
-    static constexpr std::array<std::string_view, 7> kAllowed = {
-        "script", "on", "states", "initial", "history", "sequence", "children"};
+    static constexpr std::array<std::string_view, 9> kAllowed = {"script",
+                                                                 "on",
+                                                                 "Transition",
+                                                                 "components",
+                                                                 "states",
+                                                                 "initial",
+                                                                 "history",
+                                                                 "sequence",
+                                                                 "children"};
     if (auto error = detail::check_keys(body, ctx.path, kAllowed)) {
         ctx.fail(std::move(*error));
         return state;
@@ -152,10 +112,32 @@ statechart::StateDesc parse_state(MachineCtx& ctx, RegionCtx& region, const Yaml
     }
     if (const YamlNode* script = body.find("script"))
         parse_script(ctx, region, state.name, *script);
-    if (const YamlNode* on = body.find("on"))
-        state.transitions = detail::parse_pair_list(ctx, region, *on, entry.key);
+    // `on:` is authoring sugar for a Transition component pair list (spec
+    // 4.2); `Transition:` is that CANONICAL, already-desugared spelling
+    // (`scene print --full` emits it, never `on:` — SPEC-GAP #5). Both
+    // parse through the identical pair-list grammar into state.transitions;
+    // carrying both on the same state is ambiguous, so it refuses.
+    const YamlNode* on = body.find("on");
+    const YamlNode* canonical_transition = body.find("Transition");
+    if (on != nullptr && canonical_transition != nullptr) {
+        ctx.fail(err_node("loader.bad_value",
+                          ctx.path,
+                          *canonical_transition,
+                          "state '" + entry.key +
+                              "' carries both 'on:' and 'Transition:' (Transition: is on:'s "
+                              "canonical form; author exactly one)"));
+        return state;
+    }
+    if (const YamlNode* pairs = on != nullptr ? on : canonical_transition)
+        state.transitions = detail::parse_pair_list(ctx, region, *pairs, entry.key);
     if (ctx.failed())
         return state;
+
+    if (const YamlNode* components = body.find("components")) {
+        state.components = detail::parse_state_components(ctx, *components);
+        if (ctx.failed())
+            return state;
+    }
 
     if (const YamlNode* sequence = body.find("sequence")) {
         detail::SequenceParse sheet = detail::parse_sequence(ctx, region, *sequence);
@@ -172,7 +154,7 @@ statechart::StateDesc parse_state(MachineCtx& ctx, RegionCtx& region, const Yaml
         state.sequence = std::move(sheet.sheet);
     }
     if (const YamlNode* children = body.find("children"))
-        parse_children(ctx, region, state.name, *children);
+        detail::parse_children(ctx, region, state.name, *children);
     if (ctx.failed())
         return state;
 
@@ -187,13 +169,35 @@ statechart::StateDesc parse_state(MachineCtx& ctx, RegionCtx& region, const Yaml
             if (ctx.failed())
                 return state;
         }
-        detail::FieldResult initial =
-            detail::require_field(body, ctx.path, "initial", "a state with substates");
-        if (initial.error.has_value()) {
-            ctx.fail(std::move(*initial.error));
+        const YamlNode* initial_field = body.find("initial");
+        if (initial_field == nullptr) {
+            // NATIVE span-scoped substate activation (a state whose ONLY
+            // substates are span targets, entered/exited by the span's own
+            // open/close, never a normal `initial:` descent) is m4 work
+            // (boss.machine.yaml's header comment: "m4 binds span-scoped
+            // activation natively; this file then sheds the two [manual
+            // open/close] pairs") — examples/warden/brains/warden.machine.yaml
+            // already authors that shape. Lenient mode reports the gap and
+            // picks the first substate as a syntactically-valid placeholder
+            // so the REST of the tree still parses and prints; every other
+            // caller (default: strict) keeps the exact M0 hard refusal.
+            ctx.gap_or_fail("statechart",
+                            std::string(state.name.view()) + ".initial",
+                            entry.key_line,
+                            entry.key_col,
+                            "state '" + std::string(state.name.view()) +
+                                "' has substates but no 'initial:' (native span-scoped substate "
+                                "activation is not implemented yet)",
+                            err_node("loader.bad_value",
+                                     ctx.path,
+                                     body,
+                                     "a state with substates requires 'initial'"));
+            if (ctx.failed())
+                return state;
+            state.initial = state.substates.front().name;
             return state;
         }
-        Parsed<std::string> initial_name = detail::get_name(*initial.node, ctx.path);
+        Parsed<std::string> initial_name = detail::get_name(*initial_field, ctx.path);
         if (initial_name.error.has_value()) {
             ctx.fail(std::move(*initial_name.error));
             return state;
@@ -204,7 +208,7 @@ statechart::StateDesc parse_state(MachineCtx& ctx, RegionCtx& region, const Yaml
         if (!direct) {
             ctx.fail(err_node("loader.bad_ref",
                               ctx.path,
-                              *initial.node,
+                              *initial_field,
                               "initial '" + initial_name.value + "' must name a direct substate"));
             return state;
         }
@@ -360,7 +364,9 @@ void parse_vars(MachineCtx& ctx, const YamlNode& node) {
 MachineLoadResult load_machine_file(const std::string& path,
                                     const std::string& root_dir,
                                     const reflect::Registry& registry,
-                                    const EventsDecl& vocab) {
+                                    const EventsDecl& vocab,
+                                    const ComponentVocab& components_vocab,
+                                    bool lenient) {
     MachineLoadResult result;
     YamlParseResult parsed = parse_yaml_file(path);
     if (parsed.error.has_value()) {
@@ -379,7 +385,12 @@ MachineLoadResult load_machine_file(const std::string& path,
         return result;
     }
 
-    MachineCtx ctx{.path = path, .root_dir = root_dir, .registry = registry, .vocab = vocab};
+    MachineCtx ctx{.path = path,
+                   .root_dir = root_dir,
+                   .registry = registry,
+                   .vocab = vocab,
+                   .components_vocab = components_vocab,
+                   .lenient = lenient};
     ctx.out.path = path;
 
     detail::FieldResult name = detail::require_field(root, path, "machine", "a machine file");
@@ -432,7 +443,17 @@ MachineLoadResult load_machine_file(const std::string& path,
 
     // The vocabulary closure: every referenced event must be declared (an
     // events file), built-in (reflect vocabulary), or derived from this
-    // machine ("<state>.finished", "<span>.opened"/".closed").
+    // machine ("<state>.finished", "<span>.opened"/".closed"). A machine
+    // file's vocabulary comes from its SCENE's `events:` list (there is no
+    // per-machine equivalent) — printing one standalone (`midday scene
+    // print` on a bare `*.machine.yaml`) walks its own directory instead
+    // (loader_yaml.md's project-root convention) and may legitimately miss
+    // events declared in a sibling directory. Lenient mode reports the gap
+    // and keeps parsing rather than refusing a file that is only
+    // incompletely OBSERVABLE from where it happens to sit, not actually
+    // wrong; every other caller (default: strict — `midday run` always
+    // loads a machine THROUGH its scene, which supplies the real vocab)
+    // keeps the exact M0 hard refusal.
     for (const detail::EventUse& use : ctx.uses) {
         if (vocab.has_event(use.event))
             continue;
@@ -443,14 +464,24 @@ MachineLoadResult load_machine_file(const std::string& path,
             derived = derived || candidate == use.event;
         if (derived)
             continue;
-        result.error = err_at("loader.bad_ref",
-                              path,
-                              use.line,
-                              use.col,
-                              "unknown event '" + use.event +
-                                  "' (declare it in an events file; built-in and derived "
-                                  "<state>.finished / <span>.opened|.closed names pass)");
-        return result;
+        ctx.gap_or_fail("event",
+                        use.event,
+                        use.line,
+                        use.col,
+                        "event '" + use.event +
+                            "' is not declared in the vocabulary visible "
+                            "from here",
+                        err_at("loader.bad_ref",
+                               path,
+                               use.line,
+                               use.col,
+                               "unknown event '" + use.event +
+                                   "' (declare it in an events file; built-in and derived "
+                                   "<state>.finished / <span>.opened|.closed names pass)"));
+        if (ctx.failed()) {
+            result.error = std::move(ctx.error);
+            return result;
+        }
     }
 
     result.machine = std::move(ctx.out);

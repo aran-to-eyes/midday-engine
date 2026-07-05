@@ -1,18 +1,26 @@
 # Scene — entities incl. prefab instances, spline, virtual camera.
+format: 1
 scene: arena
+events:
+  - ../events/combat.events.yaml
 entities:
   - entity: Ground
     components:
-      - Transform: {}
-      - Collider: {shape: box, size: [40, 1, 40], at: [0, -0.5, 0], layer: world}
-      - MeshRenderer: {model: {uid: "m:grnd01", path: examples/warden/models/arena_floor.model.yaml}}
+      # M0's static-ground surface is a plane collider (a box + RigidBody
+      # is the M0 DYNAMIC body, examples/appendix_a/boss.scene.yaml's own
+      # Ground precedent) — no independent offset, no physics layers yet
+      # (those arrive with m4-physics-full); the plane's height rides the
+      # entity's own Transform, the mechanism M0 actually has.
+      - Transform: {at: [0, -0.5, 0]}
+      - Collider: {shape: plane}
+      - MeshRenderer: {model: {uid: "m:grnd01", path: ../models/arena_floor.model.yaml}}
 
   - entity: PatrolPath
     components:
       - Spline: {type: catmull-rom, closed: true, points: [[8,0,8], [-8,0,8], [-8,0,-8], [8,0,-8]]}
 
   - entity: Warden
-    prefab: {uid: "m:wrdp01", path: examples/warden/prefabs/warden.entity.yaml}
+    prefab: {uid: "m:wrdp01", path: ../prefabs/warden.entity.yaml}
     at: [6, 0, 0]
     override:
       # per-instance tweak through the same property-diff mechanism;
@@ -20,7 +28,7 @@ entities:
       warden/combat/SlashAttack/sequence: {duration: 1.0}
 
   - entity: Player
-    prefab: {uid: "m:plyr01", path: examples/warden/prefabs/player.entity.yaml}
+    prefab: {uid: "m:plyr01", path: ../prefabs/player.entity.yaml}
     at: [-10, 0, 0]
 
   - entity: MainCam

@@ -52,13 +52,16 @@
     },
     "format_field": {
       "type": "object",
-      "required": ["name", "type"],
+      "required": ["name"],
       "additionalProperties": false,
+      "description": "A flat (scalar `type`) field, OR — m1-scene-format's 'modest' nested-shape extension, core/loader/format_schema.h — an object/array-of-object field carrying its own `fields` (possibly empty, meaning opaque: that SHAPE is required, contents unchecked). `type`/`enum` apply only when `kind` is absent (the default, scalar).",
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "type": { "$ref": "#/$defs/type_spelling" },
         "required": { "type": "boolean" },
-        "enum": { "type": "array", "items": { "type": "string" } }
+        "enum": { "type": "array", "items": { "type": "string" } },
+        "kind": { "enum": ["object", "array_of_object"] },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/format_field" } }
       }
     },
     "format_migration": {

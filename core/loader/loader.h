@@ -40,6 +40,9 @@
 #include "core/base/name.h"
 #include "core/bus/bus.h"
 #include "core/ecs/entity.h"
+#include "core/loader/component_vocab.h"
+#include "core/loader/entity_format.h"
+#include "core/loader/gaps.h"
 #include "core/math/xform.h"
 #include "core/reflect/registry.h"
 #include "core/statechart/machine_desc.h"
@@ -261,6 +264,12 @@ struct ComponentSet {
 struct StateChildDesc {
     base::Name entity;
     math::Transform at; // `at:` sugar — the child's local translation
+    // m1-scene-format: a child entity's own components (e.g. Hurtbox's
+    // Collider + DamageOnTouch under HitboxLive, examples/warden/). Generic
+    // (name + opaque fields) — same "no runtime type yet" contract as
+    // core/statechart::StateComponentDesc; a child's Transform placement
+    // stays the typed `at:` field above, unaffected.
+    std::vector<GenericComponentEntry> components;
 };
 
 struct StateScriptRef {
@@ -281,7 +290,8 @@ struct MachineFile {
     statechart::MachineDesc desc; // the EXISTING aggregate, load-ready
     std::vector<StateScriptRef> scripts;
     std::vector<StateChildren> children;
-    std::string path; // resolved file path (identity for dedup)
+    std::string path;      // resolved file path (identity for dedup)
+    std::vector<Gap> gaps; // lenient mode only (core/loader/gaps.h)
 };
 
 struct MachineLoadResult {
@@ -290,27 +300,97 @@ struct MachineLoadResult {
 };
 
 // Parse + validate one machine file. `vocab` is the merged project events
-// declaration; `root_dir` resolves script refs.
+// declaration; `root_dir` resolves script refs. `components_vocab` checks
+// state-level `components:` entries (m1-scene-format); `lenient` (default
+// false, EVERY existing caller) downgrades an unknown component name or a
+// missing state script from a hard refusal into a Gap on the result instead
+// (core/loader/gaps.h) — every other refusal (bad goto/event/duplicate
+// names, unknown keys) stays a hard refusal in both modes.
 MachineLoadResult load_machine_file(const std::string& path,
                                     const std::string& root_dir,
                                     const reflect::Registry& registry,
-                                    const EventsDecl& vocab);
+                                    const EventsDecl& vocab,
+                                    const ComponentVocab& components_vocab = ComponentVocab{},
+                                    bool lenient = false);
+
+// ---- entity/prefab files (m1-scene-format, `*.entity.yaml`) ------------------
+// A machine instance under an entity/prefab file's `machines:` list: its own
+// override block, scoped to exactly this one instance (spec 4.2's
+// entity/prefab-level override grammar — no machine-name hop needed, unlike
+// a scene entity's `prefab: {...} override:`, which may need to pick among
+// several machine instances by name).
+struct EntityMachineInstance {
+    AssetRefDesc instance_ref;
+    std::vector<OverrideEntry> overrides;
+    std::uint32_t machine_index = 0; // index into EntityFile::machine_files
+};
+
+struct EntityFile {
+    base::Name name;
+    std::string path;                                   // the entity/prefab file as given
+    std::string root_dir;                               // project root = this file's directory
+    std::vector<GenericComponentEntry> base_components; // `base:` — every entry generic
+    std::vector<EntityMachineInstance> machines;
+    std::vector<MachineFile> machine_files; // deduplicated by resolved path
+    std::vector<AttachmentDesc> attachments;
+    std::vector<Gap> gaps; // lenient mode only
+};
+
+struct EntityLoadResult {
+    std::optional<EntityFile> entity;
+    std::optional<base::Error> error;
+};
+
+// Parse one `*.entity.yaml` prefab file. Same strict/lenient contract as
+// load_machine_file: unknown `base:`/child component names are ALWAYS
+// checked against `components_vocab`; missing `machines[].instance` files
+// stay a hard refusal in every mode (a machine file is structurally
+// required to describe anything at all); missing `attachments[]` asset
+// files (`of:`, `entity: {prefab: ...}}`) are lenient-only Gaps (brand new
+// grammar, no M0 precedent to preserve).
+EntityLoadResult load_entity_file(const std::string& path,
+                                  const reflect::Registry& registry,
+                                  const EventsDecl& vocab,
+                                  const ComponentVocab& components_vocab = ComponentVocab{},
+                                  bool lenient = false);
 
 // ---- scene files --------------------------------------------------------------
+enum class SceneEntityKind : std::uint8_t {
+    kInline = 0, // `components:` + `machines:` authored directly (M0 shape)
+    kPrefab = 1, // `prefab: {uid?, path}` + `at:` + `override:` (m1-scene-format)
+};
+
+// A scene entity's `prefab:` + `at:` + `override:` (spec 4.1 "machines are
+// prefab subtrees ... instanced as assets with per-entity property-diff
+// overrides"). `entity_index` is valid iff `resolved` — a missing prefab
+// file is a lenient-only Gap, never a hard refusal (brand new grammar).
+struct PrefabInstanceDesc {
+    AssetRefDesc prefab_ref;
+    math::Transform at;
+    std::vector<OverrideEntry> overrides;
+    bool resolved = false;
+    std::uint32_t entity_index = 0; // index into SceneFile::entity_prefabs
+};
+
 struct SceneEntityDesc {
     base::Name name;
-    ComponentSet components;
-    std::vector<std::uint32_t> machines; // indexes into SceneFile::machines
+    SceneEntityKind kind = SceneEntityKind::kInline;
+    ComponentSet components;                             // kInline: the M0 native set
+    std::vector<GenericComponentEntry> extra_components; // kInline: non-native components
+    std::vector<std::uint32_t> machines;      // kInline: indexes into SceneFile::machines
+    std::optional<PrefabInstanceDesc> prefab; // kPrefab only
     int line = 0;
 };
 
 struct SceneFile {
     base::Name name;
-    std::string path;                  // the scene file as given
-    std::string root_dir;              // project root = the scene file's directory
-    EventsDecl events;                 // merged from every listed events file
-    std::vector<MachineFile> machines; // deduplicated by resolved path
+    std::string path;                       // the scene file as given
+    std::string root_dir;                   // project root = the scene file's directory
+    EventsDecl events;                      // merged from every listed events file
+    std::vector<MachineFile> machines;      // deduplicated by resolved path
+    std::vector<EntityFile> entity_prefabs; // deduplicated by resolved path
     std::vector<SceneEntityDesc> entities;
+    std::vector<Gap> gaps; // aggregated: this file's own + every nested file's
 };
 
 struct SceneLoadResult {
@@ -319,8 +399,15 @@ struct SceneLoadResult {
 };
 
 // Parse the scene and everything it references (events files first, then
-// machine files). One structured error, first failure wins.
-SceneLoadResult load_scene(const std::string& scene_path, const reflect::Registry& registry);
+// machine/entity files). One structured error, first failure wins. Same
+// strict/lenient contract as load_machine_file/load_entity_file (default
+// false — every existing caller keeps M0's exact hard-refusal behavior);
+// `components_vocab` extends the M0 native {Transform, Collider, RigidBody}
+// set an inline entity's `components:` list is checked against.
+SceneLoadResult load_scene(const std::string& scene_path,
+                           const reflect::Registry& registry,
+                           bool lenient = false,
+                           const ComponentVocab& components_vocab = ComponentVocab{});
 
 // ---- instantiation -------------------------------------------------------------
 // The authored-name marker component every spawned entity carries

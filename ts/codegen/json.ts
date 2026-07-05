@@ -328,6 +328,10 @@ export function jStr(v: string): JValue {
     return { k: "str", v };
 }
 
+export function jBool(v: boolean): JValue {
+    return { k: "bool", v };
+}
+
 // Small known-safe integers only (format/envelope versions, tuple sizes).
 export function jInt(v: number): JValue {
     return { k: "int", raw: String(v) };

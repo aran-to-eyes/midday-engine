@@ -115,15 +115,31 @@ struct SequenceDesc {
     std::uint32_t loop_count = 0; // kLoop only: total passes; 0 = forever
 };
 
+// One component a state owns while active (m1-scene-format, spec 4.1
+// "states owning component sets"): `{Name: {field: value, ...}}` in the
+// SAME shape a scene entity's `components:` list uses, but the vocabulary
+// here is open-ended (NavFollow, StaggerTimer, ... — TS components, none of
+// them native). `fields` is opaque JSON, exactly like TriggerTrackDesc's
+// payload above: this struct is pure data, never interpreted by the
+// statechart runtime in this milestone (no component types exist to
+// activate yet) — core/loader validates the NAME against a supplied
+// component vocabulary and reports an unknown one as a Gap in lenient mode;
+// this header only carries the shape.
+struct StateComponentDesc {
+    base::Name type;
+    base::Json fields; // object; empty object for a bare "Name: {}" entry
+};
+
 struct StateDesc {
     base::Name name;
     std::vector<TransitionDesc> transitions; // declaration order (A.2 rule 2)
     std::vector<WatcherDesc> watchers;
-    std::vector<StateDesc> substates;     // document order = sibling attach order
-    base::Name initial;                   // required iff substates is non-empty
-    bool history = false;                 // resume last active substate on re-entry
-                                          // AND the saved sequence playhead
-    std::optional<SequenceDesc> sequence; // the state's dope sheet, if any
+    std::vector<StateComponentDesc> components; // components this state owns (spec 4.1)
+    std::vector<StateDesc> substates;           // document order = sibling attach order
+    base::Name initial;                         // required iff substates is non-empty
+    bool history = false;                       // resume last active substate on re-entry
+                                                // AND the saved sequence playhead
+    std::optional<SequenceDesc> sequence;       // the state's dope sheet, if any
 };
 
 // A top-level parallel region: one active state at a time, independent

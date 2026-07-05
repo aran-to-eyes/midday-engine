@@ -50,17 +50,54 @@ Layout:
   this tree ever reads it back — the sidecars are the only source of
   truth).
 - `asset_ref.h/.cpp` (m1-uid-system) — the `{uid, path}` / `{path}` dual-
-  write ref SHAPE, recognized structurally wherever it occurs (schema-
-  agnostic, like yaml_emit.h): `midday check`'s classify-and-repair pass
-  and `midday mv`'s path rewriter (cli/verbs/check.cpp, mv.cpp) are its only
-  callers. SCOPE BOUNDARY (the same call m1-strict-yaml made for
-  format_schema.h): this file does not touch scene_load.cpp/
-  machine_load.cpp — extending the scene/machine/prefab grammar itself
-  (e.g. widening `instance: {path}` to accept `uid`) is `m1-scene-format`'s
-  loader-extension work, which depends on this mechanism without this node
-  pre-empting it.
+  write ref SHAPE, MUTABLE (rewrite-capable): `midday check`'s classify-
+  and-repair pass and `midday mv`'s path rewriter (cli/verbs/check.cpp,
+  mv.cpp) are its only callers.
+- `asset_ref_parse.h/.cpp` (m1-scene-format) — the READ-ONLY counterpart:
+  resolves a `{uid?, path}` or bare-path ref DURING LOADING (never
+  rewrites). Shared by `scene_load.cpp`'s `prefab:` and `entity_load.cpp`'s
+  `machines[].instance` / `attachments[].of` / `attachments[].entity.prefab`.
+- `entity_format.h` (m1-scene-format) — the shared data shapes the grammar
+  extension needed: `GenericComponentEntry` (a `{Name: {...}}` component
+  entry outside the M0 native three), `OverrideEntry`, `AssetRefDesc`,
+  `AttachmentDesc`. `loader.h` defines `EntityFile`/`EntityMachineInstance`
+  itself (they need the already-complete `MachineFile` type).
+- `generic_components.h/.cpp` (m1-scene-format) — the ONE `{Name: {field:
+  value, ...}}` list parser, reused by a scene entity's non-native
+  components, an entity file's `base:` list, a machine state's own
+  `components:`, and a state child's `components:` — one engine, not four
+  copies (the jscpd ratchet enforces this).
+- `component_vocab.h/.cpp` (m1-scene-format) — the component-NAME
+  vocabulary a generic component entry's type is checked against: the M0
+  native set always resolves; a project's TS-extracted schema names
+  (`midday script extract`) resolve when supplied.
+- `override.h/.cpp` (m1-scene-format) — the property-diff override engine:
+  parses an `override:` mapping and resolves each path BY NAME ONLY
+  (`formats/loader_yaml.md` "Override path grammar") onto a COPY of a
+  `MachineFile` — never the caller's cached one (the same machine file may
+  be instanced by many entities, each with its own overrides).
+- `machine_emit.h/.cpp` (m1-scene-format) — the canonical machine-file
+  serializer, `yaml_emit.h`'s semantic counterpart: `MachineFile` ->
+  `YamlNode`, `on:` always desugared to `Transition:`, defaults filled.
+  `midday scene print --full` on a `*.machine.yaml` file's round-trip-
+  stable text.
+- `gaps.h` (m1-scene-format) — the unresolved-reference report: a `Gap`
+  (kind/what/file/line/col/detail) collected instead of a hard refusal,
+  but ONLY in the opt-in LENIENT mode every loader entry point defaults to
+  `false` (every existing/default caller keeps M0's exact strict
+  behavior) — `midday scene print` is the one caller that opts in.
+- `entity_load.cpp` (m1-scene-format) — the NEW `*.entity.yaml` prefab-file
+  loader (`entity:` + `base:` + `machines:` + `attachments:`).
+- `scene_components.cpp` / `scene_prefab.cpp` (m1-scene-format) —
+  `scene_load.cpp` split by the 500-line ratchet: the M0 native + m1
+  generic `components:` list, and `prefab:`/`at:`/`override:` resolution
+  respectively (shared context: `scene_ctx.h`).
+- `machine_components.cpp` (m1-scene-format) — `machine_load.cpp`/
+  `machine_parts.cpp` split by the 500-line ratchet: a state's own
+  `components:` and components-aware `children:` parsing.
 
 Consumers: `midday run` (cli/verbs/run.cpp), `midday validate`/`midday fmt`
 (cli/verbs/validate.cpp, cli/verbs/fmt.cpp), `midday check`/`midday mv`
-(cli/verbs/check.cpp, mv.cpp), and the `loader.*` selftests.
-Decisions: D-BUILD-076..081.
+(cli/verbs/check.cpp, mv.cpp), `midday scene print` (cli/verbs/scene.cpp,
+m1-scene-format), and the `loader.*` selftests.
+Decisions: D-BUILD-076..081 (M0), formats/loader_yaml.md (M1 additions).

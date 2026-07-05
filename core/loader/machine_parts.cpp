@@ -30,6 +30,37 @@ void MachineCtx::add_channel(std::string_view name) {
 
 namespace {
 
+// The spec 4.2 symbolic key vocabulary (self/root/global/declared group),
+// shared by a transition pair's `key:` (a SUBSCRIPTION: `global`/a group
+// widens MachineDesc::channels, spec's existing behavior) and a sequence
+// trigger keyframe's `key:` (m1-scene-format's "symbolic keys" deliverable,
+// examples/warden/brains/warden.machine.yaml's `key: self` trigger — an
+// EMIT-side channel; `self`/`root` already match the runtime's existing
+// "always the host channel" behavior exactly, core/statechart/sequences.cpp;
+// routing an EMIT to `global`/a group is deferred — SCOPE, not this node's
+// runtime to extend — so those spellings validate and register the same
+// SUBSCRIPTION channel a listening pair would, a harmless imprecision this
+// node accepts rather than leaving the grammar unparseable).
+void validate_key(MachineCtx& ctx, const YamlNode& key_node) {
+    Parsed<std::string> spelling = get_name(key_node, ctx.path);
+    if (spelling.error.has_value()) {
+        ctx.fail(std::move(*spelling.error));
+        return;
+    }
+    if (spelling.value == "global") {
+        ctx.add_channel("global");
+    } else if (ctx.vocab.has_group(spelling.value)) {
+        ctx.add_channel(spelling.value);
+    } else if (spelling.value != "self" && spelling.value != "root") {
+        ctx.fail(err_node("loader.bad_ref",
+                          ctx.path,
+                          key_node,
+                          "unknown key '" + spelling.value +
+                              "' (self, root, global, or a group declared in an events "
+                              "file's keys: list)"));
+    }
+}
+
 statechart::TransitionDesc
 parse_pair(MachineCtx& ctx, RegionCtx& region, const YamlNode& node, std::string_view owner_state) {
     statechart::TransitionDesc pair;
@@ -80,24 +111,9 @@ parse_pair(MachineCtx& ctx, RegionCtx& region, const YamlNode& node, std::string
     region.targets.push_back(TargetRef{target_name.value, target.node->line, target.node->col});
 
     if (const YamlNode* key = node.find("key")) {
-        Parsed<std::string> spelling = get_name(*key, ctx.path);
-        if (spelling.error.has_value()) {
-            ctx.fail(std::move(*spelling.error));
+        validate_key(ctx, *key);
+        if (ctx.failed())
             return pair;
-        }
-        if (spelling.value == "global") {
-            ctx.add_channel("global");
-        } else if (ctx.vocab.has_group(spelling.value)) {
-            ctx.add_channel(spelling.value);
-        } else if (spelling.value != "self" && spelling.value != "root") {
-            ctx.fail(err_node("loader.bad_ref",
-                              ctx.path,
-                              *key,
-                              "unknown key '" + spelling.value +
-                                  "' (self, root, global, or a group declared in an events "
-                                  "file's keys: list)"));
-            return pair;
-        }
     }
     if (const YamlNode* priority = node.find("priority")) {
         Parsed<std::int64_t> value = get_int(*priority, ctx.path);
@@ -149,7 +165,8 @@ void parse_trigger_track(MachineCtx& ctx, const YamlNode& node, statechart::Sequ
                 "loader.bad_value", ctx.path, keyframe, "expected a {t, event[, payload]} map"));
             return;
         }
-        static constexpr std::array<std::string_view, 3> kAllowed = {"t", "event", "payload"};
+        static constexpr std::array<std::string_view, 4> kAllowed = {
+            "t", "event", "key", "payload"};
         if (auto error = check_keys(keyframe, ctx.path, kAllowed)) {
             ctx.fail(std::move(*error));
             return;
@@ -166,6 +183,18 @@ void parse_trigger_track(MachineCtx& ctx, const YamlNode& node, statechart::Sequ
             ctx.fail(seconds.error.has_value() ? std::move(*seconds.error)
                                                : std::move(*name.error));
             return;
+        }
+        // `key:` (m1-scene-format "symbolic keys"): validated against the
+        // SAME self/root/global/group vocabulary a transition pair's `key:`
+        // uses. self/root already match the runtime's existing "always the
+        // host channel" trigger behavior exactly (core/statechart/
+        // sequences.cpp); this is grammar-acceptance for the authored
+        // spelling, not a new emit-routing feature (see validate_key's
+        // comment on this file's scope boundary).
+        if (const YamlNode* key = keyframe.find("key")) {
+            validate_key(ctx, *key);
+            if (ctx.failed())
+                return;
         }
         statechart::TriggerTrackDesc trigger;
         trigger.time = seconds.value;
@@ -190,15 +219,35 @@ void parse_trigger_track(MachineCtx& ctx, const YamlNode& node, statechart::Sequ
 
 void parse_span_track(MachineCtx& ctx, const YamlNode& node, statechart::SequenceDesc& sheet) {
     if (!node.is_map()) {
-        ctx.fail(err_node("loader.bad_value", ctx.path, node, "expected a {name, from, to} span"));
+        ctx.fail(
+            err_node("loader.bad_value", ctx.path, node, "expected a {name|state, from, to} span"));
         return;
     }
-    static constexpr std::array<std::string_view, 3> kAllowed = {"name", "from", "to"};
-    if (auto error = check_keys(node, ctx.path, kAllowed)) {
+    // `state:` is an accepted ALIAS for `name:` (examples/warden/brains/
+    // warden.machine.yaml's spelling — the span always names the substate
+    // it opens, D-BUILD-081's span->substate binding, so `state:` reads at
+    // least as clearly; canonical re-emission still spells it `name:`,
+    // machine_emit.cpp, exactly like `on:`/`Transition:`). Carrying both is
+    // ambiguous, so it refuses.
+    const YamlNode* name_field = node.find("name");
+    const YamlNode* state_field = node.find("state");
+    if (name_field != nullptr && state_field != nullptr) {
+        ctx.fail(err_node("loader.bad_value",
+                          ctx.path,
+                          node,
+                          "a span carries both 'name:' and 'state:' (state: is name:'s alias; "
+                          "author exactly one)"));
+        return;
+    }
+    static constexpr std::array<std::string_view, 3> kAllowedByName = {"name", "from", "to"};
+    static constexpr std::array<std::string_view, 3> kAllowedByState = {"state", "from", "to"};
+    if (auto error =
+            check_keys(node, ctx.path, state_field != nullptr ? kAllowedByState : kAllowedByName)) {
         ctx.fail(std::move(*error));
         return;
     }
-    FieldResult name = require_field(node, ctx.path, "name", "a span track");
+    FieldResult name =
+        require_field(node, ctx.path, state_field != nullptr ? "state" : "name", "a span track");
     FieldResult from = require_field(node, ctx.path, "from", "a span track");
     FieldResult to = require_field(node, ctx.path, "to", "a span track");
     if (name.error.has_value() || from.error.has_value() || to.error.has_value()) {

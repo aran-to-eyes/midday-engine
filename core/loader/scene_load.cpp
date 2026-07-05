@@ -12,7 +12,9 @@
 // of silently loading dead data.
 
 #include "core/loader/loader.h"
+#include "core/loader/override.h"
 #include "core/loader/parse_util.h"
+#include "core/loader/scene_ctx.h"
 #include "core/loader/yaml.h"
 
 #include <array>
@@ -25,160 +27,12 @@ namespace midday::loader {
 
 using detail::err_at;
 using detail::err_node;
+using detail::parse_components;
+using detail::parse_prefab;
 using detail::Parsed;
+using detail::SceneCtx;
 
 namespace {
-
-struct SceneCtx {
-    const std::string& path;
-    const reflect::Registry& registry;
-    SceneFile out = {};
-    std::optional<base::Error> error = {};
-
-    void fail(base::Error error_value) {
-        if (!error.has_value())
-            error = std::move(error_value);
-    }
-
-    [[nodiscard]] bool failed() const { return error.has_value(); }
-
-    [[nodiscard]] std::string resolve(const std::string& ref) const {
-        return (std::filesystem::path(out.root_dir) / ref).generic_string();
-    }
-};
-
-void parse_transform(SceneCtx& ctx, const YamlNode& node, ComponentSet& components) {
-    static constexpr std::array<std::string_view, 1> kAllowed = {"at"};
-    if (auto error = detail::check_keys(node, ctx.path, kAllowed)) {
-        ctx.fail(std::move(*error));
-        return;
-    }
-    math::Transform transform;
-    if (const YamlNode* at = node.find("at")) {
-        Parsed<math::Vec3> translation = detail::get_vec3(*at, ctx.path);
-        if (translation.error.has_value()) {
-            ctx.fail(std::move(*translation.error));
-            return;
-        }
-        transform.translation = translation.value;
-    }
-    components.transform = transform;
-}
-
-void parse_collider(SceneCtx& ctx, const YamlNode& node, ComponentSet& components) {
-    static constexpr std::array<std::string_view, 2> kAllowed = {"shape", "size"};
-    if (auto error = detail::check_keys(node, ctx.path, kAllowed)) {
-        ctx.fail(std::move(*error));
-        return;
-    }
-    detail::FieldResult shape = detail::require_field(node, ctx.path, "shape", "a Collider");
-    if (shape.error.has_value()) {
-        ctx.fail(std::move(*shape.error));
-        return;
-    }
-    Parsed<std::string> kind = detail::get_name(*shape.node, ctx.path);
-    if (kind.error.has_value()) {
-        ctx.fail(std::move(*kind.error));
-        return;
-    }
-    ColliderDesc collider;
-    if (kind.value == "box") {
-        collider.box = true;
-        detail::FieldResult size = detail::require_field(node, ctx.path, "size", "a box Collider");
-        if (size.error.has_value()) {
-            ctx.fail(std::move(*size.error));
-            return;
-        }
-        Parsed<math::Vec3> extents = detail::get_vec3(*size.node, ctx.path);
-        if (extents.error.has_value()) {
-            ctx.fail(std::move(*extents.error));
-            return;
-        }
-        if (!(extents.value.x > 0.0F) || !(extents.value.y > 0.0F) || !(extents.value.z > 0.0F)) {
-            ctx.fail(err_node(
-                "loader.bad_value", ctx.path, *size.node, "box size must be positive on all axes"));
-            return;
-        }
-        collider.size = extents.value;
-    } else if (kind.value == "plane") {
-        if (node.find("size") != nullptr) {
-            ctx.fail(err_node("loader.bad_value",
-                              ctx.path,
-                              node,
-                              "a plane collider takes no size (an infinite ground plane)"));
-            return;
-        }
-    } else {
-        ctx.fail(err_node("loader.bad_value",
-                          ctx.path,
-                          *shape.node,
-                          "unknown collider shape '" + kind.value +
-                              "' (M0 physics surface: box, plane)"));
-        return;
-    }
-    components.collider = collider;
-}
-
-void parse_components(SceneCtx& ctx, const YamlNode& node, SceneEntityDesc& entity) {
-    if (!node.is_seq()) {
-        ctx.fail(err_node("loader.bad_value", ctx.path, node, "expected a list of components"));
-        return;
-    }
-    for (const YamlNode& component : node.seq) {
-        if (!component.is_map() || component.map.size() != 1) {
-            ctx.fail(err_node("loader.bad_value",
-                              ctx.path,
-                              component,
-                              "expected one {ComponentName: {...}} entry"));
-            return;
-        }
-        const YamlEntry& entry = component.map.front();
-        const YamlNode& body = entry.node();
-        if (!body.is_map() && !body.is_null()) {
-            ctx.fail(err_node(
-                "loader.bad_value", ctx.path, body, "expected a component property mapping"));
-            return;
-        }
-        static const YamlNode kEmpty = [] {
-            YamlNode node;
-            node.kind = YamlNode::Kind::kMap;
-            return node;
-        }();
-        const YamlNode& props = body.is_null() ? kEmpty : body;
-        const bool duplicate = (entry.key == "Transform" && entity.components.transform) ||
-                               (entry.key == "Collider" && entity.components.collider) ||
-                               (entry.key == "RigidBody" && entity.components.rigid_body);
-        if (duplicate) {
-            ctx.fail(err_at("loader.duplicate",
-                            ctx.path,
-                            entry.key_line,
-                            entry.key_col,
-                            "component '" + entry.key + "' is already declared"));
-            return;
-        }
-        if (entry.key == "Transform") {
-            parse_transform(ctx, props, entity.components);
-        } else if (entry.key == "Collider") {
-            parse_collider(ctx, props, entity.components);
-        } else if (entry.key == "RigidBody") {
-            if (auto error = detail::check_keys(props, ctx.path, {})) {
-                ctx.fail(std::move(*error));
-                return;
-            }
-            entity.components.rigid_body = true;
-        } else {
-            ctx.fail(err_at("loader.unknown_key",
-                            ctx.path,
-                            entry.key_line,
-                            entry.key_col,
-                            "unknown component '" + entry.key +
-                                "' (M0 vocabulary: Transform, Collider, RigidBody)"));
-            return;
-        }
-        if (ctx.failed())
-            return;
-    }
-}
 
 void parse_machines(SceneCtx& ctx, const YamlNode& node, SceneEntityDesc& entity) {
     if (!node.is_seq()) {
@@ -234,8 +88,12 @@ void parse_machines(SceneCtx& ctx, const YamlNode& node, SceneEntityDesc& entity
             }
         }
         if (!known) {
-            MachineLoadResult loaded =
-                load_machine_file(resolved, ctx.out.root_dir, ctx.registry, ctx.out.events);
+            MachineLoadResult loaded = load_machine_file(resolved,
+                                                         ctx.out.root_dir,
+                                                         ctx.registry,
+                                                         ctx.out.events,
+                                                         ctx.components_vocab,
+                                                         ctx.lenient);
             if (loaded.error.has_value()) {
                 // The referencing location leads; the nested diagnostic
                 // (with ITS file:line:col) rides along in details.
@@ -257,6 +115,7 @@ void parse_machines(SceneCtx& ctx, const YamlNode& node, SceneEntityDesc& entity
                 return;
             }
             index = static_cast<std::uint32_t>(ctx.out.machines.size());
+            append_gaps(ctx.out.gaps, loaded.machine->gaps);
             ctx.out.machines.push_back(std::move(*loaded.machine));
         }
         entity.machines.push_back(index);
@@ -268,8 +127,8 @@ void parse_entity(SceneCtx& ctx, const YamlNode& node) {
         ctx.fail(err_node("loader.bad_value", ctx.path, node, "expected an entity mapping"));
         return;
     }
-    static constexpr std::array<std::string_view, 3> kAllowed = {
-        "entity", "components", "machines"};
+    static constexpr std::array<std::string_view, 6> kAllowed = {
+        "entity", "components", "machines", "prefab", "at", "override"};
     if (auto error = detail::check_keys(node, ctx.path, kAllowed)) {
         ctx.fail(std::move(*error));
         return;
@@ -296,6 +155,53 @@ void parse_entity(SceneCtx& ctx, const YamlNode& node) {
             return;
         }
     }
+
+    const bool has_prefab = node.find("prefab") != nullptr;
+    const bool has_inline = node.find("components") != nullptr || node.find("machines") != nullptr;
+    if (has_prefab && has_inline) {
+        ctx.fail(err_node("loader.bad_value",
+                          ctx.path,
+                          node,
+                          "entity '" + entity_name.value +
+                              "': 'prefab:' cannot combine with 'components:'/'machines:' (an "
+                              "entity is either inline or a prefab instance)"));
+        return;
+    }
+    if (!has_prefab && (node.find("at") != nullptr || node.find("override") != nullptr)) {
+        ctx.fail(err_node("loader.bad_value",
+                          ctx.path,
+                          node,
+                          "entity '" + entity_name.value +
+                              "': 'at:'/'override:' only apply to a 'prefab:' entity"));
+        return;
+    }
+
+    if (has_prefab) {
+        entity.kind = SceneEntityKind::kPrefab;
+        PrefabInstanceDesc prefab = parse_prefab(ctx, *node.find("prefab"));
+        if (ctx.failed())
+            return;
+        if (const YamlNode* at = node.find("at")) {
+            Parsed<math::Vec3> translation = detail::get_vec3(*at, ctx.path);
+            if (translation.error.has_value()) {
+                ctx.fail(std::move(*translation.error));
+                return;
+            }
+            prefab.at.translation = translation.value;
+        }
+        if (const YamlNode* override_node = node.find("override")) {
+            OverrideParseResult parsed = parse_override_block(*override_node, ctx.path);
+            if (parsed.error.has_value()) {
+                ctx.fail(std::move(*parsed.error));
+                return;
+            }
+            prefab.overrides = std::move(parsed.entries);
+        }
+        entity.prefab = std::move(prefab);
+        ctx.out.entities.push_back(std::move(entity));
+        return;
+    }
+
     if (const YamlNode* components = node.find("components"))
         parse_components(ctx, *components, entity);
     if (ctx.failed())
@@ -331,7 +237,10 @@ void parse_entity(SceneCtx& ctx, const YamlNode& node) {
 
 } // namespace
 
-SceneLoadResult load_scene(const std::string& scene_path, const reflect::Registry& registry) {
+SceneLoadResult load_scene(const std::string& scene_path,
+                           const reflect::Registry& registry,
+                           bool lenient,
+                           const ComponentVocab& components_vocab) {
     SceneLoadResult result;
     YamlParseResult parsed = parse_yaml_file(scene_path);
     if (parsed.error.has_value()) {
@@ -350,7 +259,10 @@ SceneLoadResult load_scene(const std::string& scene_path, const reflect::Registr
         return result;
     }
 
-    SceneCtx ctx{.path = scene_path, .registry = registry};
+    SceneCtx ctx{.path = scene_path,
+                 .registry = registry,
+                 .components_vocab = components_vocab,
+                 .lenient = lenient};
     ctx.out.path = scene_path;
     const std::filesystem::path parent = std::filesystem::path(scene_path).parent_path();
     ctx.out.root_dir = parent.empty() ? std::string(".") : parent.generic_string();

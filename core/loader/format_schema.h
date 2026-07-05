@@ -47,11 +47,37 @@
 
 namespace midday::loader {
 
+// m1-scene-format's answer to "does a flat field vocabulary express the
+// nested scene grammar": NO, not fully — a scene/machine/entity file's real
+// structure (regions -> states -> states..., an entity's polymorphic
+// `components:` list) is recursive and open-ended in ways a finite field
+// list can never capture without becoming a second JSON-Schema engine. The
+// extension stays DELIBERATELY MODEST: `kind` lets a field be an OBJECT or
+// an ARRAY-OF-OBJECT with its own nested `fields` (one PRACTICAL win: a
+// scene's `entities: [{entity, prefab, at, override, components,
+// machines}, ...]` gets real per-entity shape checking) — empty `fields`
+// on an object/array-of-object field means "must be that SHAPE, contents
+// unchecked" (used for genuinely open-ended things: a machine's `regions:`
+// map, an entity's `machines:`/`attachments:` lists). This validates a
+// NECESSARY but not SUFFICIENT structural condition — the loader
+// (core/loader/scene_load.cpp / machine_load.cpp / entity_load.cpp) stays
+// the semantic authority (event vocab, region-wide name resolution,
+// override-path resolution, uid resolution); `midday validate --schema
+// scene` catches gross shape mistakes, never a substitute for `midday run`
+// / `midday scene print` actually loading the file.
+enum class FieldKind : std::uint8_t {
+    kScalar = 0,        // `type` (a TypeDesc spelling) + optional `enum`
+    kObject = 1,        // `fields` (recursive; empty = opaque object)
+    kArrayOfObject = 2, // `fields` describes each element (empty = opaque array)
+};
+
 struct FieldSchema {
     std::string name;
-    reflect::TypeDesc type = reflect::TypeDesc::scalar(reflect::TypeKind::kString);
+    FieldKind kind = FieldKind::kScalar;
+    reflect::TypeDesc type = reflect::TypeDesc::scalar(reflect::TypeKind::kString); // kScalar only
     bool required = false;
-    std::vector<std::string> enum_values; // empty = unconstrained
+    std::vector<std::string> enum_values; // kScalar only; empty = unconstrained
+    std::vector<FieldSchema> fields;      // kObject / kArrayOfObject only
 };
 
 // One migration primitive. The vocabulary grows in place as new needs arise

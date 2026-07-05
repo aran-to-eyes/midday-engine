@@ -105,6 +105,19 @@ SpawnResult spawn_scene(const SceneFile& scene,
     };
 
     for (const SceneEntityDesc& desc : scene.entities) {
+        // Prefab entities (m1-scene-format's `prefab:` + `at:` + `override:`
+        // grammar) parse and resolve fully, but SPAWNING one into the World
+        // is m1-prefab-spawn's job, not this node's (SCOPE) — refuse loudly
+        // rather than silently spawning an empty entity with none of the
+        // prefab's base components.
+        if (desc.kind == SceneEntityKind::kPrefab) {
+            base::Error unsupported;
+            unsupported.code = "loader.unsupported";
+            unsupported.message = "entity '" + std::string(desc.name.view()) +
+                                  "': prefab-instanced entities do not spawn yet "
+                                  "(m1-prefab-spawn); `midday scene print` describes them";
+            return fail(std::move(unsupported));
+        }
         base::Error spawn_error;
         const ecs::EntityRef entity = world.spawn(&spawn_error);
         if (entity.is_null())

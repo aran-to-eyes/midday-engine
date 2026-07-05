@@ -476,6 +476,78 @@ echo "$NEW_OUT" | jq -e '.error.code == "new.target_exists"' >/dev/null
 ! grep -rq "$PWD" build/dev/new_fixture
 [ ! -d build/dev/new_fixture/.midday-cache ]
 
+step "scene format (m1-scene-format: on:->Transition round-trip, override-by-name, Warden parse+report, formats[])"
+# Exit-test #3: `on:` sugar emits the canonical Transition component form.
+build/dev/midday scene print examples/appendix_a/boss.machine.yaml --full --json \
+    | jq -e '.ok and (.yaml | contains("Transition:")) and ((.yaml | contains("\non:")) | not)' \
+    >/dev/null
+# Exit-test #1: a canonical fixture load -> print -> load -> print is
+# BYTE-STABLE (never a self-diff: the second print reloads the FIRST
+# print's own output as a fresh file). The sibling events/scripts directory
+# structure is reproduced so re-loading the printed text sees the SAME
+# vocabulary/scripts the original file did (a fair round trip, not an
+# artifact of a missing sibling).
+rm -rf build/dev/m1_scene_roundtrip
+mkdir -p build/dev/m1_scene_roundtrip/scripts
+cp examples/appendix_a/boss.events.yaml build/dev/m1_scene_roundtrip/
+cp examples/appendix_a/scripts/slash_attack.ts examples/appendix_a/scripts/dead.ts \
+    build/dev/m1_scene_roundtrip/scripts/
+build/dev/midday scene print examples/appendix_a/boss.machine.yaml --full --json \
+    | jq -r '.yaml' >build/dev/m1_scene_roundtrip/once.machine.yaml
+build/dev/midday scene print build/dev/m1_scene_roundtrip/once.machine.yaml --full --json \
+    | jq -r '.yaml' >build/dev/m1_scene_roundtrip/twice.machine.yaml
+cmp build/dev/m1_scene_roundtrip/once.machine.yaml build/dev/m1_scene_roundtrip/twice.machine.yaml
+
+# Exit-test #2 + #5: the Warden corpus (examples/warden/) authors content
+# that references components/scripts/assets which do not exist yet
+# (MeshRenderer, Perception, NavFollow, player.entity.yaml, states/chase.ts,
+# ...) — `scene print` PARSES it and REPORTS every gap (never a refusal,
+# never pretended completion), while the override path grammar STILL
+# resolves BY NAME: arena.scene.yaml's scene-level override
+# (warden/combat/SlashAttack/sequence: duration 1.0) stacks on
+# warden.entity.yaml's own entity-level override
+# (combat/SlashAttack/HitboxLive/Hurtbox/DamageOnTouch: amount 55) — both
+# land in the resolved machine's own canonical form, verbatim.
+build/dev/midday scene print examples/warden/scenes/arena.scene.yaml --full --json \
+    >build/dev/m1_scene_roundtrip/arena_full.json
+ARENA=build/dev/m1_scene_roundtrip/arena_full.json
+jq -e '.ok and (.gaps | length) > 0' "$ARENA" >/dev/null
+jq -e '[.gaps[] | select(.kind=="component" and .what=="Perception")] | length == 1' "$ARENA" \
+    >/dev/null
+jq -e '[.gaps[] | select(.kind=="prefab" and (.what|contains("player.entity.yaml")))] | length == 1' \
+    "$ARENA" >/dev/null
+WARDEN_MACHINES='[.prefab_entities[] | select(.entity=="Warden")][0].machines[0]'
+jq -e "${WARDEN_MACHINES}.effective_yaml | contains(\"duration: 1\")" "$ARENA" >/dev/null
+jq -e "${WARDEN_MACHINES}.effective_yaml | contains(\"amount: 55\")" "$ARENA" >/dev/null
+# Player never resolved (its prefab file does not exist) -> reported, not crashed.
+jq -e '[.prefab_entities[] | select(.entity=="Player")][0].resolved == false' "$ARENA" >/dev/null
+# The standalone machine/entity files also parse + report their own gaps
+# (scripts, components, the native-span-activation gap, unresolved attachments).
+build/dev/midday scene print examples/warden/brains/warden.machine.yaml --full --json \
+    | jq -e '.ok and ([.gaps[] | select(.kind=="script" and (.what|contains("chase.ts")))]
+        | length == 1) and ([.gaps[] | select(.kind=="statechart")] | length == 1)' >/dev/null
+build/dev/midday scene print examples/warden/prefabs/warden.entity.yaml --full --json \
+    | jq -e '.ok and ([.gaps[] | select(.what=="warden_mace.entity.yaml")] | length == 1)' \
+    >/dev/null
+
+# Exit-test #4: every m0-yaml-loader-run fixture keeps loading UNCHANGED —
+# the appendix-A/kata/tainted/events steps above already prove this on
+# `midday run`'s real path; this corroborates the SAME loader through the
+# NEW `scene print` verb, zero gaps on content that was always complete.
+for f in examples/appendix_a/boss.scene.yaml examples/spikes/determinism.scene.yaml \
+         examples/spikes/tainted/tainted.scene.yaml; do
+    build/dev/midday scene print "$f" --json | jq -e '.ok and (.gaps == [])' >/dev/null
+done
+
+# formats[] (api/schema_manifest.json, ts/codegen/manifest.ts) actually
+# validates real scene/machine/entity documents through the generic engine.
+build/dev/midday validate examples/appendix_a/boss.scene.yaml --schema scene --json \
+    | jq -e '.ok' >/dev/null
+build/dev/midday validate examples/appendix_a/boss.machine.yaml --schema machine --json \
+    | jq -e '.ok' >/dev/null
+build/dev/midday validate examples/warden/prefabs/warden.entity.yaml --schema entity --json \
+    | jq -e '.ok' >/dev/null
+
 step "appendix A golden (3200-tick assert pack + independent dual-run diff)"
 # m0-appendix-a-determinism exit tests: the flagship golden — the authored
 # A.3 corpus driven to tick 3200 with the assertion pack; the five item-21

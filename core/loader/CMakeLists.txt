@@ -8,11 +8,21 @@ add_library(midday_loader STATIC
     yaml_emit.cpp
     parse_util.cpp
     format_schema.cpp
+    format_schema_validate.cpp
     events_load.cpp
     input_load.cpp
     machine_load.cpp
     machine_parts.cpp
+    machine_components.cpp
     scene_load.cpp
+    scene_components.cpp
+    scene_prefab.cpp
+    entity_load.cpp
+    override.cpp
+    component_vocab.cpp
+    generic_components.cpp
+    asset_ref_parse.cpp
+    machine_emit.cpp
     spawn.cpp
     uid.cpp
     uid_registry.cpp
@@ -36,6 +46,11 @@ add_library(midday_loader_tests OBJECT
     input_load_test.cpp
     machine_load_test.cpp
     scene_load_test.cpp
+    entity_load_test.cpp
+    override_test.cpp
+    component_vocab_test.cpp
+    generic_components_test.cpp
+    machine_emit_test.cpp
     spawn_test.cpp
     uid_test.cpp
     uid_registry_test.cpp
