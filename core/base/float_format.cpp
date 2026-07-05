@@ -7,6 +7,18 @@
 
 #include "core/base/float_format.h"
 
+// dragonbox's binary32 path has a branch MSVC's /O2 proves unreachable (C4702).
+// The build marks third_party as /external:W0, but MSVC does NOT apply the
+// external warning level to a warning surfaced by TEMPLATE INSTANTIATION inside
+// first-party code (jkj::dragonbox::to_decimal<float> is instantiated in the
+// functions below), so it leaks through /WX. Silence it for this whole TU — the
+// dead branch is vendored code, not ours; covers the header parse AND every
+// instantiation below.
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4702)
+#endif
+
 #include "dragonbox.h"
 
 #include <bit>
@@ -138,3 +150,7 @@ void append_shortest_float(std::string& out, float value) {
 }
 
 } // namespace midday::base
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
