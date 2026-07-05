@@ -30,7 +30,26 @@ keys: [squad]            # group channels usable as `key:` (besides self/root/gl
 Payload types are canonical reflect `TypeDesc` spellings (`float`, `int`,
 `bool`, `string`, `name`, `vec2/3/4`, `quat`, `color`, `entity_ref`,
 `asset_ref`, `array<T>`, `map<T>`). Declared events register into the
-reflect vocabulary at spawn — the bus validates every trigger against them.
+reflect vocabulary at spawn — the bus validates every trigger against them
+(a wrong-typed trigger halts the run with a structured, tick-annotated
+error — `core/bus/bus.cpp` `bus.payload_invalid`).
+
+**Project-wide namespace + collision checks** (m1-events-format): event
+names live in ONE namespace across every `*.events.yaml` a project owns,
+not just the files one scene happens to list. `midday validate
+<file>.events.yaml` (no `--schema`/`--schema-file`; extension dispatch)
+proves this: it walks `<file>`'s own directory recursively for every
+`*.events.yaml` under it (the project root, until `m1-project-new` defines
+a real one — the same "project root = the file's directory" convention
+scenes already use) and merges them into one vocabulary via repeated
+`load_events_file` calls — the SAME merge that already makes a scene's own
+`events: [...]` list cross-file-duplicate-safe, just spanning the whole
+root. A name declared twice under that root refuses `loader.duplicate` at
+the second file's `file:line:col`, exit 3 — even when no single scene
+lists both files. `core/loader/loader.h`'s `load_project_events` is the
+mechanism; `midday run` still loads each scene's explicitly-listed events
+files unchanged (this layer only widens VALIDATION's view, not runtime
+scene loading).
 
 ## `*.machine.yaml`
 

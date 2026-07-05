@@ -1,0 +1,14 @@
+format: 1
+machine: halt_probe
+regions:
+  main:
+    initial: Start
+    states:
+      # A 1-tick timer, unscripted: Trigger's onEnter must run AFTER the
+      # run host binds state scripts (cli/verbs/run.cpp binds once, right
+      # after spawn) — a SCRIPTED initial state's onEnter fires during
+      # spawn itself, before any script host exists, so it never runs.
+      Start:
+        sequence: {duration: 0.02, end: finish, then: Trigger}
+      Trigger:
+        script: wrong_payload.ts

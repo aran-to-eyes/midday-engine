@@ -1,0 +1,7 @@
+format: 1
+scene: wrong_payload_probe
+events: [wrong_payload.events.yaml]
+entities:
+  - entity: Probe
+    machines:
+      - {instance: {path: wrong_payload.machine.yaml}}

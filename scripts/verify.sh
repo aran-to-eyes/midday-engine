@@ -229,6 +229,10 @@ FMT_FIXTURES=(
     examples/spikes/kata.events.yaml
     examples/spikes/tainted/tainted.scene.yaml
     examples/spikes/tainted/tainted.machine.yaml
+    examples/warden/events/combat.events.yaml
+    testkit/fixtures/events/wrong_payload.events.yaml
+    testkit/fixtures/events/wrong_payload.machine.yaml
+    testkit/fixtures/events/wrong_payload.scene.yaml
     testkit/fixtures/schema/valid_v1.widget.yaml
     testkit/fixtures/schema/valid_v2.widget.yaml
 )
@@ -244,6 +248,62 @@ build/dev/midday fmt build/dev/fmt_idem/scratch.widget.yaml --write --json \
     | jq -e '.ok and .changed' >/dev/null
 build/dev/midday fmt build/dev/fmt_idem/scratch.widget.yaml --check --json \
     | jq -e '.ok and .canonical' >/dev/null
+
+step "events format (m1-events-format: project-wide namespace, collisions, undefined refs, wrong-payload halt)"
+# m1-events-format exit tests, extension-dispatch validate (no --schema flag:
+# core/loader/loader.h load_project_events walks the target file's own
+# directory for every *.events.yaml under it — the project-wide namespace).
+# 1) the Warden corpus file validates (brought into canonical-type
+#    conformance: entity_ref/vec3/float + format: 1, this node's real edit).
+build/dev/midday validate examples/warden/events/combat.events.yaml --json \
+    | jq -e '.ok and .schema=="events" and .events==8' >/dev/null
+# Cross-file collision: two files under ONE root declaring the SAME event
+# name refuse (loader.duplicate) even though neither lists the other —
+# the deliverable's "collision checks" made real and CLI-observable.
+rm -rf build/dev/events_probe
+mkdir -p build/dev/events_probe/dup build/dev/events_probe/clean
+printf 'format: 1\nevents: {dup.name: {}}\n' >build/dev/events_probe/dup/a.events.yaml
+printf 'format: 1\nevents: {dup.name: {}}\n' >build/dev/events_probe/dup/b.events.yaml
+EVENTS_STATUS=0
+EVENTS_OUT=$(build/dev/midday validate build/dev/events_probe/dup/a.events.yaml --json) \
+    || EVENTS_STATUS=$?
+[ "$EVENTS_STATUS" -eq 3 ]
+echo "$EVENTS_OUT" | jq -e '.error.code == "loader.duplicate"
+    and (.error.message | contains("dup.name")) and (.error.message | test(":[0-9]+:[0-9]+: "))' \
+    >/dev/null
+# The happy multi-file path: two DIFFERENT-named files under one root merge
+# into a single reported vocabulary (positive proof the namespace spans
+# files, not just a single one).
+printf 'format: 1\nevents: {a.one: {}}\nkeys: [squad]\n' >build/dev/events_probe/clean/a.events.yaml
+printf 'format: 1\nevents: {b.two: {payload: {x: float}}}\n' >build/dev/events_probe/clean/b.events.yaml
+build/dev/midday validate build/dev/events_probe/clean/a.events.yaml --json \
+    | jq -e '.ok and (.files | length)==2 and .events==2 and .groups==1' >/dev/null
+# 2) an undefined event reference in a machine's pairs exits 3 with a
+#    structured file:line diagnostic (loader.bad_ref).
+printf 'format: 1\nmachine: bad\nregions:\n  main:\n    initial: Idle\n    states:\n      Idle:\n        on:\n          - {event: nope.undefined, goto: Idle}\n' \
+    >build/dev/events_probe/bad.machine.yaml
+printf 'format: 1\nscene: bad\nentities:\n  - entity: E\n    machines:\n      - {instance: {path: bad.machine.yaml}}\n' \
+    >build/dev/events_probe/bad.scene.yaml
+RUN_STATUS=0
+RUN_OUT=$(build/dev/midday run build/dev/events_probe/bad.scene.yaml --ticks 1 --json) \
+    || RUN_STATUS=$?
+[ "$RUN_STATUS" -eq 3 ]
+echo "$RUN_OUT" | jq -e '.error.code == "loader.bad_ref"
+    and (.error.message | contains("nope.undefined")) and .error.details.line > 0' >/dev/null
+# 3) a dev build triggering the declared event's WRONG PAYLOAD TYPE halts
+#    at the offending tick with a structured error: the bus refuses the
+#    mistyped trigger (bus.payload_invalid), the refusal throws into the
+#    state script (this.emit sugar's __midday_emit seam), and the run host
+#    surfaces it tick-annotated (script.exception, exit 1 — a runtime
+#    halt, not an authored-text refusal).
+rm -rf build/dev/ts-cache.events
+HALT_STATUS=0
+HALT_OUT=$(build/dev/midday run testkit/fixtures/events/wrong_payload.scene.yaml --ticks 5 \
+    --cache-dir build/dev/ts-cache.events --json) || HALT_STATUS=$?
+[ "$HALT_STATUS" -eq 1 ]
+echo "$HALT_OUT" | jq -e '.error.code == "script.exception"
+    and (.error.message | contains("bus.payload_invalid"))
+    and (.error.details.tick // -1) >= 0' >/dev/null
 
 step "appendix A golden (3200-tick assert pack + independent dual-run diff)"
 # m0-appendix-a-determinism exit tests: the flagship golden — the authored

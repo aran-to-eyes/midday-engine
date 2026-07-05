@@ -1,12 +1,17 @@
 # Event definitions — typed payloads, schema-visible to validate-before-write.
+# Canonical reflect::TypeDesc spellings only (entity_ref, vec3, float, ...) —
+# "the one type language of the schema manifest, not a YAML-local dialect"
+# (core/loader/events_load.cpp) — validated with
+# `midday validate examples/warden/events/combat.events.yaml`.
 # [SPEC-GAP #1: the spec never fixed a file convention for event definitions —
 #  inventing `*.events.yaml` here]
+format: 1
 events:
-  player.spotted: {payload: {player: Entity, distance: float}}
-  player.lost:    {payload: {player: Entity}}
-  player.inRange: {payload: {player: Entity, distance: float}}
+  player.spotted: {payload: {player: entity_ref, distance: float}}
+  player.lost:    {payload: {player: entity_ref}}
+  player.inRange: {payload: {player: entity_ref, distance: float}}
   attack.swoosh:  {payload: {}}
-  damage.dealt:   {payload: {amount: float, by: Entity, point: Vec3}}
-  death.dealt:    {payload: {by: Entity}}
+  damage.dealt:   {payload: {amount: float, by: entity_ref, point: vec3}}
+  death.dealt:    {payload: {by: entity_ref}}
   stagger.hit:    {payload: {force: float}}
-  boss.died:      {payload: {boss: Entity, at: Vec3}}
+  boss.died:      {payload: {boss: entity_ref, at: vec3}}

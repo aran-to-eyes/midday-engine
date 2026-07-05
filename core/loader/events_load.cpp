@@ -5,13 +5,18 @@
 // "vec3", "array<int>", ...) — the one type language of the schema
 // manifest, not a YAML-local dialect.
 
+#include "core/base/file_io.h"
 #include "core/base/name.h"
 #include "core/loader/loader.h"
 #include "core/loader/parse_util.h"
 #include "core/loader/yaml.h"
 
+#include <algorithm>
 #include <array>
+#include <filesystem>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <utility>
 
 namespace midday::loader {
@@ -144,6 +149,44 @@ load_events_file(const std::string& path, const reflect::Registry& registry, Eve
         }
     }
     return std::nullopt;
+}
+
+namespace {
+constexpr std::string_view kEventsSuffix = ".events.yaml";
+} // namespace
+
+ProjectEventsResult load_project_events(const std::string& root_dir,
+                                        const reflect::Registry& registry) {
+    ProjectEventsResult result;
+    std::error_code ec;
+    if (!std::filesystem::is_directory(root_dir, ec)) {
+        result.error = base::file_error(
+            "loader.io", "events project root '" + root_dir + "' is not a directory");
+        return result;
+    }
+    std::filesystem::recursive_directory_iterator it(root_dir, ec);
+    const std::filesystem::recursive_directory_iterator end;
+    for (; !ec && it != end; it.increment(ec)) {
+        std::error_code file_ec;
+        if (!it->is_regular_file(file_ec))
+            continue;
+        if (std::string_view(it->path().filename().string()).ends_with(kEventsSuffix))
+            result.files.push_back(it->path().lexically_normal().generic_string());
+    }
+    if (ec) {
+        result.error =
+            base::file_error("loader.io", "cannot walk events project root '" + root_dir + "'");
+        return result;
+    }
+    std::ranges::sort(result.files); // deterministic merge order, project-wide
+
+    for (const std::string& file : result.files) {
+        if (auto error = load_events_file(file, registry, result.decl)) {
+            result.error = std::move(error);
+            return result;
+        }
+    }
+    return result;
 }
 
 } // namespace midday::loader

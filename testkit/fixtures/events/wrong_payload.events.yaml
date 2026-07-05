@@ -1,0 +1,9 @@
+format: 1
+# m1-events-format exit-test #3 fixture: a project-declared event with a
+# typed field, deliberately triggered with the WRONG payload type by
+# wrong_payload.ts to prove a dev build halts at the offending tick with a
+# structured error (core/bus/bus.cpp bus.payload_invalid ->
+# ts/runtime/state_script.cpp StateScriptHost::emit -> script.exception,
+# tick-annotated via annotate_sim_context).
+events:
+  probe.hit: {payload: {amount: float}}

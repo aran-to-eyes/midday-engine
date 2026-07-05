@@ -114,3 +114,58 @@ TEST_CASE("loader.events: cross-file duplicates refuse (merged project vocabular
     REQUIRE(duplicate_group.has_value());
     CHECK(unwrap(duplicate_group).code == "loader.duplicate");
 }
+
+TEST_CASE("loader.events: load_project_events merges every *.events.yaml under a root") {
+    testkit::TempDir dir{"loader-project-events"};
+    reflect::Registry registry;
+    reflect::register_builtin_events(registry);
+    REQUIRE_FALSE(base::write_file(dir.file("a.events.yaml"),
+                                   "format: 1\nevents: {a.one: {}}\nkeys: [squad]\n",
+                                   "test.io")
+                      .has_value());
+    REQUIRE_FALSE(base::write_file(dir.file("b.events.yaml"),
+                                   "format: 1\nevents: {b.two: {payload: {x: float}}}\n",
+                                   "test.io")
+                      .has_value());
+
+    ProjectEventsResult merged = load_project_events(dir.path.string(), registry);
+    REQUIRE_FALSE(merged.error.has_value());
+    REQUIRE(merged.files.size() == 2);
+    CHECK(merged.files[0] == dir.file("a.events.yaml"));
+    CHECK(merged.files[1] == dir.file("b.events.yaml"));
+    CHECK(merged.decl.events.size() == 2);
+    CHECK(merged.decl.has_event("a.one"));
+    CHECK(merged.decl.has_event("b.two"));
+    CHECK(merged.decl.has_group("squad"));
+}
+
+TEST_CASE("loader.events: load_project_events refuses a same-name event across two files") {
+    testkit::TempDir dir{"loader-project-events-dup"};
+    reflect::Registry registry;
+    reflect::register_builtin_events(registry);
+    REQUIRE_FALSE(base::write_file(
+                      dir.file("a.events.yaml"), "format: 1\nevents: {dup.name: {}}\n", "test.io")
+                      .has_value());
+    REQUIRE_FALSE(base::write_file(
+                      dir.file("b.events.yaml"), "format: 1\nevents: {dup.name: {}}\n", "test.io")
+                      .has_value());
+
+    ProjectEventsResult merged = load_project_events(dir.path.string(), registry);
+    REQUIRE(merged.error.has_value());
+    CHECK(unwrap(merged.error).code == "loader.duplicate");
+    CHECK(unwrap(merged.error).message.find(dir.file("b.events.yaml")) != std::string::npos);
+    CHECK(unwrap(merged.error).message.find("dup.name") != std::string::npos);
+}
+
+TEST_CASE("loader.events: load_project_events refuses a non-directory root") {
+    testkit::TempDir dir{"loader-project-events-notdir"};
+    const std::string not_a_dir = dir.file("plain.events.yaml");
+    REQUIRE_FALSE(
+        base::write_file(not_a_dir, "format: 1\nevents: {a.one: {}}\n", "test.io").has_value());
+
+    reflect::Registry registry;
+    reflect::register_builtin_events(registry);
+    ProjectEventsResult result = load_project_events(not_a_dir, registry); // a FILE, not a dir
+    REQUIRE(result.error.has_value());
+    CHECK(unwrap(result.error).code == "loader.io");
+}

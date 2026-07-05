@@ -102,6 +102,26 @@ struct EventsLoadResult {
 std::optional<base::Error>
 load_events_file(const std::string& path, const reflect::Registry& registry, EventsDecl& decl);
 
+// The PROJECT-WIDE namespace (m1-events-format): every `*.events.yaml`
+// found under `root_dir` (recursive, lexicographically sorted for
+// determinism), merged into ONE EventsDecl via repeated load_events_file
+// calls on the SAME accumulator — so a name declared in two different
+// files under the root refuses (loader.duplicate, file:line:col) even when
+// no single scene lists both files. `root_dir` IS the project boundary for
+// this purpose: until m1-project-new defines a real project root, the
+// caller supplies one (`midday validate` uses the target file's own
+// directory, mirroring the scene loader's "project root = the file's
+// directory" convention, loader_yaml.md); once a real root exists, callers
+// simply point it there instead — the walk/merge logic is unchanged.
+struct ProjectEventsResult {
+    EventsDecl decl;
+    std::vector<std::string> files = {}; // discovered *.events.yaml paths, sorted
+    std::optional<base::Error> error;
+};
+
+ProjectEventsResult load_project_events(const std::string& root_dir,
+                                        const reflect::Registry& registry);
+
 // ---- the M0 component vocabulary (scene entities) ---------------------------
 // Exactly the base components that EXIST in the runtime today: Transform
 // (hierarchy local TRS), Collider + RigidBody (the M0 physics surface:

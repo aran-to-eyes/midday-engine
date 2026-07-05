@@ -17,6 +17,19 @@
 //                          until then every --schema lookup refuses with
 //                          the (empty) list of known names, which is the
 //                          honest answer, not a bug.
+// A THIRD path (m1-events-format, extension dispatch, no flag at all):
+// `*.events.yaml` files do not fit the generic engine's flat field-list
+// shape (an events file is a MAP of independently-typed-payload events,
+// core/loader/events_load.cpp's own grammar) and are not a schema_manifest
+// `formats[]` citizen (that array is m1-scene-format's, scene/machine/
+// prefab only). So when neither --schema nor --schema-file is given and
+// the file's name ends in .events.yaml, this verb runs the PROJECT-WIDE
+// events pass instead (core/loader/loader.h load_project_events): the
+// root is the file's own directory, walked recursively for every
+// *.events.yaml under it (mirrors the scene loader's "project root = the
+// file's directory" convention, loader_yaml.md, until m1-project-new
+// defines a real one) — cross-file collisions anywhere under that root
+// refuse exactly like a single file's own duplicates.
 // Every failure here is the validation class (exit 3): an unreadable or
 // malformed schema is DATA, exactly like `api diff`'s baseline document
 // (api.cpp precedent) — usage errors (exit 2) are reserved for the flag
@@ -25,8 +38,12 @@
 #include "cli/verb.h"
 #include "core/base/file_io.h"
 #include "core/loader/format_schema.h"
+#include "core/loader/loader.h"
 #include "core/loader/yaml.h"
+#include "core/reflect/builtin_events.h"
+#include "core/reflect/registry.h"
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <utility>
@@ -35,6 +52,7 @@ namespace midday::cli {
 namespace {
 
 constexpr std::string_view kDefaultManifest = "api/schema_manifest.json";
+constexpr std::string_view kEventsSuffix = ".events.yaml";
 
 VerbOutcome usage(std::string code, std::string message) {
     VerbOutcome out;
@@ -124,14 +142,51 @@ SchemaResolution resolve_from_manifest(const std::string& name, const std::strin
     return out;
 }
 
+// The events-file dispatch (m1-events-format): no schema flag at all, the
+// root is `path`'s own containing directory, and the project-wide pass
+// (core/loader/loader.h load_project_events) both validates `path` and
+// checks it for collisions against every OTHER *.events.yaml sibling
+// under that root (recursive) — the same merge-and-refuse mechanics a
+// scene's explicit events: [...] list uses, just spanning the whole root
+// instead of one file's declared list.
+VerbOutcome validate_events(const std::string& path) {
+    reflect::Registry registry;
+    reflect::register_builtin_events(registry);
+    const std::filesystem::path parent = std::filesystem::path(path).parent_path();
+    const std::string root = parent.empty() ? std::string(".") : parent.generic_string();
+
+    loader::ProjectEventsResult project = loader::load_project_events(root, registry);
+    if (project.error.has_value())
+        return refuse(std::move(*project.error));
+
+    VerbOutcome out;
+    out.payload.set("file", path);
+    out.payload.set("schema", "events");
+    out.payload.set("root", root);
+    Json files = Json::array();
+    for (const std::string& file : project.files)
+        files.push(file);
+    out.payload.set("files", std::move(files));
+    out.payload.set("events", static_cast<std::int64_t>(project.decl.events.size()));
+    out.payload.set("groups", static_cast<std::int64_t>(project.decl.group_keys.size()));
+    out.human = path + ": valid (events, " + std::to_string(project.decl.events.size()) +
+                " event(s) across " + std::to_string(project.files.size()) + " file(s) under " +
+                root + ")";
+    return out;
+}
+
 VerbOutcome validate_verb(const VerbArgs& args) {
     const bool by_name = args.present("schema");
     const bool by_file = args.present("schema-file");
-    if (by_name == by_file)
-        return usage("usage.bad_schema_selector",
-                     "exactly one of --schema <name> or --schema-file <path> is required");
     if (!by_name && args.present("manifest"))
         return usage("usage.unexpected_flag", "--manifest only applies together with --schema");
+    if (by_name == by_file) {
+        const std::string& path = args.get_string("file");
+        if (!by_file && path.ends_with(kEventsSuffix))
+            return validate_events(path);
+        return usage("usage.bad_schema_selector",
+                     "exactly one of --schema <name> or --schema-file <path> is required");
+    }
 
     SchemaResolution resolution =
         by_file ? resolve_from_file(args.get_string("schema-file"))

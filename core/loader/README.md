@@ -30,7 +30,14 @@ Layout:
   scenes, machines, or events.
 - `events_load.cpp` / `machine_load.cpp` + `machine_parts.cpp` /
   `scene_load.cpp` — the three format loaders (grammar contract:
-  `formats/loader_yaml.md`).
+  `formats/loader_yaml.md`). `events_load.cpp` also carries
+  `load_project_events` (m1-events-format): the PROJECT-WIDE namespace
+  pass — every `*.events.yaml` under a root, merged into one `EventsDecl`
+  via repeated `load_events_file` calls, so a name declared twice anywhere
+  under the root refuses even when no single scene lists both files.
+  `midday validate <file>.events.yaml` (extension dispatch, no schema
+  flag: `cli/verbs/validate.cpp`) is the CLI surface, root = the file's own
+  directory.
 - `spawn.cpp` — SceneFile -> World: entities, transforms, physics bodies,
   machine instantiation, children under states, symbolic key resolution.
 
