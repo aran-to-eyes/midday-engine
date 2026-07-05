@@ -173,6 +173,78 @@ LOADER_OUT=$(printf 'format: 1\nscene: s\nentitiez: []\n' > build/m0/bad.scene.y
 echo "$LOADER_OUT" | jq -e '.error.code == "loader.unknown_key"
     and .error.details.line == 3 and (.error.message | contains("entitiez"))' >/dev/null
 
+step "schema validate + fmt (m1-strict-yaml: mutation corpus + fmt idempotence)"
+# m1-strict-yaml exit tests: the generic schema engine (core/loader/
+# format_schema.h) refuses six mutation classes at exit 3 with a
+# file:line[:col] diagnostic — four through the engine itself (wrong type,
+# unknown key, future format, bad enum) and two it only SURFACES (duplicate
+# key, alias: the strict parser's own yaml.strict refusal, reused rather
+# than reimplemented, over the self-contained testkit/fixtures/schema
+# widget fixture — NOT a scene/machine schema, m1-scene-format's job).
+WIDGET_SCHEMA=testkit/fixtures/schema/widget.schema.json
+build/dev/midday validate testkit/fixtures/schema/valid_v2.widget.yaml \
+    --schema-file "$WIDGET_SCHEMA" --json \
+    | jq -e '.ok and .format_version.authored==2 and (.format_version.migrated|not)' >/dev/null
+# The migration registry: a v1 document (count:) renames forward to v2's
+# amount: and validates clean against the CURRENT schema.
+build/dev/midday validate testkit/fixtures/schema/valid_v1.widget.yaml \
+    --schema-file "$WIDGET_SCHEMA" --json \
+    | jq -e '.ok and .format_version.authored==1 and .format_version.current==2
+        and .format_version.migrated' >/dev/null
+
+assert_widget_refusal() { # <fixture-stem> <expected error.code>
+    STATUS=0
+    OUT=$(build/dev/midday validate "testkit/fixtures/schema/$1.widget.yaml" \
+        --schema-file "$WIDGET_SCHEMA" --json) || STATUS=$?
+    [ "$STATUS" -eq 3 ]
+    echo "$OUT" | jq -e --arg code "$2" \
+        '(.ok | not) and .error.code == $code and (.error.message | test(":[0-9]+:[0-9]+: "))' \
+        >/dev/null
+}
+assert_widget_refusal mutation_wrong_type loader.bad_value
+assert_widget_refusal mutation_unknown_key loader.unknown_key
+assert_widget_refusal mutation_future_format loader.bad_format
+assert_widget_refusal mutation_bad_enum schema.bad_enum
+assert_widget_refusal mutation_duplicate_key yaml.strict
+assert_widget_refusal mutation_alias yaml.strict
+# midday fmt refuses the SAME malformed YAML identically (schema-agnostic).
+FMT_STATUS=0
+FMT_OUT=$(build/dev/midday fmt testkit/fixtures/schema/mutation_alias.widget.yaml --json) \
+    || FMT_STATUS=$?
+[ "$FMT_STATUS" -eq 3 ]
+echo "$FMT_OUT" | jq -e '.error.code == "yaml.strict"' >/dev/null
+
+# fmt(fmt(x)) == fmt(x) for every strict-YAML format fixture in the tree —
+# scene/machine/events (real content, not invented for this node) plus the
+# schema engine's own widget fixtures. The canonical emitter
+# (core/loader/yaml_emit.h) never consults a schema.
+rm -rf build/dev/fmt_idem
+mkdir -p build/dev/fmt_idem
+FMT_FIXTURES=(
+    examples/appendix_a/boss.scene.yaml
+    examples/appendix_a/boss.machine.yaml
+    examples/appendix_a/boss.events.yaml
+    examples/spikes/determinism.scene.yaml
+    examples/spikes/kata.machine.yaml
+    examples/spikes/kata.events.yaml
+    examples/spikes/tainted/tainted.scene.yaml
+    examples/spikes/tainted/tainted.machine.yaml
+    testkit/fixtures/schema/valid_v1.widget.yaml
+    testkit/fixtures/schema/valid_v2.widget.yaml
+)
+for f in "${FMT_FIXTURES[@]}"; do
+    name=$(basename "$f")
+    build/dev/midday fmt "$f" >"build/dev/fmt_idem/$name.once"
+    build/dev/midday fmt "build/dev/fmt_idem/$name.once" >"build/dev/fmt_idem/$name.twice"
+    cmp "build/dev/fmt_idem/$name.once" "build/dev/fmt_idem/$name.twice"
+done
+# --write / --check round-trip on a scratch copy (not the committed fixture).
+cp testkit/fixtures/schema/valid_v2.widget.yaml build/dev/fmt_idem/scratch.widget.yaml
+build/dev/midday fmt build/dev/fmt_idem/scratch.widget.yaml --write --json \
+    | jq -e '.ok and .changed' >/dev/null
+build/dev/midday fmt build/dev/fmt_idem/scratch.widget.yaml --check --json \
+    | jq -e '.ok and .canonical' >/dev/null
+
 step "appendix A golden (3200-tick assert pack + independent dual-run diff)"
 # m0-appendix-a-determinism exit tests: the flagship golden — the authored
 # A.3 corpus driven to tick 3200 with the assertion pack; the five item-21

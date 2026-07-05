@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash bd8b9e08281c755a (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash b1c1a4d318e0e607 (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -331,6 +331,28 @@ declare namespace midday {
         b: string;
     }
 
+    /** validate a strict-YAML file against a schema_manifest.json format entry */
+    interface ValidateVerbArgs {
+        /** format name to look up in the schema manifest's formats[] table */
+        schema?: string;
+        /** schema manifest path, used with --schema (default: api/schema_manifest.json) */
+        manifest?: string;
+        /** a standalone format-entry JSON document (bypasses the manifest) */
+        "schema-file"?: string;
+        /** the strict-YAML file to validate */
+        file: string;
+    }
+
+    /** canonicalize a strict-YAML file (schema-agnostic; see: midday validate) */
+    interface FmtVerbArgs {
+        /** rewrite the file in place with its canonical form */
+        write?: boolean;
+        /** exit 1 without writing if the file is not already canonical */
+        check?: boolean;
+        /** the strict-YAML file to canonicalize */
+        file: string;
+    }
+
     /** Verb name -> parsed-argument type. */
     interface VerbArgsByName {
         "version": VersionVerbArgs;
@@ -342,5 +364,7 @@ declare namespace midday {
         "journal": JournalVerbArgs;
         "rhi": RhiVerbArgs;
         "shot": ShotVerbArgs;
+        "validate": ValidateVerbArgs;
+        "fmt": FmtVerbArgs;
     }
 }

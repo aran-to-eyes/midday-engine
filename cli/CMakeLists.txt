@@ -19,6 +19,8 @@ add_executable(midday
     verbs/journal.cpp
     verbs/rhi.cpp
     verbs/shot.cpp
+    verbs/validate.cpp
+    verbs/fmt.cpp
     verbs/run_test.cpp
     verbs/shot_test.cpp
     verbs/golden_test.cpp

@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `bd8b9e08281c755a`
+- api_compat_hash: `b1c1a4d318e0e607`
 
 ## Classes
 
@@ -487,3 +487,42 @@ Positionals:
 | `op` | `string` | yes | no | operation: compare |
 | `a` | `string` | yes | no | first PNG (golden/reference) |
 | `b` | `string` | yes | no | second PNG (candidate) |
+
+### `midday validate`
+
+validate a strict-YAML file against a schema_manifest.json format entry
+
+- compat_hash: `88aa1796cf79b6f3`
+
+Flags:
+
+| flag | type | required | default | doc |
+| --- | --- | --- | --- | --- |
+| `--schema` | `name` | no |  | format name to look up in the schema manifest's formats[] table |
+| `--manifest` | `string` | no |  | schema manifest path, used with --schema (default: api/schema_manifest.json) |
+| `--schema-file` | `string` | no |  | a standalone format-entry JSON document (bypasses the manifest) |
+
+Positionals:
+
+| positional | type | required | variadic | doc |
+| --- | --- | --- | --- | --- |
+| `file` | `string` | yes | no | the strict-YAML file to validate |
+
+### `midday fmt`
+
+canonicalize a strict-YAML file (schema-agnostic; see: midday validate)
+
+- compat_hash: `e8e3a6d51369c502`
+
+Flags:
+
+| flag | type | required | default | doc |
+| --- | --- | --- | --- | --- |
+| `--write` | `bool` | no |  | rewrite the file in place with its canonical form |
+| `--check` | `bool` | no |  | exit 1 without writing if the file is not already canonical |
+
+Positionals:
+
+| positional | type | required | variadic | doc |
+| --- | --- | --- | --- | --- |
+| `file` | `string` | yes | no | the strict-YAML file to canonicalize |

@@ -1,0 +1,5 @@
+format: 2
+name: bolt
+kind: circle
+amount: 12
+tags: [fastener, metal]

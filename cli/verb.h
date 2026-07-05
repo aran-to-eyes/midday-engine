@@ -143,5 +143,7 @@ const VerbSpec& run_spec();
 const VerbSpec& journal_spec();
 const VerbSpec& rhi_spec();
 const VerbSpec& shot_spec();
+const VerbSpec& validate_spec();
+const VerbSpec& fmt_spec();
 
 } // namespace midday::cli

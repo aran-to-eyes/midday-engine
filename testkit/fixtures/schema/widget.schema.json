@@ -1,0 +1,13 @@
+{
+  "name": "widget",
+  "current_version": 2,
+  "fields": [
+    {"name": "name", "type": "string", "required": true},
+    {"name": "kind", "type": "string", "enum": ["circle", "square", "triangle"]},
+    {"name": "amount", "type": "int"},
+    {"name": "tags", "type": "array<string>"}
+  ],
+  "migrations": [
+    {"from": 1, "to": 2, "ops": [{"op": "rename_key", "from": "count", "to": "amount"}]}
+  ]
+}

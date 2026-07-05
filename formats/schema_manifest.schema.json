@@ -33,10 +33,56 @@
     },
     "formats": {
       "type": "array",
-      "description": "Per-format validation schemas; empty until m1-scene-format appends scene/machine entries."
+      "items": { "$ref": "#/$defs/format_entry" },
+      "description": "Per-format validation schemas, consumed by core/loader/format_schema.h's generic engine (midday validate/fmt, m1-strict-yaml). The entry SHAPE (this $def) is the mechanism; the committed array stays empty until m1-scene-format appends scene/machine/prefab entries."
     }
   },
   "$defs": {
+    "format_entry": {
+      "type": "object",
+      "required": ["name", "current_version", "fields"],
+      "additionalProperties": false,
+      "description": "One validate-before-write schema: a flat field vocabulary plus an optional migration chain. No per-format C++ is required — core/loader/format_schema.h loads and applies this directly.",
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "current_version": { "type": "integer" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/format_field" } },
+        "migrations": { "type": "array", "items": { "$ref": "#/$defs/format_migration" } }
+      }
+    },
+    "format_field": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "$ref": "#/$defs/type_spelling" },
+        "required": { "type": "boolean" },
+        "enum": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "format_migration": {
+      "type": "object",
+      "required": ["from", "to", "ops"],
+      "additionalProperties": false,
+      "description": "One version step (from < to); steps chain when an older document is more than one step behind current_version.",
+      "properties": {
+        "from": { "type": "integer" },
+        "to": { "type": "integer" },
+        "ops": { "type": "array", "items": { "$ref": "#/$defs/migration_op" } }
+      }
+    },
+    "migration_op": {
+      "type": "object",
+      "required": ["op"],
+      "additionalProperties": false,
+      "description": "The migration op vocabulary grows in place; M1 needs exactly one primitive.",
+      "properties": {
+        "op": { "enum": ["rename_key"] },
+        "from": { "type": "string" },
+        "to": { "type": "string" }
+      }
+    },
     "type_spelling": {
       "type": "string",
       "minLength": 1,

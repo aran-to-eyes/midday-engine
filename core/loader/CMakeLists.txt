@@ -5,7 +5,9 @@
 
 add_library(midday_loader STATIC
     yaml_parse.cpp
+    yaml_emit.cpp
     parse_util.cpp
+    format_schema.cpp
     events_load.cpp
     machine_load.cpp
     machine_parts.cpp
@@ -23,6 +25,8 @@ midday_apply_deterministic_fp(midday_loader)
 # into the midday binary (D-BUILD-014 pattern).
 add_library(midday_loader_tests OBJECT
     yaml_test.cpp
+    yaml_emit_test.cpp
+    format_schema_test.cpp
     events_load_test.cpp
     machine_load_test.cpp
     scene_load_test.cpp

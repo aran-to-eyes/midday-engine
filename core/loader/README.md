@@ -14,13 +14,26 @@ Layout:
   rapidyaml (the ONLY TU that sees a ryml type): owned node tree, 1-based
   locations on every node and key, refusals for anchors/aliases/tags,
   duplicate keys, and multi-document streams.
+- `yaml_emit.h` / `yaml_emit.cpp` (m1-strict-yaml) — the canonical
+  serializer, yaml.h's exact counterpart: one deterministic, schema-agnostic
+  rendering (`midday fmt`) that is idempotent by construction.
 - `parse_util.h/.cpp` — strict field helpers (unknown-key checks, typed
-  scalar reads through the core JSON number grammar, `format: 1` gate).
+  scalar reads through the core JSON number grammar, `format: 1` gate). NOT
+  installed API outside `core/loader/`'s own TUs — `format_schema.cpp`
+  reuses these directly as a sibling in the same library.
+- `format_schema.h/.cpp` (m1-strict-yaml) — the GENERIC schema-driven
+  validation engine (`midday validate`): loads a `formats[]` manifest entry
+  (meta-schema `formats/schema_manifest.schema.json` `$defs/format_entry`),
+  applies its data-driven migration registry, and validates a parsed
+  document against it. This is the MECHANISM `m1-scene-format`'s
+  scene/machine/prefab schemas plug into; it does not itself know about
+  scenes, machines, or events.
 - `events_load.cpp` / `machine_load.cpp` + `machine_parts.cpp` /
   `scene_load.cpp` — the three format loaders (grammar contract:
   `formats/loader_yaml.md`).
 - `spawn.cpp` — SceneFile -> World: entities, transforms, physics bodies,
   machine instantiation, children under states, symbolic key resolution.
 
-Consumers: `midday run` (cli/verbs/run.cpp) and the `loader.*` selftests.
+Consumers: `midday run` (cli/verbs/run.cpp), `midday validate`/`midday fmt`
+(cli/verbs/validate.cpp, cli/verbs/fmt.cpp), and the `loader.*` selftests.
 Decisions: D-BUILD-076..081.
