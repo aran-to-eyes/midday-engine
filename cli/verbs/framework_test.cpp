@@ -319,7 +319,7 @@ TEST_CASE("cli.exit: envelope carries the validation class distinctly from usage
 }
 
 TEST_CASE("cli.verbs: registry validates and resolves the manifest") {
-    REQUIRE(midday::cli::verbs().size() == 11);
+    REQUIRE(midday::cli::verbs().size() == 13);
     for (const VerbSpec* spec : midday::cli::verbs())
         CHECK(!midday::cli::validate_spec(*spec).has_value());
     CHECK(midday::cli::find_verb("version") == &midday::cli::version_spec());
@@ -328,6 +328,8 @@ TEST_CASE("cli.verbs: registry validates and resolves the manifest") {
     CHECK(midday::cli::find_verb("journal") == &midday::cli::journal_spec());
     CHECK(midday::cli::find_verb("validate") == &midday::cli::validate_spec());
     CHECK(midday::cli::find_verb("fmt") == &midday::cli::fmt_spec());
+    CHECK(midday::cli::find_verb("check") == &midday::cli::check_spec());
+    CHECK(midday::cli::find_verb("mv") == &midday::cli::mv_spec());
     CHECK(midday::cli::find_verb("frobnicate") == nullptr);
 
     const VerbOutcome unknown = midday::cli::usage_unknown_verb("frobnicate");
@@ -335,5 +337,5 @@ TEST_CASE("cli.verbs: registry validates and resolves the manifest") {
     CHECK(unwrap(unknown.error).code == "usage.unknown_verb");
     CHECK(unknown.payload.find("verbs")->dump() ==
           "[\"version\",\"selftest\",\"help\",\"api\",\"script\",\"run\",\"journal\",\"rhi\","
-          "\"shot\",\"validate\",\"fmt\"]");
+          "\"shot\",\"validate\",\"fmt\",\"check\",\"mv\"]");
 }

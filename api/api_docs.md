@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `b1c1a4d318e0e607`
+- api_compat_hash: `a30db5ed89f735df`
 
 ## Classes
 
@@ -526,3 +526,42 @@ Positionals:
 | positional | type | required | variadic | doc |
 | --- | --- | --- | --- | --- |
 | `file` | `string` | yes | no | the strict-YAML file to canonicalize |
+
+### `midday check`
+
+audit {uid, path} asset references against the project's .uid sidecars
+
+- compat_hash: `27b0db707c7356c6`
+
+Flags:
+
+| flag | type | required | default | doc |
+| --- | --- | --- | --- | --- |
+| `--fix` | `bool` | no |  | repair fixable drift/missing-uid findings in place |
+| `--cache-dir` | `string` | no |  | uid registry cache directory (default: <root>/.midday-cache/uid) |
+
+Positionals:
+
+| positional | type | required | variadic | doc |
+| --- | --- | --- | --- | --- |
+| `root` | `string` | yes | no | project directory to scan |
+
+### `midday mv`
+
+move an asset (+ its .uid sidecar) and rewrite referencing paths; the uid never changes
+
+- compat_hash: `47add0a316f29193`
+
+Flags:
+
+| flag | type | required | default | doc |
+| --- | --- | --- | --- | --- |
+| `--root` | `string` | no |  | directory to scan for referencing files (default: the current directory) |
+| `--cache-dir` | `string` | no |  | uid registry cache directory (default: <root>/.midday-cache/uid) |
+
+Positionals:
+
+| positional | type | required | variadic | doc |
+| --- | --- | --- | --- | --- |
+| `src` | `string` | yes | no | the asset's current path |
+| `dst` | `string` | yes | no | the asset's new path |

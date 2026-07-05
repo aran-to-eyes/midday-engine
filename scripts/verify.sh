@@ -305,6 +305,67 @@ echo "$HALT_OUT" | jq -e '.error.code == "script.exception"
     and (.error.message | contains("bus.payload_invalid"))
     and (.error.details.tick // -1) >= 0' >/dev/null
 
+step "uid system (m1-uid-system: check --fix repairs drift + mints; a hand-minted uid refuses; the cache regenerates byte-identical)"
+# m1-uid-system exit tests, all three over testkit/fixtures/uid (self-
+# contained fixtures — NOT a real scene/machine, m1-scene-format's job; see
+# testkit/fixtures/uid/README.md, the same "self-contained corpus" call
+# m1-strict-yaml made for widget.schema.json). Every scenario runs against a
+# SCRATCH copy: `check`/`mv` write a regenerable .midday-cache/uid/ cache
+# next to whatever root they scan, and exit-test #1 physically moves files,
+# so the committed fixtures are never touched in place (fmt_idem precedent).
+rm -rf build/dev/uid_probe
+mkdir -p build/dev/uid_probe
+cp -R testkit/fixtures/uid/clean build/dev/uid_probe/move
+cp -R testkit/fixtures/uid/clean build/dev/uid_probe/cache_a
+cp -R testkit/fixtures/uid/clean build/dev/uid_probe/cache_b
+cp -R testkit/fixtures/uid/clean build/dev/uid_probe/mv_verb
+cp -R testkit/fixtures/uid/hand_minted build/dev/uid_probe/hand_minted
+
+# 1) move a fixture asset (+ its sidecar, together — the natural way to
+#    relocate a uid-tracked asset without going through `midday mv`) and
+#    confirm `check --fix` repairs the now-stale path while the uid stays
+#    byte-identical.
+UID_BEFORE=$(grep -o 'uid://[0-9a-z]*' build/dev/uid_probe/move/fixture.demo.yaml)
+mkdir -p build/dev/uid_probe/move/assets/moved
+mv build/dev/uid_probe/move/assets/widget.asset build/dev/uid_probe/move/assets/moved/widget.asset
+mv build/dev/uid_probe/move/assets/widget.asset.uid build/dev/uid_probe/move/assets/moved/widget.asset.uid
+build/dev/midday check build/dev/uid_probe/move --fix --json \
+    | jq -e '.ok and .counts.drift==1 and .counts.fixed==1' >/dev/null
+grep -q 'path: assets/moved/widget.asset' build/dev/uid_probe/move/fixture.demo.yaml
+UID_AFTER=$(grep -o 'uid://[0-9a-z]*' build/dev/uid_probe/move/fixture.demo.yaml)
+[ "$UID_BEFORE" = "$UID_AFTER" ]
+
+# 2) a hand-minted uid (well-formed uid:// text, but no .uid sidecar
+#    anywhere backs it) is a validation ERROR (exit 3), never a silent pass.
+UID_STATUS=0
+UID_OUT=$(build/dev/midday check build/dev/uid_probe/hand_minted --json) || UID_STATUS=$?
+[ "$UID_STATUS" -eq 3 ]
+echo "$UID_OUT" | jq -e '.error.code == "check.invalid_ref" and .counts.invalid==1
+    and .findings[0].status=="invalid"' >/dev/null
+
+# 3) deleting the cache and regenerating it reproduces the SAME bytes — two
+#    INDEPENDENT scratch copies (never a self-diff), each scanning the same
+#    committed sidecar from scratch.
+build/dev/midday check build/dev/uid_probe/cache_a --json >/dev/null
+build/dev/midday check build/dev/uid_probe/cache_b --json >/dev/null
+rm -rf build/dev/uid_probe/cache_a/.midday-cache build/dev/uid_probe/cache_b/.midday-cache
+build/dev/midday check build/dev/uid_probe/cache_a --json >/dev/null
+build/dev/midday check build/dev/uid_probe/cache_b --json >/dev/null
+cmp build/dev/uid_probe/cache_a/.midday-cache/uid/registry.json \
+    build/dev/uid_probe/cache_b/.midday-cache/uid/registry.json
+
+# `midday mv`: moves the asset + sidecar together and rewrites the
+# referencing path ITSELF (no manual `mv` needed) — the uid still never
+# changes; --root defaults to the current directory.
+MIDDAY_BIN="$PWD/build/dev/midday"
+UID_BEFORE_MV=$(grep -o 'uid://[0-9a-z]*' build/dev/uid_probe/mv_verb/fixture.demo.yaml)
+(cd build/dev/uid_probe/mv_verb && "$MIDDAY_BIN" mv assets/widget.asset assets/renamed.asset --json) \
+    | jq -e '.ok and (.files_updated | length)==1' >/dev/null
+grep -q 'path: assets/renamed.asset' build/dev/uid_probe/mv_verb/fixture.demo.yaml
+test -f build/dev/uid_probe/mv_verb/assets/renamed.asset.uid
+UID_AFTER_MV=$(grep -o 'uid://[0-9a-z]*' build/dev/uid_probe/mv_verb/fixture.demo.yaml)
+[ "$UID_BEFORE_MV" = "$UID_AFTER_MV" ]
+
 step "appendix A golden (3200-tick assert pack + independent dual-run diff)"
 # m0-appendix-a-determinism exit tests: the flagship golden — the authored
 # A.3 corpus driven to tick 3200 with the assertion pack; the five item-21

@@ -145,5 +145,7 @@ const VerbSpec& rhi_spec();
 const VerbSpec& shot_spec();
 const VerbSpec& validate_spec();
 const VerbSpec& fmt_spec();
+const VerbSpec& check_spec();
+const VerbSpec& mv_spec();
 
 } // namespace midday::cli

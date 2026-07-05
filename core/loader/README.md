@@ -40,7 +40,27 @@ Layout:
   directory.
 - `spawn.cpp` — SceneFile -> World: entities, transforms, physics bodies,
   machine instantiation, children under states, symbolic key resolution.
+- `uid.h/.cpp` (m1-uid-system) — engine-assigned asset identity: the
+  `uid://` textual form, `mint_uid` (authoring-time entropy, never the
+  sim), and `.uid` sidecar I/O (committed, format-versioned, spec lines
+  366-368).
+- `uid_registry.h/.cpp` (m1-uid-system) — scans every `.uid` sidecar under a
+  root into a uid<->path map and serializes it to the regenerable
+  `.midday-cache/uid/registry.json` cache (write-only output; nothing in
+  this tree ever reads it back — the sidecars are the only source of
+  truth).
+- `asset_ref.h/.cpp` (m1-uid-system) — the `{uid, path}` / `{path}` dual-
+  write ref SHAPE, recognized structurally wherever it occurs (schema-
+  agnostic, like yaml_emit.h): `midday check`'s classify-and-repair pass
+  and `midday mv`'s path rewriter (cli/verbs/check.cpp, mv.cpp) are its only
+  callers. SCOPE BOUNDARY (the same call m1-strict-yaml made for
+  format_schema.h): this file does not touch scene_load.cpp/
+  machine_load.cpp — extending the scene/machine/prefab grammar itself
+  (e.g. widening `instance: {path}` to accept `uid`) is `m1-scene-format`'s
+  loader-extension work, which depends on this mechanism without this node
+  pre-empting it.
 
 Consumers: `midday run` (cli/verbs/run.cpp), `midday validate`/`midday fmt`
-(cli/verbs/validate.cpp, cli/verbs/fmt.cpp), and the `loader.*` selftests.
+(cli/verbs/validate.cpp, cli/verbs/fmt.cpp), `midday check`/`midday mv`
+(cli/verbs/check.cpp, mv.cpp), and the `loader.*` selftests.
 Decisions: D-BUILD-076..081.

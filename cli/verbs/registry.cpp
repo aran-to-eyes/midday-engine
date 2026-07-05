@@ -28,6 +28,8 @@ std::span<const VerbSpec* const> manifest() {
         &shot_spec(),
         &validate_spec(),
         &fmt_spec(),
+        &check_spec(),
+        &mv_spec(),
     };
     return kManifest;
 }

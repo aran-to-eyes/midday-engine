@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash b1c1a4d318e0e607 (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash a30db5ed89f735df (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -353,6 +353,28 @@ declare namespace midday {
         file: string;
     }
 
+    /** audit {uid, path} asset references against the project's .uid sidecars */
+    interface CheckVerbArgs {
+        /** repair fixable drift/missing-uid findings in place */
+        fix?: boolean;
+        /** uid registry cache directory (default: <root>/.midday-cache/uid) */
+        "cache-dir"?: string;
+        /** project directory to scan */
+        root: string;
+    }
+
+    /** move an asset (+ its .uid sidecar) and rewrite referencing paths; the uid never changes */
+    interface MvVerbArgs {
+        /** directory to scan for referencing files (default: the current directory) */
+        root?: string;
+        /** uid registry cache directory (default: <root>/.midday-cache/uid) */
+        "cache-dir"?: string;
+        /** the asset's current path */
+        src: string;
+        /** the asset's new path */
+        dst: string;
+    }
+
     /** Verb name -> parsed-argument type. */
     interface VerbArgsByName {
         "version": VersionVerbArgs;
@@ -366,5 +388,7 @@ declare namespace midday {
         "shot": ShotVerbArgs;
         "validate": ValidateVerbArgs;
         "fmt": FmtVerbArgs;
+        "check": CheckVerbArgs;
+        "mv": MvVerbArgs;
     }
 }

@@ -1,0 +1,5 @@
+format: 1
+kind: uid_fixture
+sprite:
+  uid: uid://0000000000001
+  path: assets/widget.asset
