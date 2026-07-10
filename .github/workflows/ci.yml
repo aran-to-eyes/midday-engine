@@ -506,8 +506,17 @@ jobs:
       - name: D-9 behavioral — Appendix A golden (5 semantic verdicts + same-host dual-run diff)
         shell: bash
         run: |
+          # FALSIFICATION-(a) — scratch branch, NEVER MERGE (M1-exit Phase 1,
+          # .claude/PLAN.md): the real MSVC binary runs the real A.3 corpus,
+          # but the expected verdict is planted WRONG (==999). This step MUST
+          # red, and ONLY this lane may red — proving the Windows D-9
+          # behavioral steps gate on the actual runner rather than passing
+          # vacuously. Revert = restore the behavioral_appendix_a_golden call.
           source scripts/lib/verify_behavioral.sh
-          behavioral_appendix_a_golden build/ci/midday.exe build/ci
+          build/ci/midday.exe run examples/appendix_a/boss.scene.yaml --to-tick 3200 --seed 7 \
+            --cache-dir build/ci/ts-cache.a \
+            --assert case=appendix_a_golden --json \
+            | jq -e '.ok and .assertions.combat_transitions_at_3200==999' >/dev/null
       - name: D-9 behavioral — determinism kata (exercised asserts + same-host dual-run diff)
         shell: bash
         run: |
