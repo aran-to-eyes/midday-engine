@@ -190,7 +190,17 @@ TEST_CASE("cli.run_sim: lifetime tail is declared in destruction-contract order"
 // its EventsDecl, retire this witness consciously WITH that refactor — the
 // member order itself stays carried by layers 1+2.
 TEST_CASE("cli.run_sim: teardown-uaf-witness-child dies under ASan when the scene dies early") {
+    // std::getenv is standard and read-only; MSVC's C4996 wants _dupenv_s,
+    // whose allocation dance buys nothing in a test. push/disable/pop, the
+    // writer_test.cpp precedent.
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
     const char* gate = std::getenv("MIDDAY_RUNSIM_UAF_CHILD");
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
     if (gate == nullptr || std::strcmp(gate, "1") != 0)
         return; // not the witness child: green no-op in every normal suite run
 #if !defined(MIDDAY_RUN_SIM_TEST_ASAN)
