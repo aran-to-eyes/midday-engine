@@ -167,6 +167,56 @@ behavioral_ts_components() { # <bin> <build_dir>
         --out "$build_dir/dangerous.components.json" --cache-dir "$build_dir/ts-cache.components" --json \
         | jq -e '.ok and .components == 1' >/dev/null
     jq -e '.components[0].name == "Dangerous"' "$build_dir/dangerous.components.json" >/dev/null
+
+    # m1-exit Phase 3 (CONCERNS #12a): 'midday'-qualified annotations.
+    # Positive — import('midday').EntityRef and midday.Vec3 both extract
+    # (resolved against engine.d.ts, never the checker, which types the
+    # import() spelling as `any`).
+    rm -f "$build_dir/qualified.components.json" "$build_dir/unresolved.components.json" \
+        "$build_dir/unknown_member.components.json" "$build_dir/module_surface.components.json"
+    "$bin" script extract "testkit/fixtures/ts/component_extract_qualified.ts" \
+        --out "$build_dir/qualified.components.json" --cache-dir "$build_dir/ts-cache.components" --json \
+        | jq -e '.ok and .components == 1' >/dev/null
+    jq -e '.components[0].name == "Seeker"
+        and (.components[0].fields | map(.type)) == ["float","vec3"]
+        and (.components[0].methods[0].params | map(.type)) == ["entity_ref","vec3"]
+        and .components[0].methods[1].returns == "vec3"' \
+        "$build_dir/qualified.components.json" >/dev/null
+    # Negatives — both refusal classes, both exit 3, both validate-before-
+    # write (no manifest file may appear).
+    # SCHEMA-owned: in the d.ts but not a field type (TriggerEnteredEvent —
+    # the exact boundary the M2 event-vocab decision #12b will move) ->
+    # schema.unresolved_type from the extraction walk.
+    local rc=0 out
+    out=$("$bin" script extract "testkit/fixtures/ts/component_extract_unresolved.ts" \
+        --out "$build_dir/unresolved.components.json" \
+        --cache-dir "$build_dir/ts-cache.components" --json) || rc=$?
+    [ "$rc" -eq 3 ]
+    echo "$out" | jq -e '(.ok | not) and .error.code == "script.schema_error"
+        and (([.diagnostics[].code] | index("schema.unresolved_type")) != null)' >/dev/null
+    [ ! -f "$build_dir/unresolved.components.json" ]
+    # TYPE-owned: not declared anywhere -> the checker refuses (TS2694)
+    # BEFORE extraction; pinned so a module-binding change can never demote
+    # this to `any` and reopen the fabrication window silently.
+    rc=0
+    out=$("$bin" script extract "testkit/fixtures/ts/component_extract_unknown_member.ts" \
+        --out "$build_dir/unknown_member.components.json" \
+        --cache-dir "$build_dir/ts-cache.components" --json) || rc=$?
+    [ "$rc" -eq 3 ]
+    echo "$out" | jq -e '(.ok | not) and .error.code == "script.type_error"
+        and (([.diagnostics[].code] | index("TS2694")) != null)' >/dev/null
+    [ ! -f "$build_dir/unknown_member.components.json" ]
+    # MODULE-surface: in the namespace but NOT module-exported (event
+    # interfaces) -> TS2694 via the import('midday') spelling. This pins
+    # module-exports ⊂ namespace — the exact surface #12b will extend.
+    rc=0
+    out=$("$bin" script extract "testkit/fixtures/ts/component_extract_module_surface.ts" \
+        --out "$build_dir/module_surface.components.json" \
+        --cache-dir "$build_dir/ts-cache.components" --json) || rc=$?
+    [ "$rc" -eq 3 ]
+    echo "$out" | jq -e '(.ok | not) and .error.code == "script.type_error"
+        and (([.diagnostics[].code] | index("TS2694")) != null)' >/dev/null
+    [ ! -f "$build_dir/module_surface.components.json" ]
 }
 
 # ---------------------------------------------------------------------------

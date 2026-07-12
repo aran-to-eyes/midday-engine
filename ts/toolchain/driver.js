@@ -121,8 +121,10 @@
     // as the lint pack above — that reads @component()/@field()-decorated
     // classes STRAIGHT FROM THE SYNTAX. The code is never run: decorator
     // detection is by IDENTIFIER TEXT (never the checker), field/param/
-    // return types come from an explicit type annotation or (fields only,
-    // absent an annotation) the initializer's literal kind, and every
+    // return types come from an explicit type annotation — bare names from
+    // the field-type table; 'midday'-qualified spellings additionally gated
+    // on what engine.d.ts declares (see typeFromAnnotation) — or (fields
+    // only, absent an annotation) the initializer's literal kind, and every
     // "default"/@field(...) argument value is read as a literal (numeric,
     // string, boolean, or an array of those) — nothing is evaluated.
     // Unrecognized shapes push a "schema" diagnostic into the SAME array the
@@ -140,18 +142,83 @@
         Quat: "quat", Color: "color",
     };
 
+    // The rightmost identifier of a 'midday'-qualified annotation —
+    // `import('midday').X` (ImportTypeNode) or `midday.X` (QualifiedName
+    // TypeReference) — or null for any other shape. Only the literal
+    // 'midday' qualifier is accepted; `somethingElse.X` stays unknown.
+    // Matched by NAME TEXT, never the checker: a local `namespace midday`
+    // shadowing the ambient one is the same accepted, documented gap as
+    // decoratorCall's identifier-text matching below.
+    const middayQualifiedName = (node) => {
+        if (ts.isImportTypeNode(node)) {
+            if (node.argument === undefined || !ts.isLiteralTypeNode(node.argument) ||
+                !ts.isStringLiteral(node.argument.literal) ||
+                node.argument.literal.text !== "midday") return null;
+            return node.qualifier !== undefined && ts.isIdentifier(node.qualifier)
+                ? node.qualifier.text : null;
+        }
+        if (ts.isTypeReferenceNode(node) && ts.isQualifiedName(node.typeName) &&
+            ts.isIdentifier(node.typeName.left) && node.typeName.left.text === "midday" &&
+            ts.isIdentifier(node.typeName.right))
+            return node.typeName.right.text;
+        return null;
+    };
+
     // A written type annotation -> canonical reflect TypeDesc spelling, or
     // null when the annotation names something extraction does not know
     // (api/CODEGEN.md "Script component API" field-type table).
-    const typeFromAnnotation = (node) => {
+    // 'midday'-qualified spellings (m1-exit Phase 3, CONCERNS #12a) resolve
+    // SYNTACTICALLY against the engine.d.ts the program already carries.
+    // Layering (proven by the three negative fixtures): the CHECKER owns
+    // existence, PER SURFACE — import('midday').X checks against the
+    // ambient module's re-export list (value types + authoring surface
+    // only, engine.d.ts:429), midday.X against the full namespace — so
+    // Nonexistent and module-unexported names (TriggerEnteredEvent) die as
+    // TS2694 before extraction ever runs; THIS gate owns the TypeDesc
+    // mapping and doubles as drift-defense should a compiler change ever
+    // demote unknown members to `any`. A qualified name
+    // extracts only when the d.ts actually declares it AND the field-type
+    // table maps it; d.ts membership without a table row
+    // (TriggerEnteredEvent) and table rows the d.ts lost both stay null —
+    // fail-closed, identical to a bare unknown TypeReference. The name set
+    // is trusted because engine.d.ts is a GENERATED artifact the CI drift
+    // lane byte-pins to codegen — a hand-divergent d.ts cannot land.
+    const typeFromAnnotation = (node, engineTypeNames) => {
         if (TYPE_KEYWORD_KIND[node.kind] !== undefined) return TYPE_KEYWORD_KIND[node.kind];
         if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName))
             return TYPE_REFERENCE_NAME[node.typeName.text] ?? null;
+        const qualified = middayQualifiedName(node);
+        if (qualified !== null)
+            return engineTypeNames.has(qualified)
+                ? (TYPE_REFERENCE_NAME[qualified] ?? null) : null;
         if (ts.isArrayTypeNode(node)) {
-            const element = typeFromAnnotation(node.elementType);
+            const element = typeFromAnnotation(node.elementType, engineTypeNames);
             return element === null ? null : "array<" + element + ">";
         }
         return null;
+    };
+
+    // Top-level type names `declare namespace midday { ... }` actually
+    // declares in engine.d.ts. TYPE_REFERENCE_NAME says what a name MEANS;
+    // the d.ts says whether it EXISTS today — qualified-import extraction
+    // gates on both so a codegen change can never be fabricated around.
+    const collectEngineTypeNames = (dtsSource) => {
+        const names = new Set();
+        if (dtsSource === undefined) return names;
+        const visit = (statements) => {
+            for (const st of statements) {
+                if (ts.isModuleDeclaration(st) && st.name !== undefined &&
+                    st.name.text === "midday" && st.body !== undefined &&
+                    ts.isModuleBlock(st.body))
+                    visit(st.body.statements);
+                else if ((ts.isInterfaceDeclaration(st) || ts.isTypeAliasDeclaration(st) ||
+                          ts.isEnumDeclaration(st) || ts.isClassDeclaration(st)) &&
+                         st.name !== undefined)
+                    names.add(st.name.text);
+            }
+        };
+        visit(dtsSource.statements);
+        return names;
     };
 
     // A literal AST node -> its plain JS value, or undefined when the node
@@ -229,7 +296,7 @@
         return out;
     };
 
-    function extractComponents(sourceFile, pushDiagnostic) {
+    function extractComponents(sourceFile, pushDiagnostic, engineTypeNames) {
         const schemaError = (node, message) => {
             const pos = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
             pushDiagnostic({
@@ -249,7 +316,8 @@
                 if (ts.isPropertyDeclaration(member) && ts.isIdentifier(member.name)) {
                     const fieldCall = decoratorCall(member, "field");
                     if (fieldCall === null) continue;
-                    const type = member.type !== undefined ? typeFromAnnotation(member.type)
+                    const type = member.type !== undefined
+                        ? typeFromAnnotation(member.type, engineTypeNames)
                         : member.initializer !== undefined ? typeFromLiteral(member.initializer)
                         : null;
                     if (type === null) {
@@ -278,7 +346,7 @@
                     let paramsClean = true;
                     for (const param of member.parameters) {
                         const type = ts.isIdentifier(param.name) && param.type !== undefined
-                            ? typeFromAnnotation(param.type) : null;
+                            ? typeFromAnnotation(param.type, engineTypeNames) : null;
                         if (type === null) {
                             paramsClean = false;
                             break;
@@ -293,7 +361,7 @@
                     }
                     const method = { name: member.name.text, params };
                     if (member.type !== undefined) {
-                        const returns = typeFromAnnotation(member.type);
+                        const returns = typeFromAnnotation(member.type, engineTypeNames);
                         if (returns === null) {
                             schemaError(member.type, member.name.text + "(): unrecognized return type");
                             clean = false;
@@ -326,7 +394,8 @@
         const response = { diagnostics };
         if (request.extract && diagnostics.length === 0) {
             const entrySource = program.getSourceFile(request.entry);
-            response.components = extractComponents(entrySource, (d) => diagnostics.push(d));
+            response.components = extractComponents(entrySource, (d) => diagnostics.push(d),
+                collectEngineTypeNames(program.getSourceFile(request.engine_dts)));
             if (diagnostics.length > 0) delete response.components; // a schema error dirtied it
         }
         if (request.emit && diagnostics.length === 0) {
