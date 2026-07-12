@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Midday Engine — THE gate. Green before done, green before push. Mirrors CI build-linux.
+# Midday Engine — THE gate. Green before done, green before push. CI's
+# verify-linux job runs this file VERBATIM. NOTE the one intended local/CI
+# difference: on macOS clang-tidy parses libc++ (Apple ships no libstdc++),
+# so stdlib-sensitive findings are CI-authoritative — verify-linux plus the
+# fast tidy-libstdcxx lane (CONCERNS #11). A local green does not preempt a
+# Linux tidy red.
 # Every step echoes; first failure stops the run (set -e).
 #
 # Behavioral steps (everything driven through the built binary — selftest
@@ -15,19 +20,17 @@ cd "$(dirname "$0")/.."
 
 step() { printf '\n== verify: %s ==\n' "$1"; }
 
-# Pinned lint toolchain (same versions locally and in CI — no formatter drift).
-CLANG_FORMAT_PIN="clang-format==19.1.7"
-CLANG_TIDY_PIN="clang-tidy==19.1.0.1"
-JSCPD_PIN="jscpd@5.0.11"
-VENV=.venv-tools
+# Pinned lint toolchain + first-party lint surface: scripts/lib/verify_lint.sh
+# is the single source, shared with the tidy-libstdcxx CI lane (same
+# verify_behavioral.sh discipline — one core, no drifting copies).
+# shellcheck source=scripts/lib/verify_lint.sh
+source scripts/lib/verify_lint.sh
 if [ ! -x "$VENV/bin/clang-format" ] || [ ! -x "$VENV/bin/clang-tidy" ]; then
     step "bootstrap pinned lint tools ($CLANG_FORMAT_PIN, $CLANG_TIDY_PIN)"
-    python3 -m venv "$VENV"
-    "$VENV/bin/pip" install --quiet "$CLANG_FORMAT_PIN" "$CLANG_TIDY_PIN"
 fi
+bootstrap_lint_venv
 
-FIRST_PARTY_CXX=$(find core cli api ts formats testkit replay model editor tools \
-    \( -name '*.cpp' -o -name '*.h' \) -not -path '*/third_party/*' 2>/dev/null || true)
+FIRST_PARTY_CXX=$(first_party_cxx)
 
 step "configure + build (dev preset)"
 cmake --preset dev >/dev/null
@@ -38,21 +41,11 @@ if [ -n "$FIRST_PARTY_CXX" ]; then
     # shellcheck disable=SC2086
     "$VENV/bin/clang-format" --dry-run --Werror $FIRST_PARTY_CXX
 
+    step "tidy coverage contract (find roots vs compile_commands)"
+    assert_tidy_covers_compile_commands build/dev
+
     step "clang-tidy (compile_commands, first-party TUs, parallel)"
-    FIRST_PARTY_TUS=$(echo "$FIRST_PARTY_CXX" | grep '\.cpp$' || true)
-    TIDY_EXTRA=()
-    if [ "$(uname)" = "Darwin" ]; then
-        # The pinned (non-Apple) clang-tidy has no implicit macOS sysroot.
-        TIDY_EXTRA=(--extra-arg="-isysroot$(xcrun --show-sdk-path)")
-    fi
-    # One process per TU, all cores: the serial invocation crossed 30 minutes
-    # on 2-core CI runners once the tree passed 150 TUs. xargs -P preserves
-    # the exit contract (any failing TU fails the step); output interleaving
-    # is acceptable — findings carry file:line.
-    JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
-    # shellcheck disable=SC2086
-    echo "$FIRST_PARTY_TUS" | xargs -n 4 -P "$JOBS" \
-        "$VENV/bin/clang-tidy" -p build/dev --quiet "${TIDY_EXTRA[@]}"
+    clang_tidy_first_party build/dev
 fi
 
 # shellcheck source=scripts/lib/verify_behavioral.sh

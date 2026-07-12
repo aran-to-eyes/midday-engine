@@ -6,6 +6,10 @@
 #   software-Vulkan goldens; golden-software is EXPECTED RED until the first
 #   inspected goldens are committed — see the lane's bootstrap comment).
 #
+# M1-exit lane (Phase 2, CONCERNS #11): tidy-libstdcxx — digest-pinned,
+# tidy-ONLY libstdc++ static analysis (configure, no build), the fast
+# pre-matrix red for stdlib-sensitive findings mac-local libc++ cannot see.
+#
 # M1 lanes (m1-xplat, Meridian D18): build-android, build-ios. COMPILE-ONLY
 # cross-compile gates for core+rhi+cli — no device/emulator/simulator run
 # (that is m7-android / m7-ios). They activate the two toolchain files
@@ -36,6 +40,96 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build
       - name: verify (full local gate)
         run: ./scripts/verify.sh
+
+  # tidy-libstdcxx (M1-exit Phase 2, CONCERNS #11): the FAST stdlib-sensitive
+  # static-analysis lane. clang-tidy's dataflow models the stdlib headers it
+  # parses: the macOS developer gate analyzes against libc++ (Apple ships no
+  # libstdc++ headers; Docker is unavailable on the reference dev host), so
+  # libstdc++-only findings — bugprone-unchecked-optional-access at
+  # m1-prefab-spawn's spawn.cpp:119 is the canonical escape — can NEVER
+  # surface locally; historically they arrived as verify-linux red only
+  # after its full build, deep into the matrix. This lane is tidy-ONLY
+  # against a CONFIGURE-ONLY tree (no ninja build — nothing in the
+  # first-party include graph is generated, proven at lane-landing), so its
+  # red arrives in minutes, pre-matrix: the spawn.cpp:119 class stops being
+  # full-matrix-red-on-main. Pins, TU set, and invocation are sourced from
+  # scripts/lib/verify_lint.sh — the SAME single source verify.sh uses. The
+  # ANALYSIS toolchain (tidy pin, TU set, .clang-tidy) is therefore byte-
+  # identical to mac-local's; the analyzed ENVIRONMENT differs in the stdlib
+  # (this lane's purpose) and, inherently, in OS/compiler configuration —
+  # which verify-linux's full gate owns. A finding unique to this lane means
+  # "Linux/libstdc++ analysis", not necessarily "libstdc++ header semantics"
+  # (council 2026-07-12, gpt finding G3: don't over-attribute in triage).
+  # PINNING: the container image is digest-pinned AND apt installs from a
+  # DATED SNAPSHOT (Acquire::Snapshot, snapshot.ubuntu.com) — the digest pin
+  # alone would leave g++-13/libstdc++ floating with the noble archive
+  # (council G1), making a new finding ambiguous between "code change" and
+  # "environment rotation". Roll the snapshot date deliberately, in its own
+  # commit. Accepted trade: if snapshot.ubuntu.com is down the lane reds
+  # VISIBLY — availability risk over silent drift, per the no-vacuous-pass
+  # discipline. Deliberately NOT a `needs:` gate in front of the other jobs:
+  # that would tax every push's wall-clock by the lane's full duration to
+  # save runner minutes only on the rare red — the value is the fast SIGNAL,
+  # and the hard-green rule already forbids building on red.
+  tidy-libstdcxx:
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
+    steps:
+      - name: Install toolchain (snapshot-pinned apt, ENGAGEMENT ASSERTED; g++-13 named)
+        shell: bash
+        run: |
+          # Stage 1 — bootstrap TLS trust from the plain http archive:
+          # snapshot.ubuntu.com is https-only and the bare image ships no CA
+          # store (chicken-and-egg, found by this lane's second falsification
+          # run). ca-certificates floats deliberately: it pins TRUST, not
+          # analysis behavior.
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates
+          # Stage 2 — pin via the deb822 Snapshot: field, NOT `-o
+          # Acquire::Snapshot` (the -o form is silently ignored when sources
+          # don't opt in — proven by this lane's own first run: green apt
+          # step, zero snapshot fetches). A pin that can be silently ignored
+          # must assert its own engagement, and apt-get update can exit 0 on
+          # cached indexes, so Err lines are checked explicitly too.
+          sed -i '/^Suites:/a Snapshot: 20260710T000000Z' /etc/apt/sources.list.d/ubuntu.sources
+          apt-get update 2>&1 | tee /tmp/apt-update.log
+          grep -q "snapshot.ubuntu.com" /tmp/apt-update.log || {
+            echo "::error::apt snapshot pin did NOT engage (no snapshot.ubuntu.com fetches in update output)"
+            exit 1
+          }
+          grep -qE "^(Err:|E: )" /tmp/apt-update.log && {
+            echo "::error::apt update reported fetch errors under the snapshot pin"
+            exit 1
+          }
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            g++-13 gcc-13 cmake ninja-build python3-venv git jq
+      - uses: actions/checkout@v4
+      - name: Configure only (dev preset — the same compile_commands surface verify.sh tidies)
+        env:
+          CC: gcc-13
+          CXX: g++-13
+        run: cmake --preset dev
+      - name: clang-tidy under libstdc++ (pin + TU set shared with verify.sh)
+        shell: bash
+        run: |
+          source scripts/lib/verify_lint.sh
+          # A tidy-only lane has no build step to catch a broken checkout or
+          # renamed source roots, so a collapsed TU list must be a LOUD
+          # failure, never a vacuous green (the .exercised-gate discipline).
+          # 218 first-party TUs at lane-landing; 100 = major-restructure alarm
+          # (update the floor deliberately when the tree legitimately shrinks).
+          TU_COUNT=$(first_party_cxx | grep -c '\.cpp$' || true)
+          if [ "$TU_COUNT" -lt 100 ]; then
+            echo "::error::first-party TU count collapsed to $TU_COUNT (<100) — refusing a vacuous tidy pass"
+            exit 1
+          fi
+          # Floor catches COLLAPSE; the coverage contract catches DRIFT — a
+          # renamed root or a new unlisted top-level dir fails against what
+          # cmake actually compiles (council 2026-07-12, convergent finding).
+          assert_tidy_covers_compile_commands build/dev
+          bootstrap_lint_venv
+          clang_tidy_first_party build/dev
 
   build-linux:
     runs-on: ubuntu-24.04
