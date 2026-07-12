@@ -53,27 +53,34 @@ jobs:
   # first-party include graph is generated, proven at lane-landing), so its
   # red arrives in minutes, pre-matrix: the spawn.cpp:119 class stops being
   # full-matrix-red-on-main. Pins, TU set, and invocation are sourced from
-  # scripts/lib/verify_lint.sh — the SAME single source verify.sh uses — so
-  # the only intended difference from mac-local is the stdlib itself.
-  # PINNING: the container image is digest-pinned (a rotating runner image
-  # must not move libstdc++ under the lane silently — that would make a new
-  # finding ambiguous between "code change" and "environment rotation");
-  # g++-13 is named explicitly, not left to the gcc default. Residual float:
-  # noble's g++-13/libstdc++-13-dev point releases — the same hosted-
-  # toolchain risk class every other lane already accepts (see the
-  # build-android NDK note below). Deliberately NOT a `needs:` gate in front
-  # of the other jobs: that would tax every push's wall-clock by the lane's
-  # full duration to save runner minutes only on the rare red — the value is
-  # the fast SIGNAL, and the hard-green rule already forbids building on red.
+  # scripts/lib/verify_lint.sh — the SAME single source verify.sh uses. The
+  # ANALYSIS toolchain (tidy pin, TU set, .clang-tidy) is therefore byte-
+  # identical to mac-local's; the analyzed ENVIRONMENT differs in the stdlib
+  # (this lane's purpose) and, inherently, in OS/compiler configuration —
+  # which verify-linux's full gate owns. A finding unique to this lane means
+  # "Linux/libstdc++ analysis", not necessarily "libstdc++ header semantics"
+  # (council 2026-07-12, gpt finding G3: don't over-attribute in triage).
+  # PINNING: the container image is digest-pinned AND apt installs from a
+  # DATED SNAPSHOT (Acquire::Snapshot, snapshot.ubuntu.com) — the digest pin
+  # alone would leave g++-13/libstdc++ floating with the noble archive
+  # (council G1), making a new finding ambiguous between "code change" and
+  # "environment rotation". Roll the snapshot date deliberately, in its own
+  # commit. Accepted trade: if snapshot.ubuntu.com is down the lane reds
+  # VISIBLY — availability risk over silent drift, per the no-vacuous-pass
+  # discipline. Deliberately NOT a `needs:` gate in front of the other jobs:
+  # that would tax every push's wall-clock by the lane's full duration to
+  # save runner minutes only on the rare red — the value is the fast SIGNAL,
+  # and the hard-green rule already forbids building on red.
   tidy-libstdcxx:
     runs-on: ubuntu-24.04
     container:
       image: ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
     steps:
-      - name: Install toolchain (g++-13 named explicitly = noble's default major)
+      - name: Install toolchain (snapshot-pinned apt; g++-13 named explicitly)
         run: |
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          APT_SNAP="-o Acquire::Snapshot=20260710T000000Z"
+          apt-get $APT_SNAP update
+          DEBIAN_FRONTEND=noninteractive apt-get $APT_SNAP install -y --no-install-recommends \
             g++-13 gcc-13 cmake ninja-build python3-venv git ca-certificates
       - uses: actions/checkout@v4
       - name: Configure only (dev preset — the same compile_commands surface verify.sh tidies)
@@ -95,6 +102,10 @@ jobs:
             echo "::error::first-party TU count collapsed to $TU_COUNT (<100) — refusing a vacuous tidy pass"
             exit 1
           fi
+          # Floor catches COLLAPSE; the coverage contract catches DRIFT — a
+          # renamed root or a new unlisted top-level dir fails against what
+          # cmake actually compiles (council 2026-07-12, convergent finding).
+          assert_tidy_covers_compile_commands build/dev
           bootstrap_lint_venv
           clang_tidy_first_party build/dev
 

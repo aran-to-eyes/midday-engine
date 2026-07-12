@@ -41,6 +41,9 @@ if [ -n "$FIRST_PARTY_CXX" ]; then
     # shellcheck disable=SC2086
     "$VENV/bin/clang-format" --dry-run --Werror $FIRST_PARTY_CXX
 
+    step "tidy coverage contract (find roots vs compile_commands)"
+    assert_tidy_covers_compile_commands build/dev
+
     step "clang-tidy (compile_commands, first-party TUs, parallel)"
     clang_tidy_first_party build/dev
 fi

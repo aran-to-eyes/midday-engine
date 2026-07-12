@@ -33,8 +33,34 @@ first_party_cxx() {
         \( -name '*.cpp' -o -name '*.h' \) -not -path '*/third_party/*' 2>/dev/null || true
 }
 
+# CONTRACT, not convention (council 2026-07-12 — gpt-5.6-sol and DeepSeek
+# converged on this independently): the find-root list above must cover every
+# first-party TU cmake ACTUALLY COMPILES. A renamed root, or new code under an
+# unlisted top-level dir, must widen the list or fail loudly — never narrow
+# tidy coverage silently (the CI lane's TU floor only catches collapse, not
+# drift). Ground truth is <build_dir>/compile_commands.json: every repo .cpp
+# in it, outside vendored/build/venv trees, must be on the tidy list.
+assert_tidy_covers_compile_commands() { # <build_dir>
+    local build_dir="$1" gap
+    if [ ! -f "$build_dir/compile_commands.json" ]; then
+        echo "assert_tidy_covers_compile_commands: no compile_commands.json in $build_dir" >&2
+        return 1
+    fi
+    gap=$(jq -r --arg root "$(pwd)/" '.[].file
+            | select(startswith($root)) | .[($root | length):]
+            | select(endswith(".cpp"))
+            | select(test("(^|/)(third_party|build|[.]venv-tools)/") | not)' \
+            "$build_dir/compile_commands.json" | LC_ALL=C sort -u \
+          | LC_ALL=C comm -23 - <(first_party_cxx | grep '\.cpp$' | LC_ALL=C sort -u))
+    if [ -n "$gap" ]; then
+        printf 'tidy coverage gap — cmake compiles these first-party TUs but the\n' >&2
+        printf 'verify_lint.sh find roots do not list them (widen the roots):\n%s\n' "$gap" >&2
+        return 1
+    fi
+}
+
 # clang-tidy over every first-party TU against <build_dir>'s
-# compile_commands.json. One process per TU, all cores: the serial
+# compile_commands.json. Batches of 4 TUs per process, all cores: the serial
 # invocation crossed 30 minutes on 2-core CI runners once the tree passed
 # 150 TUs. xargs -P preserves the exit contract (any failing TU fails the
 # step); output interleaving is acceptable — findings carry file:line.
