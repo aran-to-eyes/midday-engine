@@ -149,6 +149,15 @@ step "boundary scanners (self-test + scan: RHI seam, core/ logging purity, journ
 scripts/check_include_boundaries.py --self-test >/dev/null
 scripts/check_include_boundaries.py >/dev/null
 
+step "concerns ledger (self-test + standing rules — dated/owned/guarded deferrals)"
+# The ledger is untracked (no agent traces), so this bites on the dev machine
+# and self-skips on CI/fresh checkouts (a printed note, never a vacuous
+# pretend-pass). Boundary mode (--boundary: no fix-first survives a milestone
+# exit) is run by the milestone ritual, not per-push. Self-test first: the
+# rules must catch their planted violations before a clean ledger is trusted.
+scripts/check_concerns.py --self-test >/dev/null
+scripts/check_concerns.py
+
 step "entity-API boundary (self-test + scan: no code-assembled entities, spec section 7)"
 # Entities are born from data (the loader is the sole spawn path); nothing above
 # the runtime may call World::spawn/queue_spawn/emplace directly. The self-test

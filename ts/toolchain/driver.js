@@ -171,8 +171,9 @@
     // SYNTACTICALLY against the engine.d.ts the program already carries.
     // Layering (proven by the three negative fixtures): the CHECKER owns
     // existence, PER SURFACE — import('midday').X checks against the
-    // ambient module's re-export list (value types + authoring surface
-    // only, engine.d.ts:429), midday.X against the full namespace — so
+    // ambient module's re-export list (value types, authoring surface, and
+    // the UNSUFFIXED event-payload aliases; never the Event-suffixed
+    // interfaces — engine.d.ts:429), midday.X against the full namespace — so
     // Nonexistent and module-unexported names (TriggerEnteredEvent) die as
     // TS2694 before extraction ever runs; THIS gate owns the TypeDesc
     // mapping and doubles as drift-defense should a compiler change ever

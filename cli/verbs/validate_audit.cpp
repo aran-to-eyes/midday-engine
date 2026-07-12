@@ -21,12 +21,13 @@
 //    walk. That walk requires every method parameter to carry a type its
 //    (separate) reflect-TypeDesc table recognizes; damage_on_touch.ts's
 //    `onEvent(ev: import('midday').TriggerEntered)` is a real, typechecked
-//    engine type (TriggerEntered ships in api/engine.d.ts — the corpus's own
-//    SPEC-GAP #6 comment) that the walk's qualified-import-type handling
-//    does not special-case, so `extract()` reports schema.unresolved_type
-//    and returns no component at all for an otherwise-clean file (see
-//    ts/toolchain/driver.js's typeFromAnnotation). Fixing that walk is
-//    m1-ts-components' remit; this audit only needs the declared NAME
+//    module-exported alias (engine.d.ts's `declare module "midday"` block)
+//    that the walk still refuses with schema.unresolved_type — the M1-exit
+//    Phase 3 qualified-import support (driver.js typeFromAnnotation) gates
+//    on the ambient NAMESPACE's declarations plus the field-type table, and
+//    event-payload aliases are deliberately in neither until the M2
+//    event-vocabulary decision (CONCERNS #12b) defines which payload types
+//    are schema-legal. This audit only needs the declared NAME
 //    (component_vocab.h's own "NAME lookup, not a field-level validator"
 //    scope), so it does not depend on the fuller mechanism at all.
 //

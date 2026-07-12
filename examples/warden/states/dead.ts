@@ -1,3 +1,9 @@
+// M2: despawn-linger API (#14, with #13) — world.despawn(entity, {after})
+// is not in the authoring surface yet, so this file carries a live TS2554
+// and stays OUT of every typecheck corpus until that node lands. DO NOT
+// rewrite the call to silence it: the corpse-linger cascade below is m4
+// content design intent, and deleting it to appease a checker would trade
+// a tracked gap for a silent one.
 import {StateScript, Transform, events, world} from 'midday'
 
 export default class Dead extends StateScript {
