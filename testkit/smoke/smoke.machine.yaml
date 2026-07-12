@@ -1,0 +1,17 @@
+# testkit/smoke/smoke.machine.yaml — the smoke corpus brain (M2 node 0A).
+# The pair below binds the BUILT-IN input-action event route GENERICALLY:
+# transition payload filters do not exist, so ANY action.pressed on the
+# global channel would fire it — the honest claim is "the route is wired",
+# never "the `jump` action fires it". 0A runs headless with no input
+# backend, so this transition never fires here; node 5 (m2-testkit-core)
+# injects the action named in smoke.meta.json and asserts Activated.
+format: 1
+machine: smoke
+regions:
+  main:
+    initial: Armed
+    states:
+      Armed:
+        on:
+          - {event: action.pressed, key: global, goto: Activated}
+      Activated: {}

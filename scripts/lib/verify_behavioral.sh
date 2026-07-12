@@ -627,6 +627,50 @@ behavioral_prefab_spawn() { # <bin> <build_dir>
 }
 
 # ---------------------------------------------------------------------------
+# M2 smoke corpus (node 0A; grown at m2-testkit-core) — SHARED with Windows D-9
+# ---------------------------------------------------------------------------
+
+# The milestone-long smoke seed (testkit/smoke/): the minimal-complete
+# non-warden scene — static ground + dynamic body + one machine on the
+# builtin input-action route — runs headless to the tick count
+# smoke.meta.json declares. That meta file is a CHECKED deferral contract,
+# not a comment: this gate consumes ticks/seed from it AND refuses if the
+# named owner nodes drift (input injection lands at m2-testkit-core,
+# snapshot cadence at m2-snapshots). smoke.input.yaml is validated as
+# corpus content only — the run verb does NOT load it in 0A (wiring it
+# needs a new run flag, and verb argv schemas are part of api_compat_hash).
+behavioral_smoke_corpus() { # <bin> <build_dir>
+    local bin="$1" build_dir="$2" meta="testkit/smoke/smoke.meta.json"
+    # .actions==1 is a PROJECT-WIDE walk of testkit/smoke/ (validate merges
+    # every input map under the root) — a second input map under the smoke
+    # dir MUST red this gate (pinned corpus, conscious change only).
+    "$bin" validate "testkit/smoke/smoke.input.yaml" --json \
+        | jq -e '.ok and .schema=="input" and .actions==1' >/dev/null
+    jq -e '.input_action=="jump"
+        and .input_activation_node=="m2-testkit-core"
+        and .snapshot_every_ticks==256
+        and .snapshot_activation_node=="m2-snapshots"' "$meta" >/dev/null
+    local smoke_ticks smoke_seed smoke_action
+    smoke_ticks=$(jq -er '.ticks' "$meta")
+    smoke_seed=$(jq -er '.seed' "$meta")
+    # The input map must DECLARE the meta-named action (two-space indent per
+    # the canonical yaml) — meta and corpus cannot drift apart silently.
+    smoke_action=$(jq -er '.input_action' "$meta")
+    grep -q "^  ${smoke_action}:" "testkit/smoke/smoke.input.yaml"
+    rm -rf "$build_dir/smoke"
+    # `.ticks==300` deliberately DUPLICATES smoke.meta.json's ticks (the
+    # corpus-identity pin): meta feeds --ticks, so without the literal a
+    # meta tick drift would be self-consistently green (probe-proven,
+    # council 0A). Changing the smoke run length is a conscious two-file
+    # edit — the drifted meta reds HERE as an envelope tick mismatch.
+    "$bin" run "testkit/smoke/smoke.scene.yaml" --ticks "$smoke_ticks" --seed "$smoke_seed" \
+        --record "$build_dir/smoke/run.mrj" --cache-dir "$build_dir/smoke/ts-cache" --json \
+        | jq -e --argjson ticks "$smoke_ticks" '.ok and .ticks==$ticks and .ticks==300
+            and .entities==3 and .machines==1 and .bodies==2
+            and .recorded_tier=="flight"' >/dev/null
+}
+
+# ---------------------------------------------------------------------------
 # appendix A golden — SHARED with Windows D-9 (ci.yml build-windows)
 # ---------------------------------------------------------------------------
 

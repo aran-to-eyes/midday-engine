@@ -18,6 +18,7 @@
 
 #include "cli/verb.h"
 #include "cli/verbs/run_assert.h"
+#include "cli/verbs/run_sim.h"
 #include "core/bus/bus.h"
 #include "core/ecs/world.h"
 #include "core/hierarchy/hierarchy.h"
@@ -99,25 +100,6 @@ void register_script_rng(script::ScriptRuntime& runtime, std::uint64_t seed) {
     });
 }
 
-// The canonical sim composition (destruction order = reverse declaration:
-// chart detaches its hooks first, then physics; the script host outlives
-// the chart per the StateHooks lifetime contract; the assert pack detaches
-// its driver hook/subscription before the loop and bus die).
-struct RunSim {
-    reflect::Registry registry;
-    ecs::World world{registry};
-    hierarchy::Hierarchy hierarchy{world};
-    std::optional<journal::Writer> writer;
-    std::optional<bus::Bus> bus;
-    std::optional<tick::TickLoop> loop;
-    std::unique_ptr<RunAssertPack> pack;
-    std::optional<script::Toolchain> toolchain;
-    std::optional<script::ScriptRuntime> runtime;
-    std::optional<script::StateScriptHost> scripts;
-    std::unique_ptr<physics::PhysicsServer> physics;
-    std::optional<statechart::Statechart> chart;
-};
-
 VerbOutcome run_verb(const VerbArgs& args) {
     const std::string& scene_path = args.get_string("scene");
     const std::int64_t seed = args.present("seed") ? args.get_int("seed") : 0;
@@ -147,10 +129,13 @@ VerbOutcome run_verb(const VerbArgs& args) {
         assert_case = raw.substr(kCasePrefix.size());
     }
 
-    RunSim sim;
+    detail::RunSim sim;
     reflect::register_builtin_events(sim.registry);
 
-    loader::SceneLoadResult loaded = loader::load_scene(scene_path, sim.registry);
+    // The scene is OWNED by the sim (run_sim.h's lifetime tail): the spawner
+    // and hosts wired below alias its EventsDecl, so it must die after them.
+    loader::SceneLoadResult& loaded =
+        sim.loaded.emplace(loader::load_scene(scene_path, sim.registry));
     if (loaded.error.has_value() || !loaded.scene.has_value())
         return refuse(std::move(loaded.error)
                           .value_or(Error{.code = "loader.io", .message = "scene load failed"}));
@@ -235,6 +220,19 @@ VerbOutcome run_verb(const VerbArgs& args) {
         if (auto error = sim.pack->bind(*sim.chart, spawned, cause))
             return refuse(std::move(*error));
 
+    // #13a route-only wiring (M2 node 0A): the runtime prefab spawn/despawn
+    // seam. The spawner aliases scene.events (hence the run_sim.h lifetime
+    // tail); its realize() takes the tick's ONE structural-apply extension
+    // slot (tick_loop.h) — dormant until something calls spawn_prefab/
+    // despawn, so pre-wiring corpora journal byte-identically (the 0A
+    // route-only proof). Script-free by design: emplaced even when the
+    // scene binds no scripts.
+    sim.spawner.emplace(
+        sim.world, sim.hierarchy, *sim.chart, *sim.bus, *sim.writer, sim.registry, scene.events);
+    sim.loop->set_structural_realizer([&spawner = *sim.spawner](std::uint64_t phase_record_id) {
+        return spawner.realize(phase_record_id);
+    });
+
     // State scripts: build through the content-hash cache (typecheck + the
     // engine lint pack), instantiate on the SIM runtime, and SEAT on their
     // states — onEnter/onExit/onUpdate/onFixedUpdate run through the
@@ -247,6 +245,13 @@ VerbOutcome run_verb(const VerbArgs& args) {
         sim.toolchain.emplace(std::move(tool_config));
         sim.runtime.emplace(); // SIM profile: poisoned clocks, gas metering
         register_script_rng(*sim.runtime, static_cast<std::uint64_t>(seed));
+        // The two script-facing host seats (#13a): entity/emit primitives +
+        // world.spawn/despawn, registered BEFORE any module loads so a
+        // script's first statement can already reach them. Meaningful only
+        // with a runtime, so they live inside this conditional; a scene
+        // without scripts has no caller for either seat.
+        sim.component_host.emplace(*sim.runtime, sim.world, *sim.bus, &sim.hierarchy);
+        sim.world_host.emplace(*sim.runtime, *sim.spawner);
         sim.scripts.emplace(*sim.runtime, *sim.toolchain, *sim.bus, &loader::resolve_key);
         if (auto error = sim.scripts->first_error())
             return refuse(std::move(*error));
@@ -272,15 +277,22 @@ VerbOutcome run_verb(const VerbArgs& args) {
         }
     }
 
-    // Step. run_to_tick is a no-op past the target; tick(n) is exact. The
-    // gc probes bracket EXACTLY the tick window: module build/bind churn
-    // stays out of the ts_gc_churn evidence (RunProbes contract).
+    // Step — the batch loop drives step_one(), THE single tick executor
+    // (run_sim.h). --to-tick keeps run_to_tick's no-op-past-target contract;
+    // --ticks is exact; both stop at the first error. The gc probes bracket
+    // EXACTLY the tick window: module build/bind churn stays out of the
+    // ts_gc_churn evidence (RunProbes contract).
     const std::uint64_t gc_before = sim.runtime.has_value() ? sim.runtime->alloc_bytes() : 0;
     std::optional<base::Error> tick_error;
-    if (has_to_tick)
-        tick_error = sim.loop->run_to_tick(static_cast<std::uint64_t>(args.get_int("to-tick")));
-    else if (has_ticks)
-        tick_error = sim.loop->tick(static_cast<std::uint64_t>(args.get_int("ticks")));
+    if (has_to_tick) {
+        const auto target = static_cast<std::uint64_t>(args.get_int("to-tick"));
+        while (sim.loop->current_tick() < target && !tick_error.has_value())
+            tick_error = sim.step_one();
+    } else if (has_ticks) {
+        const auto count = static_cast<std::uint64_t>(args.get_int("ticks"));
+        for (std::uint64_t i = 0; i < count && !tick_error.has_value(); ++i)
+            tick_error = sim.step_one();
+    }
     if (tick_error.has_value())
         return refuse(std::move(*tick_error));
     const std::uint64_t gc_after = sim.runtime.has_value() ? sim.runtime->alloc_bytes() : 0;

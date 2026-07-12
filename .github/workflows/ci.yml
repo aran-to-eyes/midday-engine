@@ -167,6 +167,31 @@ jobs:
         env:
           ASAN_OPTIONS: strict_string_checks=1:detect_stack_use_after_return=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      - name: Teardown-UAF death witness — the fence must still bite (M2 node 0A, INVERTED)
+        env:
+          MIDDAY_RUNSIM_UAF_CHILD: "1"
+          ASAN_OPTIONS: strict_string_checks=1:detect_stack_use_after_return=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          # INVERTED gate: the env-gated child (cli/verbs/run_sim_test.cpp)
+          # reproduces the exact teardown UAF run_sim.h's member order
+          # forbids — the scene freed while PrefabSpawner still aliases its
+          # EventsDecl — through a genuine spawn_prefab deep read. It MUST
+          # die with an ASan heap-use-after-free report; a surviving child
+          # means the fence no longer observes the bug class. No pipes
+          # around gating commands (golden-software precedent): output goes
+          # to a log file and the gates grep that file.
+          status=0
+          build/sanitizer/midday selftest --filter '*teardown-uaf-witness-child*' \
+            > build/sanitizer/uaf-witness.log 2>&1 || status=$?
+          cat build/sanitizer/uaf-witness.log
+          if [ "$status" -eq 0 ]; then
+            echo "::error::the UAF witness child SURVIVED — ASan can no longer OBSERVE the freed-scene deep read (the witness class is dead); the member order itself is still carried by the compile-time + address-order fence layers"
+            echo "::error::if this red follows a deliberate refactor that makes PrefabSpawner own/copy its EventsDecl, retire the witness consciously with that refactor"
+            exit 1
+          fi
+          grep -q 'AddressSanitizer' build/sanitizer/uaf-witness.log
+          grep -q 'heap-use-after-free' build/sanitizer/uaf-witness.log
 
   # The drift lane (m0-api-json + m0-codegen-selfhost): the committed
   # api/engine_api.json must be byte-identical to a fresh `midday api dump`
@@ -452,6 +477,10 @@ jobs:
             | jq -e '.first_divergent_tick==null and .identical'
           echo "normalized kata journal sha256 (report only, non-gating):"
           zstdcat build/det/kata1.mrj/journal.jsonl.zst | shasum -a 256 | cut -d' ' -f1
+      - name: D-9 behavioral — M2 smoke corpus (0A seed — input validate + checked meta deferrals + headless run)
+        run: |
+          source scripts/lib/verify_behavioral.sh
+          behavioral_smoke_corpus build/ci/midday build/ci
 
   # boundaries (m0-rhi-vulkan + CONCERNS #6 + M1-exit Phase 1 CRLF guard):
   # check_include_boundaries.py now carries THREE mechanical, self-testing
@@ -617,9 +646,18 @@ jobs:
         run: |
           source scripts/lib/verify_behavioral.sh
           behavioral_batch_budget_check build/ci/midday.exe build/ci 1000 >/dev/null
+      - name: D-9 behavioral — M2 smoke corpus (0A seed — input validate + checked meta deferrals + headless run)
+        shell: bash
+        run: |
+          source scripts/lib/verify_behavioral.sh
+          behavioral_smoke_corpus build/ci/midday.exe build/ci
 
   # build-android (m1-xplat): NDK cross-compile of core+rhi+cli to arm64-v8a.
-  # COMPILE-ONLY — no emulator/device run (m7-android owns execution). Proves
+  # COMPILE-ONLY — no emulator/device run (m7-android owns execution). The
+  # M2 smoke corpus (testkit/smoke, node 0A) is therefore NOT executed here:
+  # this lane proves the engine that runs it cross-compiles; m7-android owns
+  # running it on a device (the gate-coverage ledger's scheduled deferral —
+  # an honest named gap, never an implicit one). Proves
   # the codebase's POSIX-leaning seams (std::filesystem, fopen, dlopen-via-
   # volk) hold against bionic libc and that the Vulkan headers/volk loader
   # build without a system Vulkan library present (volk resolves everything
@@ -647,7 +685,10 @@ jobs:
         run: scripts/check_fp_flags.py build/android/compile_commands.json
 
   # build-ios (m1-xplat): Xcode-SDK cross-compile of core+rhi+cli to iOS
-  # arm64. COMPILE-ONLY — no simulator/device run (m7-ios owns execution).
+  # arm64. COMPILE-ONLY — no simulator/device run (m7-ios owns execution);
+  # like build-android above, the M2 smoke corpus (testkit/smoke, node 0A)
+  # runs here the day m7-ios stands up simulator/device execution — until
+  # then this lane only proves the engine that runs it compiles.
   # midday_rhi_metal compiles its REAL Objective-C++ backend here (APPLE is
   # true for iOS, same as macOS), so this is also the first proof that the
   # Metal backend builds against the iphoneos SDK, not just macosx.

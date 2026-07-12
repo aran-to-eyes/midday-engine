@@ -1,0 +1,8 @@
+{
+    "ticks": 300,
+    "seed": 1,
+    "input_action": "jump",
+    "input_activation_node": "m2-testkit-core",
+    "snapshot_every_ticks": 256,
+    "snapshot_activation_node": "m2-snapshots"
+}

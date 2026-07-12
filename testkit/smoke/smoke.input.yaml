@@ -1,0 +1,11 @@
+# testkit/smoke/smoke.input.yaml — smoke-corpus CONTENT, not wiring: the
+# run verb does NOT load input maps in 0A (a new run flag would change the
+# verb argv schema and with it api_compat_hash — route-only forbids both).
+# The gate validates it project-wide (`midday validate`, extension
+# dispatch); node 5 (m2-testkit-core) injects the `jump` action named in
+# smoke.meta.json and asserts the machine's transition fires.
+format: 1
+actions:
+  jump:
+    bindings:
+      - {device: keyboard, control: space}

@@ -27,6 +27,7 @@ add_executable(midday
     verbs/new.cpp
     verbs/scene.cpp
     verbs/run_test.cpp
+    verbs/run_sim_test.cpp
     verbs/shot_test.cpp
     verbs/golden_test.cpp
     verbs/spike_test.cpp

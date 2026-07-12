@@ -113,6 +113,9 @@ step "prefab spawn (m1-prefab-spawn: 100-prefab mid-tick spawn + enter-chain tra
 "despawn-mid-query, alive-after-phase-8, world.spawn/despawn TS boundary)"
 behavioral_prefab_spawn "$BIN" "$BUILD_DIR"
 
+step "M2 smoke corpus (0A seed: input-map validate + checked meta deferrals + headless run)"
+behavioral_smoke_corpus "$BIN" "$BUILD_DIR"
+
 step "appendix A golden (3200-tick assert pack + independent dual-run diff)"
 # m0-appendix-a-determinism exit tests: the flagship golden — the authored
 # A.3 corpus driven to tick 3200 with the assertion pack; the five item-21

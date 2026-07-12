@@ -1,0 +1,24 @@
+# testkit/smoke/smoke.scene.yaml — the M2 smoke seed (node 0A): the minimal
+# COMPLETE non-warden scene over implemented primitives only — a static
+# physics ground, one dynamic body, one statechart entity listening on the
+# built-in input-action route. Executed by the behavioral gate on Linux/
+# macOS/Windows every push (behavioral_smoke_corpus, scripts/lib/
+# verify_behavioral.sh); the android/ios lanes only compile the engine that
+# runs it (m7-android / m7-ios own runtime execution). Ticks, seed, and the
+# named deferrals live in smoke.meta.json — the gate reads them from there
+# (a checked contract, not a comment). Grown at node 5 (m2-testkit-core).
+format: 1
+scene: smoke
+entities:
+  - entity: Ground
+    components:
+      - Transform: {}
+      - Collider: {shape: plane}
+  - entity: Box
+    components:
+      - Transform: {at: [0, 2.0, 0]}
+      - Collider: {shape: box, size: [1.0, 1.0, 1.0]}
+      - RigidBody: {}
+  - entity: Trigger
+    machines:
+      - {instance: {path: smoke.machine.yaml}}

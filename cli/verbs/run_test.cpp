@@ -12,6 +12,7 @@
 #include "testkit/doctest_unwrap.h"
 #include "testkit/temp_dir.h"
 
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -114,6 +115,103 @@ TEST_CASE("loader.run: unknown key and bad state ref exit 3 with file/line") {
     CHECK(unwrap(bad_ref.error).code == "loader.bad_ref");
     CHECK(unwrap(bad_ref.error).message.find("Nowhere") != std::string::npos);
     CHECK(unwrap(bad_ref.error).details.find("line")->as_int() == 13);
+}
+
+// The 0A integration pin (council 0A, gpt): nothing else reds if run.cpp's
+// two host emplace() calls are deleted — the fence suite wires its OWN
+// seats. This case drives `midday run` end-to-end through a state script
+// that exercises BOTH wired seats and THROWS on any mismatch (script fault
+// -> exit 1 -> envelope not ok): world.spawn rides WorldHost
+// (__midday_world_spawn), EntityRef.alive rides ComponentHost
+// (__midday_entity_status) — an unregistered host fn is a plain JS
+// ReferenceError at first call. Falsified both ways at 0A council-fix time:
+// commenting out EITHER sim.component_host.emplace OR sim.world_host.emplace
+// in run.cpp makes exactly this case red. The spawned prefab carries a
+// script-FREE machine on purpose: runtime script-seat binding is the known
+// 0B gap (LEDGER G1 — realize discards MaterializeResult::machines).
+TEST_CASE("loader.run: production host wiring drives world.spawn + EntityRef.alive (0A pin)") {
+    testkit::TempDir dir{"run-verb-hosts"};
+    REQUIRE_FALSE(base::write_file(dir.file("pebble.machine.yaml"),
+                                   "format: 1\n"
+                                   "machine: pebble\n"
+                                   "regions:\n"
+                                   "  main:\n"
+                                   "    initial: Idle\n"
+                                   "    states:\n"
+                                   "      Idle: {}\n",
+                                   "t")
+                      .has_value());
+    // Embedded verbatim into TS source below — generic (forward-slash) form
+    // (D-BUILD-113 precedent).
+    const std::string prefab_path =
+        std::filesystem::path(dir.file("pebble.entity.yaml")).generic_string();
+    REQUIRE_FALSE(base::write_file(prefab_path,
+                                   "format: 1\n"
+                                   "entity: Pebble\n"
+                                   "machines:\n"
+                                   "  - instance: {path: pebble.machine.yaml}\n",
+                                   "t")
+                      .has_value());
+    // onFixedUpdate (the phase-5 hook — onUpdate is frame-side and never
+    // runs headless): tick 1 spawns and pins the queued-until-phase-8
+    // contract; every later tick asserts the realized handle reads alive.
+    REQUIRE_FALSE(base::write_file(dir.file("spawn_pin.ts"),
+                                   "import {world, EntityRef} from 'midday/component'\n"
+                                   "export default class SpawnPin {\n"
+                                   "  private ticks = 0\n"
+                                   "  private ref: EntityRef | null = null\n"
+                                   "  onFixedUpdate(dt: number): void {\n"
+                                   "    void dt\n"
+                                   "    this.ticks += 1\n"
+                                   "    if (this.ticks === 1) {\n"
+                                   "      this.ref = world.spawn('" +
+                                       prefab_path +
+                                       "', {at: {x: 1, y: 2, z: 3}})\n"
+                                       "      if (this.ref.alive)\n"
+                                       "        throw new Error('spawn queues until phase 8 — "
+                                       "must be pending here')\n"
+                                       "      return\n"
+                                       "    }\n"
+                                       "    if (this.ref === null || !this.ref.alive)\n"
+                                       "      throw new Error('spawned prefab must read alive "
+                                       "after structural apply')\n"
+                                       "  }\n"
+                                       "}\n",
+                                   "t")
+                      .has_value());
+    REQUIRE_FALSE(base::write_file(dir.file("spawner.machine.yaml"),
+                                   "format: 1\n"
+                                   "machine: spawner\n"
+                                   "regions:\n"
+                                   "  main:\n"
+                                   "    initial: Boot\n"
+                                   "    states:\n"
+                                   "      Boot:\n"
+                                   "        script: spawn_pin.ts\n",
+                                   "t")
+                      .has_value());
+    REQUIRE_FALSE(base::write_file(dir.file("pin.scene.yaml"),
+                                   "format: 1\n"
+                                   "scene: pin\n"
+                                   "entities:\n"
+                                   "  - entity: Spawner\n"
+                                   "    machines:\n"
+                                   "      - {instance: {path: spawner.machine.yaml}}\n",
+                                   "t")
+                      .has_value());
+
+    const VerbOutcome out = invoke(run_spec(),
+                                   {dir.file("pin.scene.yaml"),
+                                    "--ticks",
+                                    "4",
+                                    "--record",
+                                    dir.file("pin.mrj"),
+                                    "--cache-dir",
+                                    dir.file("ts-cache")});
+    REQUIRE_MESSAGE(out.exit == Exit::Ok,
+                    (out.error.has_value() ? out.error->message : std::string()));
+    CHECK(out.payload.find("ticks")->as_int() == 4);
+    CHECK(out.payload.find("scripts")->elements().size() == 1);
 }
 
 TEST_CASE("loader.run: --ticks and --to-tick are mutually exclusive") {
