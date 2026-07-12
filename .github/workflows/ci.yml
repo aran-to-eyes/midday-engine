@@ -76,12 +76,23 @@ jobs:
     container:
       image: ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
     steps:
-      - name: Install toolchain (snapshot-pinned apt; g++-13 named explicitly)
+      - name: Install toolchain (snapshot-pinned apt, ENGAGEMENT ASSERTED; g++-13 named)
+        shell: bash
         run: |
-          APT_SNAP="-o Acquire::Snapshot=20260710T000000Z"
-          apt-get $APT_SNAP update
-          DEBIAN_FRONTEND=noninteractive apt-get $APT_SNAP install -y --no-install-recommends \
-            g++-13 gcc-13 cmake ninja-build python3-venv git ca-certificates
+          # Deb822 Snapshot: field, NOT `-o Acquire::Snapshot` — the -o form
+          # is silently ignored when the image's sources don't opt in (proven
+          # by this lane's own first run: green apt step, zero
+          # snapshot.ubuntu.com fetches). A pin that can be silently ignored
+          # must assert its own engagement, so the update output is checked
+          # for actual snapshot fetches before anything installs.
+          sed -i '/^Suites:/a Snapshot: 20260710T000000Z' /etc/apt/sources.list.d/ubuntu.sources
+          apt-get update 2>&1 | tee /tmp/apt-update.log
+          grep -q "snapshot.ubuntu.com" /tmp/apt-update.log || {
+            echo "::error::apt snapshot pin did NOT engage (no snapshot.ubuntu.com fetches in update output)"
+            exit 1
+          }
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            g++-13 gcc-13 cmake ninja-build python3-venv git ca-certificates jq
       - uses: actions/checkout@v4
       - name: Configure only (dev preset — the same compile_commands surface verify.sh tidies)
         env:
