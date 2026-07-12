@@ -6,6 +6,10 @@
 #   software-Vulkan goldens; golden-software is EXPECTED RED until the first
 #   inspected goldens are committed — see the lane's bootstrap comment).
 #
+# M1-exit lane (Phase 2, CONCERNS #11): tidy-libstdcxx — digest-pinned,
+# tidy-ONLY libstdc++ static analysis (configure, no build), the fast
+# pre-matrix red for stdlib-sensitive findings mac-local libc++ cannot see.
+#
 # M1 lanes (m1-xplat, Meridian D18): build-android, build-ios. COMPILE-ONLY
 # cross-compile gates for core+rhi+cli — no device/emulator/simulator run
 # (that is m7-android / m7-ios). They activate the two toolchain files
@@ -36,6 +40,63 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build
       - name: verify (full local gate)
         run: ./scripts/verify.sh
+
+  # tidy-libstdcxx (M1-exit Phase 2, CONCERNS #11): the FAST stdlib-sensitive
+  # static-analysis lane. clang-tidy's dataflow models the stdlib headers it
+  # parses: the macOS developer gate analyzes against libc++ (Apple ships no
+  # libstdc++ headers; Docker is unavailable on the reference dev host), so
+  # libstdc++-only findings — bugprone-unchecked-optional-access at
+  # m1-prefab-spawn's spawn.cpp:119 is the canonical escape — can NEVER
+  # surface locally; historically they arrived as verify-linux red only
+  # after its full build, deep into the matrix. This lane is tidy-ONLY
+  # against a CONFIGURE-ONLY tree (no ninja build — nothing in the
+  # first-party include graph is generated, proven at lane-landing), so its
+  # red arrives in minutes, pre-matrix: the spawn.cpp:119 class stops being
+  # full-matrix-red-on-main. Pins, TU set, and invocation are sourced from
+  # scripts/lib/verify_lint.sh — the SAME single source verify.sh uses — so
+  # the only intended difference from mac-local is the stdlib itself.
+  # PINNING: the container image is digest-pinned (a rotating runner image
+  # must not move libstdc++ under the lane silently — that would make a new
+  # finding ambiguous between "code change" and "environment rotation");
+  # g++-13 is named explicitly, not left to the gcc default. Residual float:
+  # noble's g++-13/libstdc++-13-dev point releases — the same hosted-
+  # toolchain risk class every other lane already accepts (see the
+  # build-android NDK note below). Deliberately NOT a `needs:` gate in front
+  # of the other jobs: that would tax every push's wall-clock by the lane's
+  # full duration to save runner minutes only on the rare red — the value is
+  # the fast SIGNAL, and the hard-green rule already forbids building on red.
+  tidy-libstdcxx:
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
+    steps:
+      - name: Install toolchain (g++-13 named explicitly = noble's default major)
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            g++-13 gcc-13 cmake ninja-build python3-venv git ca-certificates
+      - uses: actions/checkout@v4
+      - name: Configure only (dev preset — the same compile_commands surface verify.sh tidies)
+        env:
+          CC: gcc-13
+          CXX: g++-13
+        run: cmake --preset dev
+      - name: clang-tidy under libstdc++ (pin + TU set shared with verify.sh)
+        shell: bash
+        run: |
+          source scripts/lib/verify_lint.sh
+          # A tidy-only lane has no build step to catch a broken checkout or
+          # renamed source roots, so a collapsed TU list must be a LOUD
+          # failure, never a vacuous green (the .exercised-gate discipline).
+          # 218 first-party TUs at lane-landing; 100 = major-restructure alarm
+          # (update the floor deliberately when the tree legitimately shrinks).
+          TU_COUNT=$(first_party_cxx | grep -c '\.cpp$' || true)
+          if [ "$TU_COUNT" -lt 100 ]; then
+            echo "::error::first-party TU count collapsed to $TU_COUNT (<100) — refusing a vacuous tidy pass"
+            exit 1
+          fi
+          bootstrap_lint_venv
+          clang_tidy_first_party build/dev
 
   build-linux:
     runs-on: ubuntu-24.04
