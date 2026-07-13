@@ -319,14 +319,14 @@ Bus::trigger(EventKey key, base::Name event, const Json& payload, std::uint64_t 
         // encode-refusal classes left.
         reflect::EncodeResult encoded = reflect::encode_payload(&entry->desc, payload);
         if (encoded.error.has_value()) {
-            Json diag = diag_base(event, key);
+            Json encode_diag = diag_base(event, key);
             const Json& details = encoded.error->details;
             for (const char* detail : {"reason", "field", "expected"})
                 if (const Json* value = details.find(detail))
-                    diag.set(detail, *value);
+                    encode_diag.set(detail, *value);
             result.error = refuse("bus.payload_invalid",
                                   "payload does not inhabit the event's schema",
-                                  std::move(diag),
+                                  std::move(encode_diag),
                                   cause_id);
             return result;
         }

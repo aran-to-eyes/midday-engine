@@ -99,8 +99,8 @@ TEST_CASE("loader.despawn_linger: ceiling arithmetic lands the reap on the EXACT
     //   off-by-one falsifier's red line).
     DespawnAtTick killer;
     killer.spawner = &pf.spawner;
-    killer.requests.emplace_back(1, g1.ref, loader::DespawnOptions{4.0});
-    killer.requests.emplace_back(2, g2.ref, loader::DespawnOptions{0.025});
+    killer.requests.push_back({1, g1.ref, loader::DespawnOptions{4.0}});
+    killer.requests.push_back({2, g2.ref, loader::DespawnOptions{0.025}});
     REQUIRE_FALSE(pf.fix.loop().add_hook(tick::Phase::kUpdate, killer).has_value());
 
     AliveAtPost probe1;
