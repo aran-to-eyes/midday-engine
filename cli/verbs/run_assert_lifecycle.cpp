@@ -302,7 +302,7 @@ RunAssertPack::Verdict ComponentEventLifecyclePack::evaluate(statechart::Statech
     }
 
     const auto& id_of = assertwalk::record_id_of; // shared probes (walk header)
-    const auto& cites = assertwalk::record_cites;
+    const auto cites = &assertwalk::record_cites;
     const auto verdict_field = [&](std::string_view key) -> const base::Json* {
         if (!facts.relay_verify.has_value())
             return nullptr;

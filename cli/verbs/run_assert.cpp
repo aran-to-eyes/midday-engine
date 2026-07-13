@@ -275,7 +275,7 @@ RunAssertPack::Verdict AppendixAGoldenPack::evaluate(statechart::Statechart& cha
     }
 
     const auto& id_of = assertwalk::record_id_of; // shared probes (walk header)
-    const auto& cites = assertwalk::record_cites;
+    const auto cites = &assertwalk::record_cites;
     const auto cause_of = [](const std::optional<Record>& record) {
         return record.has_value() ? record->cause_id : std::uint64_t{0};
     };
@@ -303,15 +303,16 @@ RunAssertPack::Verdict AppendixAGoldenPack::evaluate(statechart::Statechart& cha
     // A.3: "cause chain reads contact -> damage -> death.dealt -> transition
     // -> boss.died end to end" (contact -> damage collapses into the
     // damage.dealt head until m1 lands Health + player content).
-    const bool cause_chain_complete = cites(facts.boss_died, facts.hook_enter_dead) &&
-                                      cites(facts.hook_enter_dead, facts.hit_transition) &&
-                                      cites(facts.hit_transition, facts.death) &&
-                                      cites(facts.death, facts.damage) &&
-                                      facts.damage.has_value() && facts.damage->tick == kHitTick &&
-                                      facts.hit_transition.has_value() &&
-                                      payload_is(*facts.hit_transition, "from", "SlashAttack") &&
-                                      payload_is(*facts.hit_transition, "to", "Dead") &&
-                                      payload_is(*facts.hit_transition, "via", "any-state");
+    const bool cause_chain_cited = cites(facts.boss_died, facts.hook_enter_dead) &&
+                                   cites(facts.hook_enter_dead, facts.hit_transition) &&
+                                   cites(facts.hit_transition, facts.death) &&
+                                   cites(facts.death, facts.damage);
+    const bool cause_chain_shape = facts.damage.has_value() && facts.damage->tick == kHitTick &&
+                                   facts.hit_transition.has_value() &&
+                                   payload_is(*facts.hit_transition, "from", "SlashAttack") &&
+                                   payload_is(*facts.hit_transition, "to", "Dead") &&
+                                   payload_is(*facts.hit_transition, "via", "any-state");
+    const bool cause_chain_complete = cause_chain_cited && cause_chain_shape;
 
     // ---- the rest of the A.3 text, each line its own named verdict ----------
     const bool slash_entered_at_e = facts.slash_transition.has_value() &&
