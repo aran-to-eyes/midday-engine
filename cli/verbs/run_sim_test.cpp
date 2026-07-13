@@ -50,6 +50,12 @@ using midday::testkit::unwrap;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
+static_assert(offsetof(RunSim, runtime) < offsetof(RunSim, instance_host),
+              "run_sim.h: instance_host owns QuickJS seats — the runtime must outlive it");
+static_assert(offsetof(RunSim, instance_host) < offsetof(RunSim, chart),
+              "run_sim.h: instance_host is a chart-held ComponentHooks implementation (M2 0B "
+              "D2) — declare it BEFORE `chart` (the `scripts` placement), NEVER in the "
+              "post-`loaded` tail");
 static_assert(offsetof(RunSim, chart) < offsetof(RunSim, loaded),
               "run_sim.h lifetime tail: `loaded` is the tail's head — keep it after `chart`");
 static_assert(offsetof(RunSim, loaded) < offsetof(RunSim, spawner),
@@ -149,8 +155,24 @@ void wire_composition(RunSim& sim, const testkit::TempDir& dir, loader::SceneFil
     REQUIRE_FALSE(spawned.error.has_value());
     REQUIRE(spawned.stats.entities == 1); // Host = index 0, generation 0
 
-    sim.spawner.emplace(
-        sim.world, sim.hierarchy, *sim.chart, *sim.bus, *sim.writer, sim.registry, scene.events);
+    // The two-phase structural extension (M2 0B track D, D4): despawns run
+    // exit chains + queue at prepare (pre-flush), spawns/reaps realize
+    // post-flush. This is the wiring run.cpp itself must carry once the 0B
+    // integration lands (spawner gains the loop tick source + BOTH slots;
+    // ~RunSim clears both — the teardown contract below fences it).
+    sim.spawner.emplace(sim.world,
+                        sim.hierarchy,
+                        *sim.chart,
+                        *sim.bus,
+                        *sim.writer,
+                        sim.registry,
+                        scene.events,
+                        loader::ComponentVocab{},
+                        &*sim.loop);
+    sim.loop->set_structural_preparer(
+        [&spawner = *sim.spawner](std::uint64_t tick, std::uint64_t phase_record_id) {
+            return spawner.prepare(tick, phase_record_id);
+        });
     sim.loop->set_structural_realizer([&spawner = *sim.spawner](std::uint64_t phase_record_id) {
         return spawner.realize(phase_record_id);
     });
@@ -172,6 +194,8 @@ void wire_like_run_verb(RunSim& sim, const testkit::TempDir& dir) {
 // or ifdef'd out (the offsetof pragma dance is the fragile part).
 TEST_CASE("cli.run_sim: lifetime tail is declared in destruction-contract order") {
     RunSim sim;
+    CHECK(static_cast<const void*>(&sim.runtime) < static_cast<const void*>(&sim.instance_host));
+    CHECK(static_cast<const void*>(&sim.instance_host) < static_cast<const void*>(&sim.chart));
     CHECK(static_cast<const void*>(&sim.chart) < static_cast<const void*>(&sim.loaded));
     CHECK(static_cast<const void*>(&sim.loaded) < static_cast<const void*>(&sim.spawner));
     CHECK(static_cast<const void*>(&sim.spawner) < static_cast<const void*>(&sim.component_host));
@@ -259,6 +283,21 @@ TEST_CASE("cli.run_sim: wired routes run once against a real RunSim; teardown is
     sim.runtime.emplace();
     sim.component_host.emplace(*sim.runtime, sim.world, unwrap(sim.bus), &sim.hierarchy);
     sim.world_host.emplace(*sim.runtime, unwrap(sim.spawner));
+
+    // run_verb's --components wiring (M2 0B integration): the instance host
+    // rides the same teardown fixture so its chart/spawner seams stay
+    // ASan-covered — emplaced + wired exactly like run.cpp, even though this
+    // corpus authors no script components (dormant routes torn down clean).
+    sim.instance_host.emplace(*sim.runtime,
+                              *sim.toolchain,
+                              sim.world,
+                              unwrap(sim.bus),
+                              unwrap(sim.writer),
+                              sim.registry,
+                              *sim.component_host);
+    unwrap(sim.spawner)
+        .set_spawn_options(loader::SpawnOptions{&*sim.instance_host, /*defer_initial_entry=*/true});
+    unwrap(sim.spawner).set_despawn_hooks(*sim.instance_host);
 
     // status + root + trigger_entity + world.spawn, one call each, asserted
     // from INSIDE the script (throw -> load error -> red).

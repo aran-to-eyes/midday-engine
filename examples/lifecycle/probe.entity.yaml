@@ -1,0 +1,15 @@
+# examples/lifecycle/probe.entity.yaml — the LifecycleProbe prefab (M2 node
+# 0B, FUSED-SPEC D6): a generic base Transform placed at x=7 (asymmetric on
+# purpose — the ContactRelay proves it reads the MIRRORED base value, not a
+# default) + the ContactRelay base component (typed contact.began hydration
+# -> golden.kill), and the depth-2 lifecycle machine.
+format: 1
+
+entity: LifecycleProbe
+
+base:
+  - Transform: {at: [7, 0, 3]}
+  - ContactRelay: {expectedX: 7}
+
+machines:
+  - instance: {path: lifecycle.machine.yaml}

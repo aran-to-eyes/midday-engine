@@ -1,0 +1,24 @@
+# examples/lifecycle/lifecycle.events.yaml — the component_event_lifecycle
+# golden's event vocabulary (M2 node 0B, FUSED-SPEC D6). golden.kill is the
+# ContactRelay -> machine kill signal; boss.died is the REAL
+# examples/warden/states/dead.ts broadcast (payload shape verbatim from
+# examples/warden/events/combat.events.yaml — the golden references that
+# actual m4-content file, so its vocabulary rides along); relay.verify is
+# the ContactRelay's journaled hydration verdict (typed EntityRef/Vec3
+# hydration + signed-zero normalization + the mirrored base-Transform read),
+# asserted field by field by the assertion pack.
+format: 1
+
+events:
+  golden.kill:  {payload: {}}
+  boss.died:    {payload: {boss: entity_ref, at: vec3}}
+  relay.verify:
+    payload:
+      event: string
+      self_is_me: bool
+      other_distinct: bool
+      x: float
+      y_plus_zero: bool
+      z: float
+      impulse_plus_zero: bool
+      tx: float

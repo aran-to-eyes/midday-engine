@@ -135,6 +135,9 @@ behavioral_determinism_kata_semantic "$BIN" "$BUILD_DIR"
 behavioral_determinism_kata_byte_reinforce "$BUILD_DIR"
 behavioral_tainted_lint_gate "$BIN" "$BUILD_DIR"
 
+step "component_event_lifecycle golden (M2 0B D6: manifest drift + 241-tick assert pack + dual-run diff)"
+behavioral_component_event_lifecycle "$BIN" "$BUILD_DIR"
+
 step "license scan (+ negative fixture)"
 scripts/license_scan.py >/dev/null
 scripts/test_license_scan.py >/dev/null

@@ -179,20 +179,28 @@ Section contents:
    "midday" { ... }` block, OUTSIDE `declare namespace midday`): re-exports
    of the value types (`export type Vec2 = midday.Vec2;` ... `EntityRef`,
    `AssetRef`), then the FIXED (non-data-driven) component-authoring
-   surface — `FieldOptions`, `ComponentCtor<T>`, `Component`, `StateScript`,
-   `Transform`, `component()`/`field()` decorator declarations, `events`,
-   `world.query`/`world.spawn`/`world.despawn` — byte-identical between the
-   two generators (`COMPONENT_API`
+   surface — `FieldOptions`, `ComponentCtor<T>`, `EventListener` (M2 #12b:
+   the documented `onEvent` overload-declaration convention — one binding
+   per overload, a literal event name paired with its `...Event` payload
+   type; union-only signatures refuse), `Component` (with the #12b
+   state-scoped `onEnter?`/`onExit?` lifecycle), `StateScript`, `Transform`,
+   `component()`/`field()` decorator declarations, `events`,
+   `world.query`/`world.spawn`/`world.despawn(ref, opts?: {after?})` —
+   byte-identical between the two generators (`COMPONENT_API`
    in `ts/codegen/dts.ts`, `kComponentApi` in
    `tools/codegen_bootstrap/dts_emit.cpp`; NOT derived from
    `engine_api.json`, so unaffected by drift in it beyond re-export shape),
-   then one DATA-DRIVEN line per registered event, source order:
-   `export type <Pascal(name)> = midday.EventPayloads["<name>"];` — the
-   bare, `...Event`-suffix-free name a component's `onEvent`-shaped method
-   names its payload with (`import('midday').TriggerEntered`). Never
-   collides with section 3's `<Pascal(name)>Event` claim (same
-   `pascalCase(name)` prefix, so the existing uniqueness check already
-   covers it). This block is deliberately ambient with NO backing file:
+   then two DATA-DRIVEN alias groups (blank-line separated; both omitted
+   when no events register), each one line per registered event, source
+   order: `export type <Pascal(name)> = midday.EventPayloads["<name>"];` —
+   the bare ergonomic spelling — and
+   `export type <Pascal(name)>Event = midday.EventPayloads["<name>"];`
+   (M2 #12b) — the SPEC-LITERAL payload spelling an `onEvent` overload
+   binds with, the same names `bindings_spec.json`'s `event_payload_types`
+   map keys. Never collides with section 3's `<Pascal(name)>Event` claim
+   (same `pascalCase(name)` prefix, so the existing uniqueness check
+   already covers it). This block is deliberately ambient with NO backing
+   file:
    tsc always prefers an in-program ambient module declaration over a
    `paths`-based file resolution for an EXACT specifier match (confirmed
    empirically), so `ts/lib/component.ts` (the real runtime
@@ -252,7 +260,8 @@ All blocks separated by exactly one blank line; file ends with one newline.
 ## bindings_spec.json layout (format 1)
 
 Key order: `format_version` (1), `api_compat_hash`, `expr_functions`,
-`events`, `classes`, `batch_envelope`, `state_script_hooks`.
+`events`, `classes`, `batch_envelope`, `state_script_hooks`,
+`event_payload_types`.
 
 - `expr_functions`, `events`, `classes`: the input entries **deep-copied
   with every `doc`/`summary` key removed** (at any depth); everything else —
@@ -302,6 +311,16 @@ Key order: `format_version` (1), `api_compat_hash`, `expr_functions`,
   the committed artifact by `golden.ts_hook_parity` (seam test). The frozen
   bootstrap never emits this member, so `bindings_equivalence_view` DROPS
   it (vs nulling `batch_envelope`, which both generators emit).
+- `event_payload_types` (SELF-HOST ONLY, M2 0B #12b): the GENERATED
+  event-payload bijection — one member per registered event, input order:
+  `"<Pascal(name)>Event": {"event": "<name>", "payload_compat_hash":
+  "<event compat_hash>"}`. This is the map `ts/toolchain/driver.js`'s
+  `onEvent` overload extraction consults (the toolchain passes it in the
+  driver request); the extractor never reconstructs event names or compat
+  hashes from naming conventions, so a payload rename/reshape moves the
+  manifest's `event_bindings` hashes through generated data alone. Dropped
+  by `bindings_equivalence_view` like `state_script_hooks`; pinned against
+  LITERAL bytes by `codegen.selfhost.batch_envelope`.
 
 ## Determinism and drift gates
 

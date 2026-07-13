@@ -160,9 +160,17 @@ const COMPONENT_API =
     "        readonly name: string;\n" +
     "    }\n" +
     "\n" +
+    "    /** Entity-bound event subscription (M2 #12b): one binding per onEvent OVERLOAD DECLARATION — a literal event name paired with its ...Event payload type; a union-only signature carries no bindings and refuses. */\n" +
+    "    export interface EventListener {\n" +
+    "        onEvent(event: string, payload: unknown): void;\n" +
+    "    }\n" +
+    "\n" +
     "    export abstract class Component {\n" +
     "        readonly entity: midday.EntityRef;\n" +
     "        emit(name: string, payload?: Record<string, unknown>): void;\n" +
+    "        /** State-scoped lifecycle (M2 #12b): the owning state's enter/exit chains invoke these. */\n" +
+    "        onEnter?(from: string): void;\n" +
+    "        onExit?(to: string): void;\n" +
     "    }\n" +
     "\n" +
     "    export abstract class StateScript {\n" +
@@ -206,22 +214,29 @@ const COMPONENT_API =
     "            prefab: AssetRef,\n" +
     "            opts?: { at?: midday.Vec3; overrides?: Record<string, Record<string, unknown>> },\n" +
     "        ): midday.EntityRef;\n" +
-    "        despawn(ref: midday.EntityRef): void;\n" +
+    "        despawn(ref: midday.EntityRef, opts?: { after?: number }): void;\n" +
     "    };\n";
 
-// One bare, ergonomic payload-type alias per registered event:
-// `import('midday').TriggerEntered` is how a component's `onEvent`-shaped
-// method names the payload it wants, without the `...Event` suffix the
-// reflected-classes/docs surface keeps (section 3 stays untouched). Never
-// collides: two events cannot already share a pascalCase(name) (section 3's
-// existing uniqueness claim on "<Pascal>Event" implies uniqueness of the
-// bare "<Pascal>" prefix too).
+// Two payload-type aliases per registered event. The bare flavor
+// (`import('midday').TriggerEntered`) is the ergonomic, suffix-free
+// spelling m1-ts-components introduced; the `...Event`-suffixed flavor
+// (M2 #12b) is the SPEC-LITERAL payload spelling an `onEvent` overload
+// declaration binds with — the same names bindings_spec.json's
+// event_payload_types map keys, so the extractor and the authored surface
+// share one vocabulary (section 3 stays untouched). Never collides: two
+// events cannot already share a pascalCase(name) (section 3's existing
+// uniqueness claim on "<Pascal>Event" implies uniqueness of the bare
+// "<Pascal>" prefix too).
 function eventAliasBlock(document: JObject): string {
-    let body = "";
-    for (const entry of entries(document, "events"))
-        body += "    export type " + pascalCase(str(entry, "name")) + ' = midday.EventPayloads["' +
-            str(entry, "name") + '"];\n';
-    return body;
+    let bare = "";
+    let suffixed = "";
+    for (const entry of entries(document, "events")) {
+        const lookup = ' = midday.EventPayloads["' + str(entry, "name") + '"];\n';
+        bare += "    export type " + pascalCase(str(entry, "name")) + lookup;
+        suffixed += "    export type " + pascalCase(str(entry, "name")) + "Event" + lookup;
+    }
+    if (bare === "") return "";
+    return bare + "\n" + suffixed;
 }
 
 function verbBlock(entry: JValue): string {

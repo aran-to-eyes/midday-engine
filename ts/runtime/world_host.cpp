@@ -69,12 +69,23 @@ HostResult WorldHost::spawn(const Json::Array& args) {
 
 HostResult WorldHost::despawn(const Json::Array& args) {
     HostResult result;
-    if (args.size() != 2 || !args[0].is_number() || !args[1].is_number()) {
-        result.error = host_bad_args(kDespawnFn, "index: number, generation: number");
+    // 2-arg (immediate) or 3-arg (despawn linger, M2 0B track D — ts/lib/
+    // component.ts passes `after` ONLY when the caller supplied opts.after,
+    // so the legacy arity stays the common path). Validation here is shape
+    // only; the VALUE contract (finite, non-negative, representable) is the
+    // spawner's own structured refusal — never duplicated at the seam.
+    const bool shape_ok = (args.size() == 2 || args.size() == 3) && args[0].is_number() &&
+                          args[1].is_number() && (args.size() == 2 || args[2].is_number());
+    if (!shape_ok) {
+        result.error =
+            host_bad_args(kDespawnFn, "index: number, generation: number, after?: number");
         return result;
     }
     const ecs::EntityRef ref = host_entity_arg(args, 0, 1);
-    if (auto error = spawner_->despawn(ref))
+    loader::DespawnOptions opts;
+    if (args.size() == 3)
+        opts.after = args[2].as_double();
+    if (auto error = spawner_->despawn(ref, opts))
         result.error = std::move(*error);
     return result;
 }

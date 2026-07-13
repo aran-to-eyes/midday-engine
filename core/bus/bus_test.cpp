@@ -298,6 +298,57 @@ TEST_CASE("bus.entity: a despawn earlier in the SAME dispatch stales later deliv
     CHECK(bus.subscriber_count(key) == 1);
 }
 
+TEST_CASE("bus.entity_listener: generation-gated listener pointers — order, pending wake, stale "
+          "auto-unsubscribe (M2 0B)") {
+    BusFixture fix;
+    Bus& bus = fix.bus();
+
+    // Delivery interleaves with the other flavors in REGISTRATION order.
+    const EntityRef e = fix.world.spawn();
+    const EventKey key = EventKey::entity(e);
+    std::vector<std::string> log;
+    RecordingListener plain("plain", log);
+    RecordingListener bound("bound", log);
+    REQUIRE_FALSE(bus.subscribe(plain, key));
+    REQUIRE_FALSE(bus.subscribe_entity_listener(key, e, bound));
+    TriggerResult first = bus.trigger(key, Name("hit"), Json::object(), 0);
+    CHECK(first.delivered == 2);
+    CHECK(log == std::vector<std::string>{"plain:hit", "bound:hit"});
+
+    // Identity is (key, entity, listener): a duplicate refuses, a SECOND
+    // listener on the same entity is its own subscription.
+    CHECK(code_of(bus.subscribe_entity_listener(key, e, bound)) == "bus.duplicate_subscription");
+    RecordingListener sibling("sibling", log);
+    REQUIRE_FALSE(bus.subscribe_entity_listener(key, e, sibling));
+    CHECK(bus.subscriber_count(key) == 3);
+    REQUIRE_FALSE(bus.unsubscribe_entity_listener(key, e, sibling));
+    CHECK(bus.subscriber_count(key) == 2);
+
+    // Pending entity (queue_spawn window): skipped, kept, wakes at flush.
+    const EntityRef pending = fix.world.queue_spawn();
+    const EventKey pending_key = EventKey::entity(pending);
+    RecordingListener sleeper("sleeper", log);
+    REQUIRE_FALSE(bus.subscribe_entity_listener(pending_key, pending, sleeper));
+    CHECK(bus.trigger(pending_key, Name("hit"), Json::object(), 0).delivered == 0);
+    CHECK(bus.stats().skipped_pending == 1);
+    CHECK(bus.subscriber_count(pending_key) == 1);
+    REQUIRE_FALSE(fix.world.flush_structural());
+    CHECK(bus.trigger(pending_key, Name("hit"), Json::object(), 0).delivered == 1);
+
+    // Stale generation: auto-unsubscribed WITHOUT invoking the bound
+    // listener — the PLAIN listener on the same channel keeps hearing (it
+    // opted out of the generation gate by construction).
+    log.clear();
+    REQUIRE_FALSE(fix.world.despawn(e));
+    CHECK(bus.trigger(key, Name("hit"), Json::object(), 0).delivered == 1);
+    CHECK(log == std::vector<std::string>{"plain:hit"});
+    CHECK(bus.stats().auto_unsubscribed == 1);
+    CHECK(bus.subscriber_count(key) == 1);
+
+    // A dead-entity subscribe refuses up front, exactly like the thunk flavor.
+    CHECK(code_of(bus.subscribe_entity_listener(key, e, bound)) == "ecs.stale_handle");
+}
+
 TEST_CASE("bus.validate: vocabulary events check their typed payload schema") {
     BusFixture fix;
     Bus& bus = fix.bus();

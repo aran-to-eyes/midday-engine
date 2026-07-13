@@ -40,9 +40,18 @@ QuickJS. No Node anywhere (Aurora D-11).
   boolean, or an array of those) — nothing is evaluated. An unrecognized
   shape pushes a `"schema"`-kind diagnostic into the SAME array the type/
   lint passes use, so it fails validate-before-write exactly like a type
-  error. The CLI writes `{format_version, components}` to a PROJECT-LEVEL
-  file (`--out`, required) — never `api/schema_manifest.json`, which stays
-  engine-only and codegen-owned (api/CODEGEN.md).
+  error. Event bindings (M2 0B, #12b): `onEvent` overload DECLARATIONS —
+  `(event: "<name>", payload: <...Event>)` — extract to
+  `event_bindings: [{event, payload_compat_hash}]`, resolved against
+  `bindings_spec.json`'s generated `event_payload_types` bijection (the
+  toolchain passes it in the driver request; names/hashes are never
+  reconstructed). Union-only signatures, literal/payload mismatches,
+  duplicate bindings, and payload types outside an onEvent binding
+  (`@field` state, ordinary method params) each refuse with a DISTINCT
+  `schema.event_*` code. The CLI writes `{format_version, components}`
+  (format 2) to a PROJECT-LEVEL file (`--out`, required) — never
+  `api/schema_manifest.json`, which stays engine-only and codegen-owned
+  (api/CODEGEN.md).
 - **`midday` bare specifier vs `midday/<name>`**: `midday/<name>` (with a
   slash) resolves to `ts/lib/<name>.ts` via the tsc `paths` mapping AND the
   runtime resolver, identically (D-BUILD-072). Bare `midday` (no slash,

@@ -205,9 +205,17 @@ constexpr std::string_view kComponentApi =
         readonly name: string;
     }
 
+    /** Entity-bound event subscription (M2 #12b): one binding per onEvent OVERLOAD DECLARATION — a literal event name paired with its ...Event payload type; a union-only signature carries no bindings and refuses. */
+    export interface EventListener {
+        onEvent(event: string, payload: unknown): void;
+    }
+
     export abstract class Component {
         readonly entity: midday.EntityRef;
         emit(name: string, payload?: Record<string, unknown>): void;
+        /** State-scoped lifecycle (M2 #12b): the owning state's enter/exit chains invoke these. */
+        onEnter?(from: string): void;
+        onExit?(to: string): void;
     }
 
     export abstract class StateScript {
@@ -251,19 +259,25 @@ constexpr std::string_view kComponentApi =
             prefab: AssetRef,
             opts?: { at?: midday.Vec3; overrides?: Record<string, Record<string, unknown>> },
         ): midday.EntityRef;
-        despawn(ref: midday.EntityRef): void;
+        despawn(ref: midday.EntityRef, opts?: { after?: number }): void;
     };
 )";
 
-// One bare, ergonomic payload-type alias per registered event; see
+// Two payload-type aliases per registered event: the bare ergonomic flavor
+// plus the `...Event`-suffixed onEvent binding spelling (M2 #12b); see
 // ts/codegen/dts.ts's eventAliasBlock for the full rationale (byte-mirrored
 // here for the equivalence gate).
 std::string event_alias_block(const Json& document) {
-    std::string body;
-    for (const Json& entry : entries(document, "events"))
-        body += "    export type " + pascal_case(str(entry, "name")) +
-                " = midday.EventPayloads[\"" + str(entry, "name") + "\"];\n";
-    return body;
+    std::string bare;
+    std::string suffixed;
+    for (const Json& entry : entries(document, "events")) {
+        const std::string lookup = " = midday.EventPayloads[\"" + str(entry, "name") + "\"];\n";
+        bare += "    export type " + pascal_case(str(entry, "name")) + lookup;
+        suffixed += "    export type " + pascal_case(str(entry, "name")) + "Event" + lookup;
+    }
+    if (bare.empty())
+        return {};
+    return bare + "\n" + suffixed;
 }
 
 std::string verb_block(const Json& entry) {

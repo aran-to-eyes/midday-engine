@@ -1,5 +1,5 @@
 // engine.d.ts -- GENERATED from engine_api.json. DO NOT EDIT.
-// engine_version 0.1.0, api_compat_hash 5d6d9dc571cd6a30 (signatures only; docs excluded).
+// engine_version 0.1.0, api_compat_hash 412c76eca6ae00e2 (signatures only; docs excluded).
 // Formatting rules + the TypeDesc -> TypeScript mapping table: api/CODEGEN.md.
 // Structural (pre-tsc) validation conventions: formats/engine_dts.meta.md.
 
@@ -289,6 +289,8 @@ declare namespace midday {
         "cache-dir"?: string;
         /** drive + verify a registered assertion pack: case=<name> (available: appendix_a_golden, determinism_kata) */
         assert?: string;
+        /** a project component-schema manifest (`midday script extract --out`) naming the scene's TS components */
+        components?: string;
         /** the *.scene.yaml to load and run */
         scene: string;
     }
@@ -447,9 +449,17 @@ declare module "midday" {
         readonly name: string;
     }
 
+    /** Entity-bound event subscription (M2 #12b): one binding per onEvent OVERLOAD DECLARATION — a literal event name paired with its ...Event payload type; a union-only signature carries no bindings and refuses. */
+    export interface EventListener {
+        onEvent(event: string, payload: unknown): void;
+    }
+
     export abstract class Component {
         readonly entity: midday.EntityRef;
         emit(name: string, payload?: Record<string, unknown>): void;
+        /** State-scoped lifecycle (M2 #12b): the owning state's enter/exit chains invoke these. */
+        onEnter?(from: string): void;
+        onExit?(to: string): void;
     }
 
     export abstract class StateScript {
@@ -493,7 +503,7 @@ declare module "midday" {
             prefab: AssetRef,
             opts?: { at?: midday.Vec3; overrides?: Record<string, Record<string, unknown>> },
         ): midday.EntityRef;
-        despawn(ref: midday.EntityRef): void;
+        despawn(ref: midday.EntityRef, opts?: { after?: number }): void;
     };
 
     export type TriggerEntered = midday.EventPayloads["trigger.entered"];
@@ -505,4 +515,14 @@ declare module "midday" {
     export type EntityDespawned = midday.EventPayloads["entity.despawned"];
     export type ActionPressed = midday.EventPayloads["action.pressed"];
     export type ActionReleased = midday.EventPayloads["action.released"];
+
+    export type TriggerEnteredEvent = midday.EventPayloads["trigger.entered"];
+    export type TriggerExitedEvent = midday.EventPayloads["trigger.exited"];
+    export type ContactBeganEvent = midday.EventPayloads["contact.began"];
+    export type ContactEndedEvent = midday.EventPayloads["contact.ended"];
+    export type StateFinishedEvent = midday.EventPayloads["state.finished"];
+    export type EntitySpawnedEvent = midday.EventPayloads["entity.spawned"];
+    export type EntityDespawnedEvent = midday.EventPayloads["entity.despawned"];
+    export type ActionPressedEvent = midday.EventPayloads["action.pressed"];
+    export type ActionReleasedEvent = midday.EventPayloads["action.released"];
 }

@@ -5,6 +5,8 @@
 add_library(midday_reflect STATIC
     builtin_events.cpp
     init_levels.cpp
+    payload_codec_decode.cpp
+    payload_codec_encode.cpp
     registry.cpp
     type_model.cpp
 )
@@ -23,6 +25,8 @@ midday_apply_deterministic_fp(midday_reflect)
 add_library(midday_reflect_tests OBJECT
     builtin_events_test.cpp
     init_levels_test.cpp
+    payload_codec_strict_test.cpp
+    payload_codec_test.cpp
     registry_test.cpp
     type_model_test.cpp
 )

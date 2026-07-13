@@ -56,6 +56,25 @@ target_link_libraries(midday_component_host
            midday::ecs midday::bus midday::hierarchy)
 midday_apply_deterministic_fp(midday_component_host)
 
+# The TS component instance host (M2 0B, #12b): the ONE owner of live
+# script-component instances — manifest catalog, typed field/payload
+# hydration, statechart ComponentHooks implementation, entity-bound onEvent
+# dispatch. Drives modules through the toolchain and implements BOTH the
+# core/loader materializer seam and the core/statechart hooks seam — own
+# target, same rationale as state_script above.
+add_library(midday_component_instance STATIC
+    component_instance_host.cpp
+    component_instance_seats.cpp
+    typed_envelope.cpp
+)
+add_library(midday::component_instance ALIAS midday_component_instance)
+target_link_libraries(midday_component_instance
+    PUBLIC midday::options midday::base midday::script_runtime midday::component_host
+           midday::statechart midday::loader midday::bus midday::ecs midday::journal
+           midday::reflect
+    PRIVATE midday_ts_toolchain)
+midday_apply_deterministic_fp(midday_component_instance)
+
 # The TS world-spawn binding (m1-prefab-spawn): world.spawn(prefab)/
 # despawn's native primitive — the ONE script-facing seam that queues a
 # prefab spawn/despawn through the ECS structural queue (core/loader/
@@ -78,11 +97,14 @@ add_library(midday_script_runtime_tests OBJECT
     batch_bench_test.cpp
     state_script_test.cpp
     component_host_test.cpp
+    component_instance_host_test.cpp
+    component_instance_loader_test.cpp
+    despawn_lifecycle_test.cpp
     world_host_test.cpp
 )
 target_link_libraries(midday_script_runtime_tests
     PRIVATE midday::script_runtime midday::batch_bench midday::state_script
-            midday::component_host midday::world_host midday::statechart
-            midday_ts_toolchain midday::journal midday::tick midday::hierarchy
-            doctest::doctest)
+            midday::component_host midday::component_instance midday::world_host
+            midday::statechart midday::loader midday_ts_toolchain midday::journal
+            midday::tick midday::hierarchy doctest::doctest)
 midday_apply_deterministic_fp(midday_script_runtime_tests)

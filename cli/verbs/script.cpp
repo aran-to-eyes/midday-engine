@@ -115,7 +115,9 @@ VerbOutcome run_build(script::Toolchain& toolchain, const std::string& path, boo
 // DIFFERENT document (game content, not the engine API) at a caller-chosen
 // path — never api/schema_manifest.json, which stays engine-only and
 // codegen-owned (api/CODEGEN.md). --out is required so the boundary is
-// explicit at every call site, not an easy-to-miss default.
+// explicit at every call site, not an easy-to-miss default. Format 2
+// (M2 0B, #12b): every component entry carries event_bindings —
+// [{event, payload_compat_hash}] from its onEvent overload declarations.
 VerbOutcome
 run_extract(script::Toolchain& toolchain, const std::string& path, const std::string& out) {
     script::ExtractOutcome outcome = toolchain.extract(path);
@@ -124,7 +126,7 @@ run_extract(script::Toolchain& toolchain, const std::string& path, const std::st
     if (!outcome.check.ok)
         return refuse(path, std::move(outcome.check.diagnostics));
     Json manifest = Json::object();
-    manifest.set("format_version", static_cast<std::int64_t>(1));
+    manifest.set("format_version", static_cast<std::int64_t>(2));
     manifest.set("components", outcome.components);
     if (auto error = base::write_file(out, manifest.dump() + "\n", "script.io"))
         return fail(std::move(*error));

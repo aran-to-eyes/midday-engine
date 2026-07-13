@@ -3,12 +3,15 @@
 
 #include "core/bus/bus.h"
 
+#include "core/base/hex.h"
 #include "core/ecs/world.h"
 #include "core/journal/writer.h"
+#include "core/reflect/payload_codec.h"
 #include "core/reflect/registry.h"
 #include "core/reflect/type_model.h"
 
 #include <cassert>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -152,6 +155,24 @@ Bus::unsubscribe_entity(EventKey key, ecs::EntityRef entity, EntityThunk thunk) 
     return remove_subscription(key, identity);
 }
 
+std::optional<Error>
+Bus::subscribe_entity_listener(EventKey key, ecs::EntityRef entity, EventListener& listener) {
+    if (auto refusal = check_subscribable(*world_, entity))
+        return refusal;
+    Subscription entry;
+    entry.listener = &listener;
+    entry.entity = entity;
+    return add_subscription(key, entry);
+}
+
+std::optional<Error>
+Bus::unsubscribe_entity_listener(EventKey key, ecs::EntityRef entity, EventListener& listener) {
+    Subscription identity;
+    identity.listener = &listener;
+    identity.entity = entity;
+    return remove_subscription(key, identity);
+}
+
 std::optional<Error> Bus::add_subscription(EventKey key, const Subscription& entry) {
     if (key.is_null())
         return null_key_error("subscribe");
@@ -277,7 +298,9 @@ Bus::trigger(EventKey key, base::Name event, const Json& payload, std::uint64_t 
 
     // Typed validation for vocabulary events (unknown names pass through:
     // custom key-scoped vocabularies are legal, D-BUILD-046).
-    if (const auto* entry = registry_->find_event(event)) {
+    const auto* entry = registry_->find_event(event);
+    std::optional<reflect::CanonicalPayload> canonical;
+    if (entry != nullptr) {
         Json diag = diag_base(event, key);
         if (payload_invalid(entry->desc, payload, diag)) {
             result.error = refuse("bus.payload_invalid",
@@ -286,6 +309,28 @@ Bus::trigger(EventKey key, base::Name event, const Json& payload, std::uint64_t 
                                   cause_id);
             return result;
         }
+        // D5 (M2 0B): the canonical byte codec runs AT TRIGGER for every
+        // vocabulary event — the bytes are the authoritative payload
+        // spelling (journal + replay), the decoded projection is what
+        // dispatch and the record's readable `payload` carry. Values the
+        // fixed layout cannot canonically spell (non-finite floats, invalid
+        // UTF-8) refuse here WITH the exact field path; the structural
+        // check above already guaranteed shape, so these are the only
+        // encode-refusal classes left.
+        reflect::EncodeResult encoded = reflect::encode_payload(&entry->desc, payload);
+        if (encoded.error.has_value()) {
+            Json diag = diag_base(event, key);
+            const Json& details = encoded.error->details;
+            for (const char* detail : {"reason", "field", "expected"})
+                if (const Json* value = details.find(detail))
+                    diag.set(detail, *value);
+            result.error = refuse("bus.payload_invalid",
+                                  "payload does not inhabit the event's schema",
+                                  std::move(diag),
+                                  cause_id);
+            return result;
+        }
+        canonical.emplace(std::move(encoded.payload));
     }
 
     // Journal BEFORE dispatch: the consumed id is the cause of every effect.
@@ -297,8 +342,20 @@ Bus::trigger(EventKey key, base::Name event, const Json& payload, std::uint64_t 
             ? 0
             : static_cast<std::uint32_t>(channel->entries.size()) - channel->dead_count;
     Json record_payload = diag_base(event, key);
-    if (!payload.is_null() && !(payload.is_object() && payload.items().empty()))
+    if (canonical.has_value()) {
+        // The D5 envelope: bytes AUTHORITATIVE (lowercase hex), projection
+        // decoded FROM them (encode_payload builds it that way — never
+        // independently), schema pinned by compat hash. Replay decodes the
+        // bytes and verifies the projection; it never replays from the
+        // projection (run_assert_walk.h::canonical_payload_verified).
+        record_payload.set("payload_codec", reflect::kPayloadCodecName);
+        record_payload.set("payload_schema", base::hex64(entry->desc.compat_hash));
+        record_payload.set("payload_bytes", base::bytes_to_hex(canonical->bytes));
+        if (!canonical->projection.items().empty())
+            record_payload.set("payload", canonical->projection);
+    } else if (!payload.is_null() && !(payload.is_object() && payload.items().empty())) {
         record_payload.set("payload", payload); // the one per-trigger deep copy (cost model)
+    }
     record_payload.set("subscribers", subscribers);
     const std::uint64_t record_id = journal_->record(
         tick_, journal::Tier::Flight, "event.trigger", cause_id, std::move(record_payload));
@@ -318,7 +375,11 @@ Bus::trigger(EventKey key, base::Name event, const Json& payload, std::uint64_t 
     ++stats_.triggers;
 
     if (channel != nullptr && !channel->entries.empty()) {
-        const EventView view{event, key, payload, record_id, tick_};
+        // Vocabulary events dispatch the decoded normalized PROJECTION —
+        // listeners see exactly what the authoritative bytes say (schema
+        // field order, -0 normalized), never the caller's raw spelling.
+        const Json& delivered = canonical.has_value() ? canonical->projection : payload;
+        const EventView view{event, key, delivered, record_id, tick_};
         result.delivered = dispatch(found->second, view);
     }
     return result;
@@ -337,13 +398,13 @@ std::uint32_t Bus::dispatch(std::uint32_t channel_index, const EventView& view) 
             Subscription& entry = channel.entries[i];
             if (entry.dead)
                 continue;
-            if (entry.thunk == nullptr) {
+            if (entry.entity.is_null()) { // plain flavor: no generation gate
                 entry.listener->on_event(*this, view);
                 ++delivered;
                 ++stats_.deliveries;
                 continue;
             }
-            // Entity flavor: generation check BEFORE any component access.
+            // Entity flavors: generation check BEFORE any delivery.
             if (!world_->alive(entry.entity)) {
                 std::optional<Error> refusal = world_->check_alive(entry.entity);
                 if (refusal.has_value() && refusal->code == "ecs.entity_pending") {
@@ -357,6 +418,12 @@ std::uint32_t Bus::dispatch(std::uint32_t channel_index, const EventView& view) 
                     }
                     ++stats_.auto_unsubscribed;
                 }
+                continue;
+            }
+            if (entry.thunk == nullptr) { // entity-listener flavor (M2 0B)
+                entry.listener->on_event(*this, view);
+                ++delivered;
+                ++stats_.deliveries;
                 continue;
             }
             if (entry.thunk(*world_, entry.entity, *this, view)) {

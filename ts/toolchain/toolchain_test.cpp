@@ -135,6 +135,13 @@ TEST_CASE(
     CHECK(params.elements()[1].find("name")->as_string() == "by");
     CHECK(params.elements()[1].find("type")->as_string() == "entity_ref");
     CHECK(damage.find("returns") == nullptr); // damage() declares no return type -> omitted
+
+    // Manifest v2 (M2 0B, #12b): event_bindings is ALWAYS present — empty
+    // here because Health declares no onEvent overloads.
+    const Json* bindings = health.find("event_bindings");
+    REQUIRE(bindings != nullptr);
+    REQUIRE(bindings->is_array());
+    CHECK(bindings->elements().empty());
 }
 
 TEST_CASE(
@@ -159,6 +166,26 @@ TEST_CASE(
     CHECK(fields.elements()[1].find("name")->as_string() == "label");
     CHECK(fields.elements()[1].find("type")->as_string() == "string");
     CHECK(fields.elements()[1].find("default")->as_string() == "dangerous");
+}
+
+TEST_CASE("script.toolchain: onEvent authored as a class PROPERTY refuses as "
+          "schema.event_listener_shape — never a silent zero-binding extract (council C3)") {
+    // The arrow-property callback style typechecks (the Component base
+    // declares no onEvent), so without the property arm's refusal the walk
+    // would extract event_bindings: [] with zero diagnostics while the
+    // runtime's typeof-introspection still reported the hook present.
+    Toolchain toolchain(fresh_config("extract_event_property"));
+    ExtractOutcome outcome =
+        toolchain.extract("testkit/fixtures/ts/component_extract_event_property.ts");
+    REQUIRE_MESSAGE(!outcome.check.failure.has_value(),
+                    (outcome.check.failure ? outcome.check.failure->message : std::string()));
+    REQUIRE_FALSE(outcome.check.ok);
+    CHECK(outcome.components.elements().empty());
+    REQUIRE(outcome.check.diagnostics.size() == 1);
+    CHECK(outcome.check.diagnostics.front().kind == "schema");
+    CHECK(outcome.check.diagnostics.front().code == "schema.event_listener_shape");
+    CHECK(outcome.check.diagnostics.front().message.find("method declaration") !=
+          std::string::npos);
 }
 
 TEST_CASE("script.toolchain: an unresolvable @field type refuses as a schema diagnostic") {

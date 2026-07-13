@@ -1,6 +1,9 @@
 // ts/runtime/world_host.h — the script-facing world.spawn/despawn seat
 // (m1-prefab-spawn): the ONE native primitive TS's `world.spawn(prefab,
-// {at, overrides})` / `world.despawn(ref)` (ts/lib/component.ts) can call.
+// {at, overrides})` / `world.despawn(ref, opts?)` (ts/lib/component.ts) can
+// call. The despawn seat takes 2 or 3 args (M2 0B track D): the optional
+// third is `opts.after` in seconds — the despawn-linger deadline the
+// spawner's linger queue ceilings into ticks (prefab_spawn.h D4 contract).
 //
 // This file is OUTSIDE core/ — scripts/check_entity_api.py would rightly
 // refuse a direct ecs::World::queue_spawn/queue_despawn call here. It never

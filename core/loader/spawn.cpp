@@ -77,8 +77,11 @@ SpawnResult spawn_scene(const SceneFile& scene,
                         statechart::Statechart& chart,
                         physics::PhysicsServer* physics,
                         journal::Writer& journal,
-                        std::uint64_t cause_id) {
+                        std::uint64_t cause_id,
+                        const SpawnOptions& options) {
     SpawnResult result;
+    statechart::InstantiateOptions chart_options;
+    chart_options.defer_initial_entry = options.defer_initial_entry;
 
     // The authored-name marker component (loader.h contract: one scene per
     // World in M0 — a second spawn_scene into the same World aborts on the
@@ -162,7 +165,9 @@ SpawnResult spawn_scene(const SceneFile& scene,
                                                                 resolved.machines,
                                                                 entity,
                                                                 prefab.prefab_ref.path_resolved,
-                                                                cause_id);
+                                                                cause_id,
+                                                                options,
+                                                                &entity_file.base_components);
             if (materialized.error.has_value())
                 return fail(internal_error("prefab instantiate refused", *materialized.error));
 
@@ -199,8 +204,40 @@ SpawnResult spawn_scene(const SceneFile& scene,
         base::Json payload = base::Json::object();
         payload.set("name", desc.name.view());
         payload.set("entity", entity_form(entity));
-        journal.record(0, journal::Tier::Flight, "scene.spawn", cause_id, std::move(payload));
+        const std::uint64_t entity_record =
+            journal.record(0, journal::Tier::Flight, "scene.spawn", cause_id, std::move(payload));
         result.stats.entities += 1;
+
+        // Council fix G6: an INLINE native Transform on an entity hosting
+        // script components mirrors into the script directory —
+        // entity.get(Transform) must read the authored placement on every
+        // seeding path, not only the generic `Transform: {at:}` entry.
+        if (desc.components.transform.has_value()) {
+            bool state_components = false;
+            for (const std::uint32_t machine_index : desc.machines)
+                state_components = state_components ||
+                                   machine_has_state_components(scene.machines[machine_index].desc);
+            if (auto error = mirror_seeded_transform(options,
+                                                     entity,
+                                                     *desc.components.transform,
+                                                     desc.extra_components,
+                                                     state_components,
+                                                     entity_record))
+                return fail(internal_error(
+                    "entity '" + std::string(desc.name.view()) + "' transform mirror", *error));
+        }
+
+        // Non-native inline components (M2 0B): the ONE dispatcher — script
+        // components route to the injected materializer or REFUSE (nothing
+        // silently omitted, component_materialize.h).
+        if (auto error = materialize_entity_base(hierarchy,
+                                                 options,
+                                                 entity,
+                                                 desc.extra_components,
+                                                 entity_record,
+                                                 /*allow_native_transform=*/true))
+            return fail(internal_error("entity '" + std::string(desc.name.view()) + "' components",
+                                       *error));
 
         if (desc.components.collider.has_value()) {
             if (physics == nullptr) {
@@ -230,7 +267,7 @@ SpawnResult spawn_scene(const SceneFile& scene,
         for (const std::uint32_t machine_index : desc.machines) {
             const MachineFile& machine = scene.machines[machine_index];
             const statechart::InstantiateResult instantiated =
-                chart.instantiate(machine.desc, entity, cause_id);
+                chart.instantiate(machine.desc, entity, cause_id, chart_options);
             if (instantiated.error.has_value())
                 return fail(internal_error("machine '" + std::string(machine.desc.name.view()) +
                                                "' refused",
@@ -240,6 +277,13 @@ SpawnResult spawn_scene(const SceneFile& scene,
                                                   .entity = desc.name,
                                                   .host = entity});
             result.stats.machines += 1;
+
+            // State components (M2 0B): attach order = document order,
+            // seated before anything can enter (the deferred split).
+            if (auto error = materialize_machine_components(
+                    chart, options, instantiated.machine, machine.desc, entity, entity_record))
+                return fail(internal_error(
+                    "machine '" + std::string(machine.desc.name.view()) + "' components", *error));
 
             for (const StateScriptRef& script : machine.scripts)
                 result.scripts.push_back(ScriptSeat{.machine = instantiated.machine,
@@ -272,11 +316,21 @@ SpawnResult spawn_scene(const SceneFile& scene,
                     child_payload.set("name", child.entity.view());
                     child_payload.set("entity", entity_form(child_ref));
                     child_payload.set("under_state", children.state.view());
-                    journal.record(0,
-                                   journal::Tier::Flight,
-                                   "scene.spawn",
-                                   cause_id,
-                                   std::move(child_payload));
+                    const std::uint64_t child_record = journal.record(0,
+                                                                      journal::Tier::Flight,
+                                                                      "scene.spawn",
+                                                                      cause_id,
+                                                                      std::move(child_payload));
+                    // The child's own components (`at:` owns placement, so
+                    // a generic Transform here refuses — dispatcher rules).
+                    if (auto error = materialize_entity_base(hierarchy,
+                                                             options,
+                                                             child_ref,
+                                                             child.components,
+                                                             child_record,
+                                                             /*allow_native_transform=*/false))
+                        return fail(internal_error(
+                            "child '" + std::string(child.entity.view()) + "' components", *error));
                     pending_children.push_back(PendingChild{child_ref, child.at});
                     result.stats.state_children += 1;
                 }
@@ -294,6 +348,17 @@ SpawnResult spawn_scene(const SceneFile& scene,
             return fail(internal_error("child transform refused", *error));
     hierarchy.propagate();
     return result;
+}
+
+std::optional<base::Error> start_initial_entries(statechart::Statechart& chart,
+                                                 const SpawnResult& spawned) {
+    // Spawn order = scene document order — the same order the eager path
+    // would have entered in, minus the interleaving with later spawns
+    // (deferred entries all run after the whole scene stands).
+    for (const MachineSeat& seat : spawned.machines)
+        if (auto error = chart.start_initial_entry(seat.id))
+            return error;
+    return std::nullopt;
 }
 
 } // namespace midday::loader

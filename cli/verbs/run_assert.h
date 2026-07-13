@@ -17,7 +17,10 @@
 
 #include "cli/envelope.h"
 #include "core/base/error.h"
+#include "core/base/name.h"
+#include "core/ecs/entity.h"
 #include "core/loader/loader.h"
+#include "core/statechart/component_hooks.h"
 
 #include <cstdint>
 #include <memory>
@@ -46,6 +49,10 @@ namespace midday::journal {
 class Writer;
 }
 
+namespace midday::reflect {
+class Registry;
+}
+
 namespace midday::statechart {
 class Statechart;
 }
@@ -72,11 +79,15 @@ public:
     // phase (A.1 phase 5: pre-update systems, then onFixedUpdate hooks).
     // The collaborators must outlive the pack; the pack detaches in its
     // destructor (before the loop/bus die — RunSim member order).
+    // `registry` is the run's event vocabulary (builtins + scene events) —
+    // what a pack needs to DECODE-verify canonical payload bytes against
+    // their schemas (D5: replay reads bytes, never the projection).
     virtual std::optional<Error> attach(ecs::World& world,
                                         hierarchy::Hierarchy& hierarchy,
                                         bus::Bus& bus,
                                         tick::TickLoop& loop,
-                                        journal::Writer& writer) = 0;
+                                        journal::Writer& writer,
+                                        const reflect::Registry& registry) = 0;
 
     // Resolve the pack's scene expectations against the spawned world
     // (named entities, machine seats) and journal the pack's presence
@@ -113,6 +124,22 @@ public:
     evaluate(statechart::Statechart& chart, const std::string& bundle, const RunProbes& probes) = 0;
 };
 
+// The corpus actors every driven pack binds: the named entity's machine
+// seat (+ its host ref) and one named marker entity (SceneEntity tag walk).
+// Absence reads as kInvalidMachine / a null ref — the pack turns that into
+// its own run.assert_scene refusal. Hoisted at M2 0B on the second-consumer
+// rule (appendix_a_golden + component_event_lifecycle bind identically).
+struct BoundActors {
+    statechart::MachineId machine = statechart::kInvalidMachine;
+    ecs::EntityRef host;   // the machine entity's host ref
+    ecs::EntityRef marker; // the named marker entity
+};
+
+BoundActors locate_actors(ecs::World& world,
+                          const loader::SpawnResult& spawned,
+                          base::Name machine_entity,
+                          base::Name marker_entity);
+
 // The pack registry (manifest style, cli/verbs/registry.cpp precedent):
 // nullptr when `name` is unknown — the caller reports assert_pack_names().
 std::unique_ptr<RunAssertPack> make_assert_pack(std::string_view name);
@@ -120,5 +147,10 @@ std::string assert_pack_names();
 
 // The "determinism_kata" pack (run_assert_kata.cpp — registry factory).
 std::unique_ptr<RunAssertPack> make_determinism_kata_pack();
+
+// The "component_event_lifecycle" pack (run_assert_lifecycle.cpp — the M2
+// 0B D6 golden: typed hydration, the 7-line exit chain, canonical payload
+// bytes, exact-tick despawn reap).
+std::unique_ptr<RunAssertPack> make_component_event_lifecycle_pack();
 
 } // namespace midday::cli

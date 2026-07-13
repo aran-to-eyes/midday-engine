@@ -359,8 +359,10 @@ Statechart::build_subtree(MachineInstance& staged, ecs::EntityRef host, MachineI
     return std::nullopt;
 }
 
-InstantiateResult
-Statechart::instantiate(const MachineDesc& desc, ecs::EntityRef host, std::uint64_t cause_id) {
+InstantiateResult Statechart::instantiate(const MachineDesc& desc,
+                                          ecs::EntityRef host,
+                                          std::uint64_t cause_id,
+                                          const InstantiateOptions& options) {
     InstantiateResult result;
     if (auto error = world_->check_alive(host)) {
         result.error = error;
@@ -427,6 +429,11 @@ Statechart::instantiate(const MachineDesc& desc, ecs::EntityRef host, std::uint6
 
     // Subscribe the root's MachineRoot row: host private channel + declared
     // named channels (D-BUILD-046 key-only channels; the tables filter).
+    // Subscribing HERE (not at initial-entry-start) is what pins D1's
+    // "dispatch order = subscription order = materialization order";
+    // delivery to a deferred machine gates on `entered` instead
+    // (on_machine_event, council fix G4) — the window between this
+    // subscription and start_initial_entry is deaf, never re-ordered.
     staged->keys.push_back(bus::EventKey::entity(host));
     for (const base::Name& channel : desc.channels)
         staged->keys.push_back(bus::EventKey::named(channel));
@@ -434,14 +441,28 @@ Statechart::instantiate(const MachineDesc& desc, ecs::EntityRef host, std::uint6
         detail::fatal_if("subscribe machine root",
                          bus::subscribe_component<MachineRoot>(*bus_, key, staged->root));
 
+    staged->instantiate_record = record_id;
     machines_.push_back(std::move(staged));
     stats_.machines += 1;
 
-    // Initial enter chains, region declaration order (A.1 phase 8). Hooks
-    // registered later see nothing retroactively; a cascade from an enter
-    // hook may legally transition a LATER region first — its initial entry
-    // is then skipped (the region already moved on).
-    MachineInstance& instance = *machines_[id];
+    // Initial enter chains (A.1 phase 8) — or not yet: the M2 0B SPLIT
+    // (statechart.h InstantiateOptions) defers them so component hooks and
+    // state scripts can seat BEFORE the chains observe anything.
+    if (!options.defer_initial_entry)
+        run_initial_entry(*machines_[id]);
+    result.machine = id;
+    return result;
+}
+
+void Statechart::run_initial_entry(MachineInstance& instance) {
+    // Region declaration order. Hooks registered later see nothing
+    // retroactively; a cascade from an enter hook may legally transition a
+    // LATER region first — its initial entry is then skipped (the region
+    // already moved on). Every chain cites the machine's own
+    // statechart.instantiate record. `entered` flips FIRST: the machine's
+    // own enter-chain cascades must deliver (the G4 gate opens exactly
+    // here, never earlier).
+    instance.entered = true;
     const std::vector<std::uint32_t> no_path;
     for (RtRegion& region : instance.regions) {
         if (region.transition_stamp != kNeverTicked)
@@ -451,11 +472,23 @@ Statechart::instantiate(const MachineDesc& desc, ecs::EntityRef host, std::uint6
                     no_path,
                     0,
                     base::Name(),
-                    record_id,
+                    instance.instantiate_record,
                     /*initial_entry=*/true);
     }
-    result.machine = id;
-    return result;
+}
+
+std::optional<base::Error> Statechart::start_initial_entry(MachineId machine) {
+    MachineInstance* instance = find_machine(machine);
+    if (instance == nullptr)
+        return base::Error{"statechart.unknown_machine", "no machine with this id"};
+    if (instance->entered)
+        return base::Error{"statechart.already_entered",
+                           "this machine's initial enter chains already ran"};
+    if (!machine_live(*instance))
+        return base::Error{"statechart.machine_retired",
+                           "the machine's host despawned before its initial entry"};
+    run_initial_entry(*instance);
+    return std::nullopt;
 }
 
 } // namespace midday::statechart

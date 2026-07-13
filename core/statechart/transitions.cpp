@@ -18,6 +18,8 @@
 #include "core/statechart/statechart.h"
 
 #include <algorithm>
+#include <memory>
+#include <ranges>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -39,6 +41,17 @@ std::string_view source_form(base::Name source) {
 void Statechart::on_machine_event(MachineId machine, const bus::EventView& event) {
     MachineInstance* instance = find_machine(machine);
     if (instance == nullptr || !machine_live(*instance))
+        return;
+    // The deferred window is DEAF (M2 0B council fix G4): a machine
+    // subscribed at topology-create but not yet entered ignores delivery —
+    // an emit during materialization (a component constructor may legally
+    // trigger outside any hook) must never stamp a region and rob
+    // run_initial_entry of its enter chain (the D2 seated-before-observed
+    // invariant). Subscription stays at instantiate so D1's dispatch order
+    // (= subscription order = materialization order) is untouched; only
+    // delivery gates on `entered`. Cascades from the machine's OWN enter
+    // chain still deliver: run_initial_entry flips the flag first.
+    if (!instance->entered)
         return;
     const std::uint32_t depth = bus_->cascade_depth();
     ScratchFrame& frame = scratch_[depth < scratch_.size() ? depth : scratch_.size() - 1];
@@ -108,8 +121,11 @@ void Statechart::evaluate_region(MachineInstance& instance,
     const std::uint32_t winning_transition = frame.candidates[winner];
     // A.2 rule 3 then rule 4: execute inline, then journal the losers.
     // Cascades inside the execution use DEEPER scratch frames, so the
-    // candidate list is intact when the losers journal.
-    execute_transition(instance, region_index, winning_transition, event, frame);
+    // candidate list is intact when the losers journal. A refused
+    // transition record aborted the whole operation (G4/G3 discipline:
+    // no record, no effect) — the losers have nothing to lose against.
+    if (!execute_transition(instance, region_index, winning_transition, event, frame))
+        return;
     for (std::size_t i = 0; i < frame.candidates.size(); ++i)
         if (i != winner)
             journal_voided(instance, region_index, frame.candidates[i], "lost", event.record_id);
@@ -129,7 +145,7 @@ void Statechart::void_marked_region(MachineInstance& instance,
                 instance, region_index, t, "region_already_transitioned", event.record_id);
 }
 
-void Statechart::execute_transition(MachineInstance& instance,
+bool Statechart::execute_transition(MachineInstance& instance,
                                     std::uint32_t region_index,
                                     std::uint32_t transition_index,
                                     const bus::EventView& event,
@@ -195,6 +211,14 @@ void Statechart::execute_transition(MachineInstance& instance,
                                                      "statechart.transition",
                                                      event.record_id,
                                                      std::move(payload));
+    // No record, no transition (M2 0B council fix G3 — the bus.cpp "no
+    // record, no dispatch" rule and instantiate.cpp's own refusal, at the
+    // last unchecked structural-effect site): a refused record aborts
+    // BEFORE the stamp, the chains, and the stats — zero mutation. The
+    // sticky-poisoned writer surfaces loudly at the next tick record
+    // ("tick.journal_refused"), so nothing is silently lost.
+    if (record_id == 0)
+        return false;
     // Mark BEFORE any hook runs: cascades can never re-transition this
     // region this tick (A.2 rules 1 and 5).
     region.transition_stamp = bus_->tick();
@@ -218,6 +242,7 @@ void Statechart::execute_transition(MachineInstance& instance,
                 from,
                 record_id,
                 /*initial_entry=*/false);
+    return true;
 }
 
 void Statechart::exit_state(MachineInstance& instance,
@@ -226,11 +251,17 @@ void Statechart::exit_state(MachineInstance& instance,
                             std::uint64_t cause_id) {
     RtState& state = instance.states[state_index];
     // A.2.1 exit 1 — the state script, while its parts are still live.
+    // No record, no hook (G3): a refused hook record skips THIS invocation
+    // only — the structural exit is covered by the transition record that
+    // already committed, and aborting mid-chain would leave a half-exited
+    // machine (the one inconsistency worse than a skipped hook).
     if (state.hooks != nullptr) {
         const std::uint64_t record_id =
             journal_hook(instance, state_index, "exit", to, cause_id, journal::Tier::Flight);
-        stats_.hook_calls += 1;
-        state.hooks->on_exit(*this, hook_context(instance, state_index, to, 0.0, record_id));
+        if (record_id != 0) {
+            stats_.hook_calls += 1;
+            state.hooks->on_exit(*this, hook_context(instance, state_index, to, 0.0, record_id));
+        }
     }
     // A.2.1 exit 2 — open sequence spans close (reverse open order — spans
     // opened after the entry-time substate chain, so they close before it;
@@ -244,8 +275,10 @@ void Statechart::exit_state(MachineInstance& instance,
         exit_state(instance, child, to, cause_id);
         state.active_child = kInvalidIndex;
     }
-    // A.2.1 exit 3 — components onExit: script components attach with the
-    // bindings node; nothing to run C++-side yet.
+    // A.2.1 exit 3 — components onExit, REVERSE attach order (M2 0B,
+    // component_hooks.h): each registered seat journals then runs, while
+    // the state's subtree is still active.
+    run_component_hooks(instance, state_index, /*enter=*/false, to, cause_id);
     // Watcher re-arm rides the exit (edge semantics, statechart.h).
     for (std::uint32_t w = state.first_watcher; w < state.first_watcher + state.watcher_count; ++w)
         instance.watchers[w].armed_value = false;
@@ -275,7 +308,9 @@ void Statechart::enter_state(MachineInstance& instance,
         instance.states[state.parent].active_child = state_index;
     else
         instance.regions[state.region].active = state_index;
-    // A.2.1 enter 2 — components onEnter: attaches with the bindings node.
+    // A.2.1 enter 2 — components onEnter, attach order (M2 0B,
+    // component_hooks.h): the subtree is active, the substate not yet in.
+    run_component_hooks(instance, state_index, /*enter=*/true, from, cause_id);
     // A.2.1 enter 3 — the substate enters: the forced path toward a deep
     // target wins over history over initial.
     std::uint32_t next = kInvalidIndex;
@@ -292,11 +327,42 @@ void Statechart::enter_state(MachineInstance& instance,
     // (covering spans re-open here) — the exact mirror of exit 2/5.
     sheet_start(instance, state_index, cause_id);
     // A.2.1 enter 4 — the state script, LAST, when its parts are live.
+    // No record, no hook (G3 — the exit-1 rule's mirror).
     if (state.hooks != nullptr) {
         const std::uint64_t record_id =
             journal_hook(instance, state_index, "enter", from, cause_id, journal::Tier::Flight);
-        stats_.hook_calls += 1;
-        state.hooks->on_enter(*this, hook_context(instance, state_index, from, 0.0, record_id));
+        if (record_id != 0) {
+            stats_.hook_calls += 1;
+            state.hooks->on_enter(*this, hook_context(instance, state_index, from, 0.0, record_id));
+        }
+    }
+}
+
+void Statechart::exit_host_machines(ecs::EntityRef host, std::uint64_t cause_id) {
+    // REVERSE instantiation order — the mirror of materialization (base
+    // components -> machines in document order): the LAST machine seated on
+    // this host exits first (statechart.h header contract).
+    for (const std::unique_ptr<MachineInstance>& machine_slot :
+         std::ranges::reverse_view(machines_)) {
+        MachineInstance& instance = *machine_slot;
+        if (instance.host != host || !machine_live(instance))
+            continue;
+        // Stamp EVERY region before ANY hook runs (the execute_transition
+        // discipline): a cascade fired from an exit hook can never
+        // transition this dying machine again this tick — it voids with
+        // "region_already_transitioned" instead of re-entering a corpse.
+        for (RtRegion& region : instance.regions)
+            region.transition_stamp = bus_->tick();
+        // Regions exit in REVERSE declaration order — the mirror of
+        // run_initial_entry's declaration-order enter chains. No history
+        // bookkeeping: nothing ever re-enters a despawned machine.
+        for (RtRegion& region : std::ranges::reverse_view(instance.regions)) {
+            if (region.active == kInvalidIndex)
+                continue;
+            const std::uint32_t top = region.active;
+            exit_state(instance, top, base::Name(), cause_id);
+            region.active = kInvalidIndex;
+        }
     }
 }
 
@@ -305,7 +371,8 @@ std::uint64_t Statechart::journal_hook(MachineInstance& instance,
                                        std::string_view hook,
                                        base::Name peer,
                                        std::uint64_t cause_id,
-                                       journal::Tier tier) {
+                                       journal::Tier tier,
+                                       base::Name component) {
     const RtState& state = instance.states[state_index];
     base::Json payload = base::Json::object();
     payload.set("machine", instance.name.view());
@@ -313,9 +380,52 @@ std::uint64_t Statechart::journal_hook(MachineInstance& instance,
     payload.set("region", instance.regions[state.region].name.view());
     payload.set("state", state.name.view());
     payload.set("hook", hook);
+    if (!component.empty()) // component_enter / component_exit records (M2 0B)
+        payload.set("component", component.view());
     if (!peer.empty())
         payload.set("peer", peer.view());
     return journal_->record(bus_->tick(), tier, "statechart.hook", cause_id, std::move(payload));
+}
+
+void Statechart::run_component_hooks(MachineInstance& instance,
+                                     std::uint32_t state_index,
+                                     bool enter,
+                                     base::Name peer,
+                                     std::uint64_t cause_id) {
+    if (instance.component_hooks.empty()) // the common machine pays one check
+        return;
+    const RtState& state = instance.states[state_index];
+    const std::string_view hook = enter ? "component_enter" : "component_exit";
+    // Attach order forward on enter, backward on exit (A.2.1 enter-2/exit-3;
+    // signed index so the reverse loop terminates cleanly at 0).
+    const auto count = static_cast<std::int64_t>(instance.component_hooks.size());
+    for (std::int64_t i = enter ? 0 : count - 1; enter ? i < count : i >= 0; enter ? ++i : --i) {
+        const ComponentHookSeat& seat = instance.component_hooks[static_cast<std::size_t>(i)];
+        if (seat.state != state_index)
+            continue;
+        const std::uint64_t record_id = journal_hook(
+            instance, state_index, hook, peer, cause_id, journal::Tier::Flight, seat.component);
+        // No record, no hook (G3): the seat's invocation is skipped — a JS
+        // hook must never run citing record id 0 while the poisoned writer
+        // drops every trace of it.
+        if (record_id == 0)
+            continue;
+        stats_.component_hook_calls += 1;
+        ComponentHookContext context;
+        context.machine = instance.id;
+        context.host = instance.host;
+        context.state_entity = state.entity;
+        context.region = instance.regions[state.region].name;
+        context.state = state.name;
+        context.component = seat.component;
+        context.peer = peer;
+        context.record_id = record_id;
+        context.tick = bus_->tick();
+        if (enter)
+            seat.hooks->on_enter(*this, context);
+        else
+            seat.hooks->on_exit(*this, context);
+    }
 }
 
 void Statechart::journal_voided(MachineInstance& instance,

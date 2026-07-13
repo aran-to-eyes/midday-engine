@@ -164,8 +164,14 @@ TEST_CASE("codegen.selfhost.batch_envelope: version-1 views derive from classes,
               "\"register\":\"__midday_register_state_script\","
               "\"introspect\":\"__midday_state_hooks_of\","
               "\"invoke\":\"__midday_invoke_state_hook\",\"emit\":\"__midday_emit\","
-              "\"hooks\":[\"onEnter\",\"onExit\",\"onUpdate\",\"onFixedUpdate\"]}}") !=
+              "\"hooks\":[\"onEnter\",\"onExit\",\"onUpdate\",\"onFixedUpdate\"]},") !=
           std::string::npos);
+
+    // The event-payload bijection (M2 #12b), byte-pinned: module `...Event`
+    // type name -> {event, payload_compat_hash}, input order.
+    CHECK(synthetic.files.bindings.find(
+              "\"event_payload_types\":{\"ProbeFiredEvent\":{\"event\":\"probe.fired\","
+              "\"payload_compat_hash\":\"00000000000000ad\"}}}") != std::string::npos);
 
     // Number corpus: int -> f64 (2^53-exact contract), vec3 -> f32 width 3,
     // string/map columns excluded.
@@ -181,10 +187,12 @@ TEST_CASE("codegen.selfhost.batch_envelope: version-1 views derive from classes,
     CHECK(bindings.find("\"name\":\"table\",\"buffer\"") == std::string::npos);
 
     // The equivalence view blanks the envelope, DROPS the selfhost-only
-    // hook seam (the frozen bootstrap never emits it), and nothing else.
+    // hook seam and event-payload bijection (the frozen bootstrap never
+    // emits either), and nothing else.
     const std::string scoped = selfhost::bindings_equivalence_view(bindings);
     CHECK(scoped.find("\"batch_envelope\":null") != std::string::npos);
     CHECK(scoped.find("\"state_script_hooks\"") == std::string::npos);
+    CHECK(scoped.find("\"event_payload_types\"") == std::string::npos);
     CHECK(scoped.find("\"envelope_version\"") == std::string::npos);
     CHECK(scoped.find("\"expr_functions\"") != std::string::npos);
 }

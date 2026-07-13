@@ -2,14 +2,15 @@
 // m0-batch-bindings implements. Shape spec: api/CODEGEN.md
 // "bindings_spec.json layout". No subsystem ever gets hand-written bindings.
 //
-// The batch envelope (D-BUILD-069) and the state-script hook seam
-// (D-BUILD-084) are SELF-HOST ONLY: the retired-in-place bootstrap emitter
-// stays frozen on the version-0 placeholder, and the byte-equivalence gate
-// compares bindings_spec.json modulo these members
+// The batch envelope (D-BUILD-069), the state-script hook seam
+// (D-BUILD-084), and the event-payload bijection (M2 #12b) are SELF-HOST
+// ONLY: the retired-in-place bootstrap emitter stays frozen on the
+// version-0 placeholder, and the byte-equivalence gate compares
+// bindings_spec.json modulo these members
 // (selfhost::bindings_equivalence_view).
 
 import { JObject, JValue, dumpJson, findKey, jArr, jInt, jObj, jStr } from "./json";
-import { entries, str } from "./model";
+import { entries, pascalCase, str } from "./model";
 
 // Deep copy minus every doc/summary key: signatures stay verbatim (level,
 // defaults, flags, compat hashes IN), prose stays out of the glue contract.
@@ -71,6 +72,23 @@ function batchViews(document: JObject): JValue {
     );
 }
 
+// The GENERATED event-payload bijection (M2 #12b, SELF-HOST ONLY like the
+// two seams above): module `...Event` payload type name -> {event,
+// payload_compat_hash}, input order — the map driver.js's onEvent
+// extraction consults; the extractor never reconstructs event names or
+// compat hashes from naming conventions.
+function eventPayloadTypes(document: JObject): JValue {
+    return jObj(
+        entries(document, "events").map((entry): [string, JValue] => [
+            pascalCase(str(entry, "name")) + "Event",
+            jObj([
+                ["event", jStr(str(entry, "name"))],
+                ["payload_compat_hash", jStr(str(entry, "compat_hash"))],
+            ]),
+        ]),
+    );
+}
+
 export function emitBindings(document: JObject): string {
     const section = (key: string): JValue => {
         const value = findKey(document, key);
@@ -103,6 +121,7 @@ export function emitBindings(document: JObject): string {
                 ],
             ]),
         ],
+        ["event_payload_types", eventPayloadTypes(document)],
     ]);
     return dumpJson(spec) + "\n";
 }

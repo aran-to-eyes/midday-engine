@@ -85,44 +85,32 @@ public:
                                 hierarchy::Hierarchy& hierarchy,
                                 bus::Bus& bus,
                                 tick::TickLoop& loop,
-                                journal::Writer& writer) override {
+                                journal::Writer& writer,
+                                const reflect::Registry& /*registry*/) override {
         world_ = &world;
         hierarchy_ = &hierarchy;
         bus_ = &bus;
         loop_ = &loop;
         writer_ = &writer;
-        if (auto error = loop.add_hook(tick::Phase::kUpdate, *this))
-            return error;
-        return bus.subscribe(*this, bus::EventKey::named(base::Name("global")));
+        return assertwalk::attach_update_driver(loop, bus, *this);
     }
 
     std::optional<Error> bind(statechart::Statechart& chart,
                               const loader::SpawnResult& spawned,
                               std::uint64_t cause_id) override {
         chart_ = &chart;
-        for (const loader::MachineSeat& seat : spawned.machines)
-            if (seat.entity == base::Name("Boss")) {
-                machine_ = seat.id;
-                boss_ = seat.host;
-            }
-        world_->view<loader::SceneEntity>().include_inactive().each(
-            [this](ecs::EntityRef ref, loader::SceneEntity& tag) {
-                if (tag.name == base::Name("Hurtbox"))
-                    hurtbox_ = ref;
-            });
+        const BoundActors actors =
+            locate_actors(*world_, spawned, base::Name("Boss"), base::Name("Hurtbox"));
+        machine_ = actors.machine;
+        boss_ = actors.host;
+        hurtbox_ = actors.marker;
         if (machine_ == statechart::kInvalidMachine || hurtbox_.is_null()) {
             Error error{.code = "run.assert_scene",
                         .message = "appendix_a_golden expects the examples/appendix_a corpus: "
                                    "entity 'Boss' with the boss machine and a 'Hurtbox' child"};
             return error;
         }
-        Json presence = Json::object();
-        presence.set("case", std::string(name()));
-        if (writer_->record(
-                0, journal::Tier::Flight, "assert.case", cause_id, std::move(presence)) == 0)
-            return writer_->status().value_or(
-                Error{.code = "journal.refused", .message = "assert.case record refused"});
-        return std::nullopt;
+        return assertwalk::journal_case_presence(*writer_, name(), cause_id);
     }
 
     // The driver: A.1 phase 5, registered before the Statechart's hook —
@@ -286,15 +274,10 @@ RunAssertPack::Verdict AppendixAGoldenPack::evaluate(statechart::Statechart& cha
         return verdict;
     }
 
-    const auto id_of = [](const std::optional<Record>& record) {
-        return record.has_value() ? record->id : std::uint64_t{0};
-    };
+    const auto& id_of = assertwalk::record_id_of; // shared probes (walk header)
+    const auto& cites = assertwalk::record_cites;
     const auto cause_of = [](const std::optional<Record>& record) {
         return record.has_value() ? record->cause_id : std::uint64_t{0};
-    };
-    const auto cites = [&](const std::optional<Record>& effect,
-                           const std::optional<Record>& cause) {
-        return effect.has_value() && cause.has_value() && effect->cause_id == cause->id;
     };
 
     // ---- the five item-21 verdicts (names are the exit-test contract) -------
@@ -399,16 +382,36 @@ RunAssertPack::Verdict AppendixAGoldenPack::evaluate(statechart::Statechart& cha
 
 } // namespace
 
+BoundActors locate_actors(ecs::World& world,
+                          const loader::SpawnResult& spawned,
+                          base::Name machine_entity,
+                          base::Name marker_entity) {
+    BoundActors actors;
+    for (const loader::MachineSeat& seat : spawned.machines)
+        if (seat.entity == machine_entity) {
+            actors.machine = seat.id;
+            actors.host = seat.host;
+        }
+    world.view<loader::SceneEntity>().include_inactive().each(
+        [&](ecs::EntityRef ref, loader::SceneEntity& tag) {
+            if (tag.name == marker_entity)
+                actors.marker = ref;
+        });
+    return actors;
+}
+
 std::unique_ptr<RunAssertPack> make_assert_pack(std::string_view name) {
     if (name == "appendix_a_golden")
         return std::make_unique<AppendixAGoldenPack>();
     if (name == "determinism_kata")
         return make_determinism_kata_pack();
+    if (name == "component_event_lifecycle")
+        return make_component_event_lifecycle_pack();
     return nullptr;
 }
 
 std::string assert_pack_names() {
-    return "appendix_a_golden, determinism_kata";
+    return "appendix_a_golden, determinism_kata, component_event_lifecycle";
 }
 
 } // namespace midday::cli

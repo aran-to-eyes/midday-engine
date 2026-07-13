@@ -111,6 +111,7 @@
 #include "core/ecs/entity.h"
 #include "core/expr/value.h"
 #include "core/journal/record.h"
+#include "core/statechart/component_hooks.h"
 #include "core/statechart/machine_desc.h"
 #include "core/tick/tick_loop.h"
 
@@ -137,9 +138,7 @@ namespace midday::statechart {
 
 class Statechart;
 struct MachineInstance; // internal runtime representation (instance.h)
-
-using MachineId = std::uint32_t;
-inline constexpr MachineId kInvalidMachine = 0xFFFFFFFFU;
+// MachineId / kInvalidMachine live in component_hooks.h (included above).
 
 // THE tick-locking rule (MILESTONE_0 item 19, pinned by sequence.tick_lock):
 //   tick = llround(seconds * ticks_per_second)
@@ -214,13 +213,26 @@ struct InstantiateResult {
     std::optional<base::Error> error; // engaged iff machine == kInvalidMachine
 };
 
+// M2 0B (#12b): the chart-instantiation SPLIT — topology-create vs
+// initial-entry-start. With defer_initial_entry the machine builds, journals
+// and subscribes exactly as before but its initial enter chains DO NOT run;
+// the caller seats everything the chains must observe (base components ->
+// state components + hooks -> state scripts) and then calls
+// start_initial_entry() ONCE. A late synthetic onEnter is not a substitute:
+// tick-zero sequences and cascades would already have run without the
+// seated hooks (the D2 critical requirement).
+struct InstantiateOptions {
+    bool defer_initial_entry = false;
+};
+
 struct StatechartStats {
-    std::uint64_t machines = 0;      // successful instantiations
-    std::uint64_t transitions = 0;   // executed transitions
-    std::uint64_t voided = 0;        // voided candidates journaled
-    std::uint64_t watcher_fires = 0; // rising-edge watcher triggers
-    std::uint64_t hook_calls = 0;    // hook invocations (all four kinds)
-    std::uint64_t filter_faults = 0; // runtime eval faults (journaled, pair skipped)
+    std::uint64_t machines = 0;             // successful instantiations
+    std::uint64_t transitions = 0;          // executed transitions
+    std::uint64_t voided = 0;               // voided candidates journaled
+    std::uint64_t watcher_fires = 0;        // rising-edge watcher triggers
+    std::uint64_t hook_calls = 0;           // state-hook invocations (all four kinds)
+    std::uint64_t component_hook_calls = 0; // component enter/exit invocations (M2 0B)
+    std::uint64_t filter_faults = 0;        // runtime eval faults (journaled, pair skipped)
     // Sequences (m0-sequences).
     std::uint64_t sequence_triggers = 0; // trigger-track keyframes fired
     std::uint64_t span_opens = 0;        // span openings (incl. resume re-opens)
@@ -250,13 +262,38 @@ public:
     // builds the machine subtree under `host` (which must be alive and
     // hierarchy-adopted), flushes the structural queue, deactivates every
     // non-initial state, subscribes, journals, and enters the initial chains
-    // (full A.2.1 enter order, hook records citing the instantiate record).
-    InstantiateResult
-    instantiate(const MachineDesc& desc, ecs::EntityRef host, std::uint64_t cause_id = 0);
+    // (full A.2.1 enter order, hook records citing the instantiate record) —
+    // unless options.defer_initial_entry, which stops right before the
+    // chains so hooks/components can seat first (InstantiateOptions above).
+    InstantiateResult instantiate(const MachineDesc& desc,
+                                  ecs::EntityRef host,
+                                  std::uint64_t cause_id = 0,
+                                  const InstantiateOptions& options = {});
+
+    // The deferred half of the split: runs the initial enter chains of a
+    // defer_initial_entry machine, citing its own statechart.instantiate
+    // record. Exactly once per machine ("statechart.already_entered" on a
+    // repeat, and the eager path counts). The deferred window is DEAF (M2
+    // 0B council fix G4): the machine subscribes at instantiate (D1's
+    // subscription order) but delivery gates on `entered`, so an event
+    // emitted between topology-create and this call can never transition a
+    // machine whose chains have not run. Regions that already transitioned
+    // are still skipped — a cascade from the machine's OWN enter chain may
+    // legally move a later region first, the instantiate() rule.
+    std::optional<base::Error> start_initial_entry(MachineId machine);
 
     // ---- hooks (boot wiring; replaces any previous registration) ----------
     std::optional<base::Error>
     set_state_hooks(MachineId machine, base::Name region, base::Name state, StateHooks& hooks);
+
+    // Component hook registration (M2 0B, component_hooks.h contract):
+    // registration order IS attach order; duplicate (state, component)
+    // refuses "statechart.duplicate_component". Never replaces.
+    std::optional<base::Error> add_component_hooks(MachineId machine,
+                                                   base::Name region,
+                                                   base::Name state,
+                                                   base::Name component,
+                                                   ComponentHooks& hooks);
 
     // ---- expression environment binding ------------------------------------
     // Writes one declared slot; the value must carry the declared type
@@ -271,6 +308,26 @@ public:
     [[nodiscard]] ecs::EntityRef machine_root(MachineId machine) const;
     [[nodiscard]] ecs::EntityRef
     state_entity(MachineId machine, base::Name region, base::Name state) const;
+
+    // ---- despawn exit chains (M2 0B track D, FUSED-SPEC D4) ---------------
+    // The phase-8 PREPARE half of a despawn: runs the FULL A.2.1 exit chain
+    // of every active region of every live machine hosted on `host` — state
+    // script onExit, substates recursively (deepest completing first),
+    // component onExit through the exit-3 slot (reverse attach order),
+    // sequence span closes/settles, subtree deactivation — exactly the
+    // transition exit template with NO destination (hook peer/`to` is empty,
+    // so hook records carry no `peer` field). Machines run in REVERSE
+    // instantiation order, regions in REVERSE declaration order — the
+    // mirror of materialization/initial entry. Every region is stamped with
+    // the current tick BEFORE any hook runs (the A.2 rule-5 discipline,
+    // execute_transition's own order): a cascade fired from a dying
+    // machine's exit hooks can never transition it again this tick — such
+    // events void with "region_already_transitioned", never re-enter a
+    // corpse. `cause_id` (the caller's despawn record) is the cause of
+    // every exit-hook record. Hosts with no machines are a silent no-op;
+    // retired machines are skipped. The caller queues the actual despawn
+    // AFTER this returns — this call itself removes nothing.
+    void exit_host_machines(ecs::EntityRef host, std::uint64_t cause_id);
 
     // ---- state.finished (the sequences attachment point, spec 4.1) --------
     // Triggers "<state>.finished" on the host channel (payload {entity,
@@ -313,7 +370,11 @@ private:
     bool filter_passes(MachineInstance& instance,
                        std::uint32_t transition_index,
                        const bus::EventView& event);
-    void execute_transition(MachineInstance& instance,
+    // Returns false when the statechart.transition record was refused
+    // (poisoned writer): no stamp, no chains, no stats — no record, no
+    // effect (M2 0B council fix G3). Hook records refused mid-chain skip
+    // exactly their own invocation (the chain completes structurally).
+    bool execute_transition(MachineInstance& instance,
                             std::uint32_t region_index,
                             std::uint32_t transition_index,
                             const bus::EventView& event,
@@ -334,7 +395,16 @@ private:
                                std::string_view hook,
                                base::Name peer,
                                std::uint64_t cause_id,
-                               journal::Tier tier);
+                               journal::Tier tier,
+                               base::Name component = {});
+    // The A.2.1 enter-2 / exit-3 slots (M2 0B): the state's registered
+    // component hooks run in attach order entering, reverse attach order
+    // exiting — each invocation journaled first (component_hooks.h).
+    void run_component_hooks(MachineInstance& instance,
+                             std::uint32_t state_index,
+                             bool enter,
+                             base::Name peer,
+                             std::uint64_t cause_id);
     void journal_voided(MachineInstance& instance,
                         std::uint32_t region_index,
                         std::uint32_t transition_index,
@@ -395,6 +465,9 @@ private:
                                                     MachineInstance& staged) const;
     std::optional<base::Error>
     build_subtree(MachineInstance& staged, ecs::EntityRef host, MachineId id);
+    // The initial enter chains (the split's second half): both instantiate()
+    // (eager) and start_initial_entry() (deferred) run exactly this.
+    void run_initial_entry(MachineInstance& instance);
 
     [[nodiscard]] MachineInstance* find_machine(MachineId machine) const;
     // Alive check with lazy retirement (host despawn cascades the subtree;

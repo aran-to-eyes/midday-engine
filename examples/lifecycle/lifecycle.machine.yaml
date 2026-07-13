@@ -1,0 +1,39 @@
+# examples/lifecycle/lifecycle.machine.yaml — the depth-2 lifecycle brain
+# (M2 node 0B, FUSED-SPEC D6): Alive{ParentExitA,ParentExitB}/Armed{
+# ChildExitA,ChildExitB} with state scripts on BOTH levels, so the kill
+# transition's exit chain is falsifiable line by line (A.2.1: brain exits
+# first while its parts live, substates deepest-completing, each level's
+# components in REVERSE attach order, then Dead enters):
+#
+#     exit:Alive  exit:Armed  ChildExitB  ChildExitA  ParentExitB
+#     ParentExitA  enter:Dead
+#
+# Dead is the REAL examples/warden/states/dead.ts (golden closing #14
+# against the actual m4-content file): its onEnter reads the base
+# Transform, broadcasts boss.died @ global, and schedules
+# world.despawn(self, {after: 4.0}) — requested at tick 1, reaped at
+# exactly 1 + ceil(4.0 * 60) = 241.
+format: 1
+
+machine: lifecycle
+
+regions:
+  life:
+    initial: Alive
+    states:
+      Alive:
+        script: states/parent.ts
+        components:
+          - ParentExitA: {}
+          - ParentExitB: {}
+        initial: Armed
+        on:
+          - {event: golden.kill, key: self, goto: Dead}
+        states:
+          Armed:
+            script: states/armed.ts
+            components:
+              - ChildExitA: {}
+              - ChildExitB: {}
+      Dead:
+        script: ../warden/states/dead.ts

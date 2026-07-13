@@ -181,23 +181,47 @@ public:
     std::optional<base::Error> remove_hook(Phase phase, PhaseHook& hook);
     [[nodiscard]] std::uint32_t hook_count(Phase phase) const;
 
-    // ---- the ONE structural-apply extension slot (m1-prefab-spawn) --------
+    // ---- the ONE structural-apply extension slot (m1-prefab-spawn), now
+    // TWO-PHASE (M2 0B, D4) -------------------------------------------------
     // structural-apply (phase 8) is engine-owned — no add_hook, ever
     // (core/tick/phase.h). This is the single, well-known socket a runtime
-    // spawn/despawn realizer installs at boot, mirroring ecs::World's own
-    // reparent_handler_/despawn_observer_ pattern: called exactly once per
-    // tick, AFTER World::flush_structural makes queued spawns/despawns/
-    // reparents real and BEFORE Hierarchy::propagate (run_structural_apply,
-    // tick_loop.cpp) — so a realized prefab's local transform is included in
-    // this tick's world-matrix settle. `phase_record_id` is the structural-
-    // apply phase marker's journal id, the cause id for every effect the
-    // realizer journals/triggers this tick (the PhaseContext::phase_record_id
-    // convention). A returned error halts the tick exactly like any other
-    // phase failure. Unset by default: a sim with no runtime prefab spawning
-    // (every M0/m1 fixture predating this node) is unaffected.
+    // spawn/despawn extension installs at boot, mirroring ecs::World's own
+    // reparent_handler_/despawn_observer_ pattern — one owner, two calls
+    // bracketing the flush (run_structural_apply, tick_loop.cpp):
+    //
+    //   preparer(tick, phase_record_id)  — BEFORE World::flush_structural.
+    //       The despawn-linger half (D4): exit-chains-before-removal at the
+    //       exact ceiling tick is impossible post-flush-only, so due
+    //       entities run their full statechart exit chains + component
+    //       onExit hooks HERE, while they are provably still alive, and
+    //       only then queue their despawns into the very flush that
+    //       follows. Unset (the default) is a no-op — every pre-0B
+    //       composition, including 0A's route-only realizer wiring,
+    //       compiles and behaves byte-identically.
+    //   realizer(phase_record_id)        — AFTER the flush, BEFORE
+    //       Hierarchy::propagate: realizes queued prefab spawns (adopt,
+    //       machine instantiate — the enter chain, A.1 phase 8) and fires
+    //       despawn lifecycle events, now that the entities it reserved are
+    //       provably alive/dead; a realized prefab's local transform lands
+    //       in this tick's world-matrix settle.
+    //
+    // `phase_record_id` is the structural-apply phase marker's journal id,
+    // the cause id for every effect either half journals/triggers this tick
+    // (the PhaseContext::phase_record_id convention). A returned error halts
+    // the tick exactly like any other phase failure. Anything captured by
+    // reference must outlive the loop or be cleared before it dies — a
+    // composition that wires BOTH halves must clear BOTH in its teardown
+    // (the RunSim ~dtor discipline).
     using StructuralRealizer = std::function<std::optional<base::Error>(std::uint64_t)>;
+    // (tick, phase_record_id) — the spec-literal prepare shape (D4). The
+    // realizer keeps its m1 one-argument shape: existing installers stay
+    // source-compatible, and its tick is observable via the bus stamp.
+    using StructuralPreparer =
+        std::function<std::optional<base::Error>(std::uint64_t, std::uint64_t)>;
 
     void set_structural_realizer(StructuralRealizer realizer) { realizer_ = std::move(realizer); }
+
+    void set_structural_preparer(StructuralPreparer preparer) { preparer_ = std::move(preparer); }
 
     // ---- input feed (the headless injection point; devices arrive later) --
     // Queues one input event for the NEXT input phase (FIFO). Journals
@@ -272,6 +296,7 @@ private:
     std::array<std::vector<PhaseHook*>, kPhaseCount> hooks_; // open phases only
     std::vector<InjectedInput> input_queue_;                 // FIFO, next tick's input
     std::vector<InjectedInput> input_drain_;                 // swap target (capacity reused)
+    StructuralPreparer preparer_;                            // pre-flush half (D4)
     StructuralRealizer realizer_;                            // see set_structural_realizer
     FramePacketBuffer packets_;
     TickStats stats_;

@@ -16,6 +16,7 @@ add_executable(midday
     verbs/run.cpp
     verbs/run_assert.cpp
     verbs/run_assert_kata.cpp
+    verbs/run_assert_lifecycle.cpp
     verbs/journal.cpp
     verbs/rhi.cpp
     verbs/shot.cpp
@@ -30,6 +31,7 @@ add_executable(midday
     verbs/run_sim_test.cpp
     verbs/shot_test.cpp
     verbs/golden_test.cpp
+    verbs/golden_lifecycle_test.cpp
     verbs/spike_test.cpp
     verbs/envelope_test.cpp
     verbs/framework_test.cpp
@@ -76,6 +78,7 @@ target_link_libraries(midday PRIVATE
     midday::batch_bench
     midday::state_script
     midday::component_host
+    midday::component_instance
     midday::world_host
     midday::ts_toolchain
     midday::rhi

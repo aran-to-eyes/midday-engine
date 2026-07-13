@@ -181,11 +181,11 @@ committed artifacts)", "codegen byte-equivalence (selfhost vs bootstrap, standin
 `ts/runtime` implements `bindings_spec.json` (batch envelope and state-script hook seam — the
 seam's global names are drift-gated generated data); agents read `api_docs.md`.
 
-**Limits.** Two `bindings_spec.json` members are self-host-only glue excluded from the bootstrap
-equivalence view (`batch_envelope` compared nulled, `state_script_hooks` dropped); everything else
-is full-byte equivalent. The bootstrap tool is scheduled for deletion post-M0, retiring the
-equivalence gate with it. `schema_manifest.json`'s `formats` array is empty until scene/machine
-schemas join (M1).
+**Limits.** Three `bindings_spec.json` members are self-host-only glue excluded from the bootstrap
+equivalence view (`batch_envelope` compared nulled, `state_script_hooks` and `event_payload_types`
+dropped); everything else is full-byte equivalent. The bootstrap tool is scheduled for deletion
+post-M0, retiring the equivalence gate with it. `schema_manifest.json`'s `formats` array is empty
+until scene/machine schemas join (M1).
 
 ## 8. CLI envelope + exit classes
 

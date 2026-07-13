@@ -4,8 +4,11 @@
 #include "ts/runtime/component_host.h"
 
 #include "core/base/name.h"
+#include "core/reflect/registry.h"
+#include "core/reflect/type_model.h"
 #include "ts/runtime/host_json.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 
@@ -13,6 +16,103 @@ namespace midday::script {
 
 using base::Error;
 using base::Json;
+
+namespace {
+
+// ---- the authoring->wire payload adapter (component_host.h set_registry) --
+
+// An EntityRef INSTANCE crosses the JS boundary as exactly {index,
+// generation} (its two own properties). Strict: anything else passes
+// through untouched (and the bus refuses it, as before).
+bool object_ref_bits(const Json& value, std::uint64_t& bits) {
+    if (!value.is_object() || value.items().size() != 2)
+        return false;
+    const Json* index = value.find("index");
+    const Json* generation = value.find("generation");
+    if (index == nullptr || generation == nullptr || !index->is_int() || !generation->is_int())
+        return false;
+    const std::int64_t idx = index->as_int();
+    const std::int64_t gen = generation->as_int();
+    if (idx < 0 || idx > 0xFFFFFFFFLL || gen < 0 || gen > 0xFFFFFFFFLL)
+        return false;
+    bits =
+        ecs::EntityRef{static_cast<std::uint32_t>(idx), static_cast<std::uint32_t>(gen)}.to_bits();
+    return true;
+}
+
+// {x, y[, z[, w]]} with EXACTLY the arity's keys, all numbers.
+bool exact_numeric_object(const Json& value, std::size_t arity) {
+    static constexpr const char* kParts[] = {"x", "y", "z", "w"};
+    if (!value.is_object() || value.items().size() != arity)
+        return false;
+    for (std::size_t i = 0; i < arity; ++i) {
+        const Json* part = value.find(kParts[i]);
+        if (part == nullptr || !part->is_number())
+            return false;
+    }
+    return true;
+}
+
+Json wire_value(const reflect::TypeDesc& type, const Json& value) {
+    using reflect::TypeKind;
+    static constexpr const char* kParts[] = {"x", "y", "z", "w"};
+    switch (type.kind()) {
+    case TypeKind::kEntityRef: {
+        std::uint64_t bits = 0;
+        if (object_ref_bits(value, bits))
+            return {static_cast<std::int64_t>(bits)};
+        return value;
+    }
+    case TypeKind::kVec2:
+    case TypeKind::kVec3:
+    case TypeKind::kVec4:
+    case TypeKind::kQuat: {
+        const std::size_t arity = type.kind() == TypeKind::kVec2   ? 2
+                                  : type.kind() == TypeKind::kVec3 ? 3
+                                                                   : 4;
+        if (!exact_numeric_object(value, arity))
+            return value;
+        Json tuple = Json::array();
+        for (std::size_t i = 0; i < arity; ++i)
+            tuple.push(*value.find(kParts[i]));
+        return tuple;
+    }
+    case TypeKind::kArray: {
+        if (!value.is_array())
+            return value;
+        Json out = Json::array();
+        for (const Json& item : value.elements())
+            out.push(wire_value(type.element(), item));
+        return out;
+    }
+    case TypeKind::kMap: {
+        if (!value.is_object())
+            return value;
+        Json out = Json::object();
+        for (const auto& [key, item] : value.items())
+            out.set(key, wire_value(type.element(), item));
+        return out;
+    }
+    default:
+        return value; // scalars already speak wire (color object form: later node)
+    }
+}
+
+// Convert exactly the DECLARED fields; undeclared keys copy verbatim (the
+// bus's unknown_field refusal stays intact and exact).
+Json wire_payload(const reflect::EventDesc& desc, const Json& payload) {
+    Json out = Json::object();
+    for (const auto& [key, value] : payload.items()) {
+        const reflect::EventFieldDesc* field = nullptr;
+        for (const reflect::EventFieldDesc& candidate : desc.payload)
+            if (key == candidate.name.view())
+                field = &candidate;
+        out.set(key, field != nullptr ? wire_value(field->type, value) : value);
+    }
+    return out;
+}
+
+} // namespace
 
 ComponentHost::ComponentHost(ScriptRuntime& runtime,
                              ecs::World& world,
@@ -69,7 +169,21 @@ HostResult ComponentHost::root(const Json::Array& args) const {
 HostResult
 ComponentHost::fire(bus::EventKey key, std::string_view event, const Json& payload) const {
     HostResult result;
-    bus::TriggerResult triggered = bus_->trigger(key, base::Name(event), payload, /*cause_id=*/0);
+    // Inside a component hook/onEvent frame the dispatch record is the
+    // cause (push_cause/pop_cause, component_host.h); outside one, 0 —
+    // byte-identically the pre-0B behavior.
+    const std::uint64_t cause_id = cause_stack_.empty() ? 0 : cause_stack_.back();
+    // Authoring->wire adaptation for vocabulary events (set_registry).
+    const base::Name name(event);
+    Json wire;
+    const Json* delivered = &payload;
+    if (registry_ != nullptr && payload.is_object()) {
+        if (const auto* entry = registry_->find_event(name)) {
+            wire = wire_payload(entry->desc, payload);
+            delivered = &wire;
+        }
+    }
+    bus::TriggerResult triggered = bus_->trigger(key, name, *delivered, cause_id);
     if (triggered.error.has_value())
         result.error = std::move(triggered.error);
     else

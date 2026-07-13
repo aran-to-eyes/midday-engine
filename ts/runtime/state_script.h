@@ -48,6 +48,8 @@
 
 namespace midday::script {
 
+class ComponentHost;
+
 // Symbolic-key resolution (spec 4.2: self | root | global | <group>). The
 // production resolver is loader::resolve_key; injecting the function keeps
 // the ts/ tier free of loader dependencies.
@@ -93,6 +95,15 @@ public:
 
     // The first hook-invocation error, sim-tick annotated (empty = clean).
     [[nodiscard]] const std::optional<base::Error>& first_error() const { return first_error_; }
+
+    // M2 0B: bridge hook causality into the ts/lib emit path — while a hook
+    // runs, its journal record id rides `primitives`' cause-frame stack
+    // (ComponentHost::push_cause), so a state script calling the LIBRARY
+    // surface (events.trigger / this.emit — __midday_trigger_*) cites the
+    // hook record exactly like __midday_emit always has. Production wires
+    // this whenever both hosts exist (run.cpp); unset keeps the pre-0B
+    // cause (0 — root) for library emits.
+    void set_cause_bridge(ComponentHost& primitives) { primitives_ = &primitives; }
 
     [[nodiscard]] std::size_t seat_count() const { return seats_.size(); }
 
@@ -144,6 +155,7 @@ private:
     Toolchain* toolchain_;
     bus::Bus* bus_;
     KeyResolver resolve_key_;
+    ComponentHost* primitives_ = nullptr; // the cause bridge (set_cause_bridge)
     std::vector<Seat> seats_;
     std::vector<EmitFrame> emit_stack_;
     std::optional<base::Error> first_error_;

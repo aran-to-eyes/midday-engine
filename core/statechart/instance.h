@@ -149,6 +149,17 @@ struct RtRegion {
     std::uint64_t transition_stamp = kNeverTicked; // tick of the last transition
 };
 
+// One registered component hook seat (M2 0B, component_hooks.h): appended
+// by add_component_hooks in registration order — the slice of seats with one
+// state_index, in vector order, IS that state's attach order (enter-2 runs
+// it forward, exit-3 backward). Machines without component hooks keep an
+// empty vector and pay one emptiness check per enter/exit.
+struct ComponentHookSeat {
+    std::uint32_t state = kInvalidIndex;
+    base::Name component;
+    ComponentHooks* hooks = nullptr;
+};
+
 struct MachineInstance {
     base::Name name;
     MachineId id = kInvalidMachine;
@@ -164,8 +175,12 @@ struct MachineInstance {
     std::vector<RtSheetItem> sheet_items;
     std::vector<RtTrigger> sheet_triggers;
     std::vector<RtSpan> sheet_spans;
-    std::vector<bus::EventKey> keys; // subscribed channels (unsubscribe list)
-    bool retired = false;            // host died; lazily detached
+    std::vector<bus::EventKey> keys;                // subscribed channels (unsubscribe list)
+    std::vector<ComponentHookSeat> component_hooks; // registration = attach order (M2 0B)
+    std::uint64_t instantiate_record = 0;           // the statechart.instantiate journal id —
+                                                    // the deferred entry chains' cause id
+    bool entered = false;                           // initial enter chains ran (split bookkeeping)
+    bool retired = false;                           // host died; lazily detached
 };
 
 // The type's zero value — what unbound environment slots hold.

@@ -99,41 +99,36 @@ TEST_CASE("golden.appendix_a: the 3200-tick driven run passes every A.3 verdict"
 
     // Independent journal spot checks (differently coded than the pack):
     // count the tick-3200 records by kind and pin the A.3 journal lines.
-    journal::ReaderOpenResult opened = journal::Reader::open(dir.file("a1.mrj"));
-    REQUIRE_FALSE(opened.error.has_value());
-    journal::Reader& reader = unwrap(opened.reader);
-    REQUIRE_FALSE(reader.seek_to_tick(3200).has_value());
     int combat_transitions = 0;
     int voids = 0;
     bool death_to_dead = false;
     bool stagger_voided = false;
     bool boss_died_global = false;
     bool span_close_via_exit = false;
-    while (true) {
-        journal::Reader::NextResult next = reader.next();
-        REQUIRE_FALSE(next.error.has_value());
-        if (!next.record.has_value())
-            break;
-        const journal::Record& record = *next.record;
-        const std::string dumped = record.payload.dump();
-        if (record.kind == "statechart.transition" &&
-            dumped.find(R"("region":"combat")") != std::string::npos) {
-            ++combat_transitions;
-            death_to_dead = dumped.find(R"("from":"SlashAttack")") != std::string::npos &&
-                            dumped.find(R"("to":"Dead")") != std::string::npos &&
-                            dumped.find(R"("via":"any-state")") != std::string::npos;
-        }
-        if (record.kind == "statechart.voided") {
-            ++voids;
-            if (dumped.find(R"("event":"stagger.hit")") != std::string::npos)
-                stagger_voided = dumped.find("region_already_transitioned") != std::string::npos;
-        }
-        if (record.kind == "event.trigger" &&
-            dumped.find(R"("event":"boss.died")") != std::string::npos)
-            boss_died_global = dumped.find(R"("key":"global")") != std::string::npos;
-        if (record.kind == "sequence.span_close")
-            span_close_via_exit = dumped.find(R"("via":"exit")") != std::string::npos;
-    }
+    testsupport::for_each_record(
+        dir.file("a1.mrj"),
+        [&](const journal::Record& record) {
+            const std::string dumped = record.payload.dump();
+            if (record.kind == "statechart.transition" &&
+                dumped.find(R"("region":"combat")") != std::string::npos) {
+                ++combat_transitions;
+                death_to_dead = dumped.find(R"("from":"SlashAttack")") != std::string::npos &&
+                                dumped.find(R"("to":"Dead")") != std::string::npos &&
+                                dumped.find(R"("via":"any-state")") != std::string::npos;
+            }
+            if (record.kind == "statechart.voided") {
+                ++voids;
+                if (dumped.find(R"("event":"stagger.hit")") != std::string::npos)
+                    stagger_voided =
+                        dumped.find("region_already_transitioned") != std::string::npos;
+            }
+            if (record.kind == "event.trigger" &&
+                dumped.find(R"("event":"boss.died")") != std::string::npos)
+                boss_died_global = dumped.find(R"("key":"global")") != std::string::npos;
+            if (record.kind == "sequence.span_close")
+                span_close_via_exit = dumped.find(R"("via":"exit")") != std::string::npos;
+        },
+        3200);
     CHECK(combat_transitions == 1); // A.3: "exactly one combat transition at t3200"
     CHECK(death_to_dead);
     CHECK(voids == 2); // stagger.hit + the mid-exit HitboxLive.closed echo

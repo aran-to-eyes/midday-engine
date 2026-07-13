@@ -88,14 +88,24 @@ struct MaterializeResult {
 // already guarantees) — the caller's existing "first failure wins" refusal
 // discipline (spawn_scene) or tick-halting discipline (PrefabSpawner) takes
 // it from there.
-MaterializeResult materialize_prefab(ecs::World& world,
-                                     hierarchy::Hierarchy& hierarchy,
-                                     statechart::Statechart& chart,
-                                     journal::Writer& journal,
-                                     std::uint64_t tick,
-                                     const std::vector<MachineFile>& machines,
-                                     ecs::EntityRef root,
-                                     std::string_view prefab_path,
-                                     std::uint64_t cause_id);
+//
+// M2 0B (#12b): `base_components` (the entity file's `base:` list, may be
+// null) materializes FIRST — base subscription order precedes the machine
+// roots' — then machines (honoring options.defer_initial_entry), each
+// machine's state components (attach order = document order), then state
+// children WITH their own components. All through the ONE dispatcher
+// (component_materialize.h): a component nothing claims refuses.
+MaterializeResult
+materialize_prefab(ecs::World& world,
+                   hierarchy::Hierarchy& hierarchy,
+                   statechart::Statechart& chart,
+                   journal::Writer& journal,
+                   std::uint64_t tick,
+                   const std::vector<MachineFile>& machines,
+                   ecs::EntityRef root,
+                   std::string_view prefab_path,
+                   std::uint64_t cause_id,
+                   const SpawnOptions& options = {},
+                   const std::vector<GenericComponentEntry>* base_components = nullptr);
 
 } // namespace midday::loader

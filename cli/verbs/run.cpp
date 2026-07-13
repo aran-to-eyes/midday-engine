@@ -1,9 +1,12 @@
 // `midday run <scene> [--ticks N | --to-tick N] [--seed S] [--record path]
-// [--assert case=<pack>]` — the headless sim runner (m0-yaml-loader-run):
-// authored YAML -> loader -> World/Hierarchy/Bus/TickLoop/Statechart
-// (+ physics when the scene references it, + the TS tier when state
-// scripts are referenced: modules SEATED via ts/runtime/state_script.h,
-// hooks live) -> fixed ticks -> a FLIGHT run.mrj bundle. Recording is ON
+// [--assert case=<pack>] [--components manifest]` — the headless sim runner
+// (m0-yaml-loader-run): authored YAML -> loader ->
+// World/Hierarchy/Bus/TickLoop/Statechart (+ physics when the scene
+// references it, + the TS tier when state scripts are referenced: modules
+// SEATED via ts/runtime/state_script.h, hooks live; --components
+// additionally boots the ComponentInstanceHost pre-spawn and defers
+// initial entry so TS components seat BEFORE tick-zero enter chains — M2
+// 0B, D2) -> fixed ticks -> a FLIGHT run.mrj bundle. Recording is ON
 // BY CONSTRUCTION (Zenith D026): there is no run without a journal —
 // omitting --record writes the scratch bundle .midday-cache/run/last.mrj
 // (recreated per run; an EXPLICIT --record path never clobbers an existing
@@ -18,13 +21,14 @@
 
 #include "cli/verb.h"
 #include "cli/verbs/run_assert.h"
+#include "cli/verbs/run_boot.h"
 #include "cli/verbs/run_sim.h"
 #include "core/bus/bus.h"
 #include "core/ecs/world.h"
 #include "core/hierarchy/hierarchy.h"
 #include "core/journal/writer.h"
+#include "core/loader/component_vocab.h"
 #include "core/loader/loader.h"
-#include "core/math/rng.h"
 #include "core/physics/physics_server.h"
 #include "core/reflect/builtin_events.h"
 #include "core/reflect/registry.h"
@@ -36,8 +40,6 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <map>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -71,35 +73,6 @@ VerbOutcome refuse(Error error) {
     return out;
 }
 
-// __midday_rng(stream): seeded, NAMED Philox child streams for state
-// scripts — the SIM profile's deterministic replacement for the poisoned
-// Math.random. Derivation: run seed -> child("scripts") -> child(<stream>);
-// each named stream persists for the run, so per-tick draws advance a pure
-// (seed, stream, draw-count) function of the executed program. The CLI owns
-// this ambient sim service until the API tier formalizes RNG bindings.
-void register_script_rng(script::ScriptRuntime& runtime, std::uint64_t seed) {
-    struct Streams {
-        math::RngStream root;
-        std::map<std::string, math::RngStream> named;
-    };
-
-    auto streams = std::make_shared<Streams>(
-        Streams{.root = math::RngStream(seed).child(base::Name("scripts")), .named = {}});
-    runtime.register_host_fn("__midday_rng", [streams](const Json::Array& args) {
-        script::HostResult result;
-        if (args.size() != 1 || !args[0].is_string()) {
-            result.error = Error{.code = "script.rng_args",
-                                 .message = "__midday_rng expects (stream: string)"};
-            return result;
-        }
-        const std::string& name = args[0].as_string();
-        auto [it, fresh] = streams->named.try_emplace(name, streams->root.child(base::Name(name)));
-        (void)fresh;
-        result.value = Json(it->second.uniform_double());
-        return result;
-    });
-}
-
 VerbOutcome run_verb(const VerbArgs& args) {
     const std::string& scene_path = args.get_string("scene");
     const std::int64_t seed = args.present("seed") ? args.get_int("seed") : 0;
@@ -129,13 +102,35 @@ VerbOutcome run_verb(const VerbArgs& args) {
         assert_case = raw.substr(kCasePrefix.size());
     }
 
+    // --components (M2 0B, #12b -> integration): the project component-
+    // schema manifest. Validated structured BEFORE the sim exists,
+    // Exit::Validation explicitly (json.parse is authored-text here too —
+    // scene.cpp --components parity; is_validation() above only knows the
+    // loader./yaml./script. families). The loaded vocab now feeds the scene
+    // loader (component NAME strictness) and the runtime prefab spawner;
+    // the ComponentInstanceHost wiring below seats the manifest's
+    // components onto entities (0B integration — the D2/D1 runtime).
+    const bool has_components = args.present("components");
+    loader::ComponentVocab components_vocab;
+    if (has_components) {
+        loader::ComponentVocabLoadResult loaded_vocab =
+            loader::load_component_vocab(args.get_string("components"));
+        if (loaded_vocab.error.has_value()) {
+            VerbOutcome out;
+            out.exit = Exit::Validation;
+            out.error = std::move(*loaded_vocab.error);
+            return out;
+        }
+        components_vocab = std::move(loaded_vocab.vocab);
+    }
+
     detail::RunSim sim;
     reflect::register_builtin_events(sim.registry);
 
     // The scene is OWNED by the sim (run_sim.h's lifetime tail): the spawner
     // and hosts wired below alias its EventsDecl, so it must die after them.
-    loader::SceneLoadResult& loaded =
-        sim.loaded.emplace(loader::load_scene(scene_path, sim.registry));
+    loader::SceneLoadResult& loaded = sim.loaded.emplace(
+        loader::load_scene(scene_path, sim.registry, /*lenient=*/false, components_vocab));
     if (loaded.error.has_value() || !loaded.scene.has_value())
         return refuse(std::move(loaded.error)
                           .value_or(Error{.code = "loader.io", .message = "scene load failed"}));
@@ -178,8 +173,8 @@ VerbOutcome run_verb(const VerbArgs& args) {
                                          "' (available: " + assert_pack_names() + ")"};
             return out;
         }
-        if (auto error =
-                sim.pack->attach(sim.world, sim.hierarchy, *sim.bus, *sim.loop, *sim.writer))
+        if (auto error = sim.pack->attach(
+                sim.world, sim.hierarchy, *sim.bus, *sim.loop, *sim.writer, sim.registry))
             return refuse(std::move(*error));
     }
 
@@ -211,8 +206,46 @@ VerbOutcome run_verb(const VerbArgs& args) {
             return refuse(std::move(*error));
     }
 
-    loader::SpawnResult spawned = loader::spawn_scene(
-        scene, sim.world, sim.hierarchy, *sim.chart, sim.physics.get(), *sim.writer, cause);
+    // The TS tier boots BEFORE spawn when the run carries a component
+    // manifest (M2 0B integration; FUSED-SPEC confirm (iv).3): the loader's
+    // dispatcher needs a live ScriptComponentMaterializer DURING
+    // spawn_scene, and seating-before-initial-entry (D2) demands the
+    // deferred-entry split — so Toolchain, ScriptRuntime, and both
+    // component hosts exist even for scenes with NO state scripts
+    // (component-only scenes). Scenes without --components keep the m0
+    // eager path byte-identically (state scripts, when present, still boot
+    // the runtime after spawn, below).
+    loader::SpawnOptions spawn_options;
+    if (has_components) {
+        detail::boot_ts_tier(sim, args, seed);
+        // boot_ts_tier emplaces all three by contract; the explicit re-check
+        // keeps the invariant analyzable and fail-LOUD if it ever drifts.
+        if (!sim.runtime.has_value() || !sim.toolchain.has_value() ||
+            !sim.component_host.has_value())
+            return refuse(Error{.code = "run.internal", .message = "the TS tier failed to boot"});
+        sim.instance_host.emplace(*sim.runtime,
+                                  *sim.toolchain,
+                                  sim.world,
+                                  *sim.bus,
+                                  *sim.writer,
+                                  sim.registry,
+                                  *sim.component_host);
+        if (auto error = sim.instance_host->first_error())
+            return refuse(std::move(*error));
+        if (auto error = sim.instance_host->load_manifest(args.get_string("components")))
+            return refuse(std::move(*error));
+        spawn_options.scripts = &*sim.instance_host;
+        spawn_options.defer_initial_entry = true;
+    }
+
+    loader::SpawnResult spawned = loader::spawn_scene(scene,
+                                                      sim.world,
+                                                      sim.hierarchy,
+                                                      *sim.chart,
+                                                      sim.physics.get(),
+                                                      *sim.writer,
+                                                      cause,
+                                                      spawn_options);
     if (spawned.error.has_value())
         return refuse(std::move(*spawned.error));
 
@@ -220,41 +253,67 @@ VerbOutcome run_verb(const VerbArgs& args) {
         if (auto error = sim.pack->bind(*sim.chart, spawned, cause))
             return refuse(std::move(*error));
 
-    // #13a route-only wiring (M2 node 0A): the runtime prefab spawn/despawn
-    // seam. The spawner aliases scene.events (hence the run_sim.h lifetime
-    // tail); its realize() takes the tick's ONE structural-apply extension
-    // slot (tick_loop.h) — dormant until something calls spawn_prefab/
-    // despawn, so pre-wiring corpora journal byte-identically (the 0A
-    // route-only proof). Script-free by design: emplaced even when the
-    // scene binds no scripts.
-    sim.spawner.emplace(
-        sim.world, sim.hierarchy, *sim.chart, *sim.bus, *sim.writer, sim.registry, scene.events);
+    // #13a wiring (M2 node 0A route-only; 0B lands the full two-phase): the
+    // runtime prefab spawn/despawn seam. The spawner aliases scene.events
+    // (hence the run_sim.h lifetime tail); prepare()/realize() take the
+    // tick's TWO-PHASE structural-apply extension slots (tick_loop.h, D4:
+    // despawn exit chains run pre-flush at the exact due tick, spawns/reaps
+    // realize post-flush) — dormant until something calls spawn_prefab/
+    // despawn, so pre-wiring corpora journal byte-identically. Script-free
+    // by design: emplaced even when the scene binds no scripts. Component
+    // scenes additionally hand it the instance host: how realize()
+    // materializes runtime prefabs (set_spawn_options) and the phase-8
+    // despawn lifecycle seam (set_despawn_hooks).
+    sim.spawner.emplace(sim.world,
+                        sim.hierarchy,
+                        *sim.chart,
+                        *sim.bus,
+                        *sim.writer,
+                        sim.registry,
+                        scene.events,
+                        components_vocab,
+                        &*sim.loop);
+    sim.loop->set_structural_preparer(
+        [&spawner = *sim.spawner](std::uint64_t tick, std::uint64_t phase_record_id) {
+            return spawner.prepare(tick, phase_record_id);
+        });
     sim.loop->set_structural_realizer([&spawner = *sim.spawner](std::uint64_t phase_record_id) {
         return spawner.realize(phase_record_id);
     });
+    if (sim.instance_host.has_value()) {
+        sim.spawner->set_spawn_options(spawn_options);
+        sim.spawner->set_despawn_hooks(*sim.instance_host);
+    }
 
     // State scripts: build through the content-hash cache (typecheck + the
     // engine lint pack), instantiate on the SIM runtime, and SEAT on their
     // states — onEnter/onExit/onUpdate/onFixedUpdate run through the
     // generated hook seam (ts/runtime/state_script.h, A.2.1 parity).
     Json scripts = Json::array();
-    if (!spawned.scripts.empty()) {
-        script::ToolchainConfig tool_config;
-        if (args.present("cache-dir"))
-            tool_config.cache_dir = args.get_string("cache-dir");
-        sim.toolchain.emplace(std::move(tool_config));
-        sim.runtime.emplace(); // SIM profile: poisoned clocks, gas metering
-        register_script_rng(*sim.runtime, static_cast<std::uint64_t>(seed));
-        // The two script-facing host seats (#13a): entity/emit primitives +
-        // world.spawn/despawn, registered BEFORE any module loads so a
-        // script's first statement can already reach them. Meaningful only
-        // with a runtime, so they live inside this conditional; a scene
-        // without scripts has no caller for either seat.
-        sim.component_host.emplace(*sim.runtime, sim.world, *sim.bus, &sim.hierarchy);
+    if (!spawned.scripts.empty() && !sim.runtime.has_value())
+        detail::boot_ts_tier(sim, args, seed); // the m0 boot point: scripts, no --components
+    // The two script-facing host seats (#13a): entity/emit primitives (part
+    // of the runtime boot above) + world.spawn/despawn — registered BEFORE
+    // any module loads so a script's first statement can already reach
+    // them. A scene with neither scripts nor components has no runtime and
+    // no caller for either seat.
+    if (sim.runtime.has_value())
         sim.world_host.emplace(*sim.runtime, *sim.spawner);
+    if (!spawned.scripts.empty()) {
+        // The TS tier exists by construction here (the --components boot or
+        // the m0 boot block above); the explicit re-check keeps the
+        // invariant analyzable and fail-LOUD if the wiring ever drifts.
+        if (!sim.runtime.has_value() || !sim.toolchain.has_value() ||
+            !sim.component_host.has_value())
+            return refuse(Error{.code = "run.internal",
+                                .message = "state scripts present but the TS tier is not booted"});
         sim.scripts.emplace(*sim.runtime, *sim.toolchain, *sim.bus, &loader::resolve_key);
         if (auto error = sim.scripts->first_error())
             return refuse(std::move(*error));
+        // The cause bridge (M2 0B): a state hook's journal record rides the
+        // primitives seat's cause frames, so ts/lib emits inside hooks cite
+        // the hook record (the __midday_emit parity — D6's dead.ts chain).
+        sim.scripts->set_cause_bridge(*sim.component_host);
         for (const loader::ScriptSeat& seat : spawned.scripts) {
             ecs::EntityRef host;
             for (const loader::MachineSeat& machine : spawned.machines)
@@ -277,6 +336,16 @@ VerbOutcome run_verb(const VerbArgs& args) {
         }
     }
 
+    // The deferred initial-entry START (D2's split, component scenes only):
+    // every machine's enter chains run only NOW — base components, state
+    // components + hooks, and state scripts are ALL seated, so tick-zero
+    // onEnter reaches everything in the authored order (never a late
+    // synthetic call). The eager path above stays byte-identical for every
+    // pre-0B corpus.
+    if (spawn_options.defer_initial_entry)
+        if (auto error = loader::start_initial_entries(*sim.chart, spawned))
+            return refuse(std::move(*error));
+
     // Step — the batch loop drives step_one(), THE single tick executor
     // (run_sim.h). --to-tick keeps run_to_tick's no-op-past-target contract;
     // --ticks is exact; both stop at the first error. The gc probes bracket
@@ -298,9 +367,13 @@ VerbOutcome run_verb(const VerbArgs& args) {
     const std::uint64_t gc_after = sim.runtime.has_value() ? sim.runtime->alloc_bytes() : 0;
 
     // A script hook that faulted mid-run fails the run loudly (exit 1; the
-    // error carries file/stack plus the sim tick it faulted on).
+    // error carries file/stack plus the sim tick it faulted on). Component
+    // hooks/dispatch report through their own host, same contract.
     if (sim.scripts.has_value())
         if (auto error = sim.scripts->first_error())
+            return refuse(std::move(*error));
+    if (sim.instance_host.has_value())
+        if (auto error = sim.instance_host->first_error())
             return refuse(std::move(*error));
 
     if (auto error = sim.writer->close())
@@ -381,6 +454,10 @@ constexpr FlagSpec kFlags[] = {
      .type = "string",
      .doc = "drive + verify a registered assertion pack: case=<name> "
             "(available: appendix_a_golden, determinism_kata)"},
+    {.name = "components",
+     .type = "string",
+     .doc = "a project component-schema manifest (`midday script extract --out`) naming the "
+            "scene's TS components"},
 };
 
 constexpr PositionalSpec kPositionals[] = {

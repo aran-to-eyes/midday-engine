@@ -12,9 +12,13 @@
 #pragma once
 
 #include "cli/verb.h"
+#include "core/journal/reader.h"
 #include "testkit/doctest.h"
+#include "testkit/doctest_unwrap.h"
 
+#include <cstdint>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -37,6 +41,28 @@ inline const Json& field(const Json& object, std::string_view key) {
     if (value == nullptr)
         std::abort(); // unreachable: REQUIRE threw
     return *value;
+}
+
+// One REQUIRE-guarded streaming pass over a recorded bundle (the golden
+// tests' independent journal spot-checks; hoisted at M2 0B on the
+// second-consumer rule — golden_test + golden_lifecycle_test). With
+// `seek_to_tick`, the walk starts at that tick's first record.
+template <typename Fn>
+inline void for_each_record(const std::string& bundle,
+                            Fn&& fn,
+                            std::optional<std::uint64_t> seek_to_tick = std::nullopt) {
+    journal::ReaderOpenResult opened = journal::Reader::open(bundle);
+    REQUIRE_FALSE(opened.error.has_value());
+    journal::Reader& reader = testkit::unwrap(opened.reader);
+    if (seek_to_tick.has_value())
+        REQUIRE_FALSE(reader.seek_to_tick(*seek_to_tick).has_value());
+    while (true) {
+        journal::Reader::NextResult next = reader.next();
+        REQUIRE_FALSE(next.error.has_value());
+        if (!next.record.has_value())
+            return;
+        fn(*next.record);
+    }
 }
 
 } // namespace midday::cli::testsupport

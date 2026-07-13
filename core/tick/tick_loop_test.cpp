@@ -246,3 +246,58 @@ TEST_CASE("tick.structural: queued structure applies at phase 8 — not before, 
     REQUIRE_FALSE(fix.loop().tick().has_value());
     CHECK_FALSE(world.alive(spawned));
 }
+
+TEST_CASE("tick.structural: the two-phase extension brackets the flush — prepare sees the old "
+          "world, realize the new (M2 0B D4)") {
+    TickFixture fix;
+
+    // A queued spawn is the flush probe: pending BEFORE phase 8's flush,
+    // alive after. prepare must observe the former, realize the latter —
+    // exit-chains-before-removal at the exact ceiling tick depends on
+    // exactly this bracketing (tick_loop.h).
+    const EntityRef pending = fix.world.queue_spawn();
+
+    std::vector<std::string> log;
+    std::uint64_t prepare_phase_record = 0;
+    std::uint64_t realize_phase_record = 0;
+    fix.loop().set_structural_preparer(
+        [&](std::uint64_t tick,
+            std::uint64_t phase_record_id) -> std::optional<midday::base::Error> {
+            prepare_phase_record = phase_record_id;
+            log.push_back("prepare:t" + std::to_string(tick) +
+                          (fix.world.alive(pending) ? ":alive" : ":pending"));
+            return std::nullopt;
+        });
+    fix.loop().set_structural_realizer(
+        [&](std::uint64_t phase_record_id) -> std::optional<midday::base::Error> {
+            realize_phase_record = phase_record_id;
+            log.push_back(std::string("realize") +
+                          (fix.world.alive(pending) ? ":alive" : ":pending"));
+            return std::nullopt;
+        });
+
+    REQUIRE_FALSE(fix.loop().tick().has_value());
+    CHECK(log == std::vector<std::string>{"prepare:t1:pending", "realize:alive"});
+    // Both halves ride the SAME structural-apply phase marker (the cause id
+    // convention) — one phase, one record, two calls.
+    CHECK(prepare_phase_record != 0);
+    CHECK(prepare_phase_record == realize_phase_record);
+
+    // A preparer error halts the tick exactly like any other phase failure,
+    // BEFORE the flush mutates anything.
+    const EntityRef second = fix.world.queue_spawn();
+    fix.loop().set_structural_preparer(
+        [](std::uint64_t, std::uint64_t) -> std::optional<midday::base::Error> {
+            return midday::base::Error{
+                "test.prepare_stop", "halt before the flush", midday::base::Json::object()};
+        });
+    auto error = fix.loop().tick();
+    REQUIRE(error.has_value());
+    CHECK(midday::tick::test::unwrap(error).code == "test.prepare_stop");
+    CHECK_FALSE(fix.world.alive(second)); // the flush never ran
+
+    // Clearing the slot restores the pre-0B single-phase behavior.
+    fix.loop().set_structural_preparer({});
+    REQUIRE_FALSE(fix.loop().tick().has_value());
+    CHECK(fix.world.alive(second));
+}

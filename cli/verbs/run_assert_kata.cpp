@@ -46,7 +46,8 @@ public:
                                 hierarchy::Hierarchy& /*hierarchy*/,
                                 bus::Bus& /*bus*/,
                                 tick::TickLoop& /*loop*/,
-                                journal::Writer& writer) override {
+                                journal::Writer& writer,
+                                const reflect::Registry& /*registry*/) override {
         writer_ = &writer;
         return std::nullopt;
     }
@@ -63,13 +64,7 @@ public:
                                    "entity 'Agent' carrying the kata machine plus physics bodies"};
             return error;
         }
-        Json presence = Json::object();
-        presence.set("case", std::string(name()));
-        if (writer_->record(
-                0, journal::Tier::Flight, "assert.case", cause_id, std::move(presence)) == 0)
-            return writer_->status().value_or(
-                Error{.code = "journal.refused", .message = "assert.case record refused"});
-        return std::nullopt;
+        return assertwalk::journal_case_presence(*writer_, name(), cause_id);
     }
 
     Verdict evaluate(statechart::Statechart& chart,

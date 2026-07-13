@@ -189,6 +189,37 @@ std::optional<base::Error> Statechart::set_state_hooks(MachineId machine,
     return base::Error{"statechart.unknown_region", "no such region in the machine"};
 }
 
+std::optional<base::Error> Statechart::add_component_hooks(MachineId machine,
+                                                           base::Name region,
+                                                           base::Name state,
+                                                           base::Name component,
+                                                           ComponentHooks& hooks) {
+    MachineInstance* instance = find_machine(machine);
+    if (instance == nullptr)
+        return base::Error{"statechart.unknown_machine", "no machine with this id"};
+    if (component.empty())
+        return base::Error{"statechart.bad_component", "component name must be non-empty"};
+    for (const RtRegion& rt_region : instance->regions) {
+        if (rt_region.name != region)
+            continue;
+        for (std::uint32_t s = rt_region.first_state;
+             s < rt_region.first_state + rt_region.state_count;
+             ++s) {
+            if (instance->states[s].name != state)
+                continue;
+            for (const ComponentHookSeat& seat : instance->component_hooks)
+                if (seat.state == s && seat.component == component)
+                    return base::Error{"statechart.duplicate_component",
+                                       "this component is already registered on the state"};
+            // Registration order IS attach order (component_hooks.h).
+            instance->component_hooks.push_back(ComponentHookSeat{s, component, &hooks});
+            return std::nullopt;
+        }
+        return base::Error{"statechart.unknown_state", "no such state in the region"};
+    }
+    return base::Error{"statechart.unknown_region", "no such region in the machine"};
+}
+
 std::optional<base::Error>
 Statechart::set_var(MachineId machine, std::string_view name, expr::Value value) {
     MachineInstance* instance = find_machine(machine);

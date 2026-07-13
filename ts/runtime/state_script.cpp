@@ -3,6 +3,7 @@
 #include "ts/runtime/state_script.h"
 
 #include "core/base/json.h"
+#include "ts/runtime/component_host.h"
 
 #include <string>
 #include <utility>
@@ -17,10 +18,18 @@ namespace {
 // source — like the SIM prelude, it cannot throw.
 constexpr std::string_view kStateScriptPrelude = R"js("use strict";
 globalThis.__midday_state_seats = new Map();
-globalThis.__midday_register_state_script = function (seat, cls) {
+globalThis.__midday_register_state_script = function (seat, cls, entity) {
     if (typeof cls !== "function")
         throw new TypeError("state script default export must be a class");
-    __midday_state_seats.set(seat, new cls());
+    const s = new cls();
+    // M2 0B: the host entity as a REAL ts/lib EntityRef (the seat shim
+    // constructs it via the module graph) — StateScript.entity's definite
+    // assignment lands here, so a brain can read its parts
+    // (this.entity.get(Transform)) and despawn itself (the D6 dead.ts
+    // surface). Guarded: bare 2-arg registrations (fixture shims) keep
+    // instantiating without an entity.
+    if (entity !== undefined) s.entity = entity;
+    __midday_state_seats.set(seat, s);
 };
 globalThis.__midday_state_hooks_of = function (seat) {
     const s = __midday_state_seats.get(seat);
@@ -64,10 +73,15 @@ std::optional<base::Error> StateScriptHost::bind(statechart::Statechart& chart,
 
     // The registration shim: import the module BY ITS CANONICAL NAME (an
     // already-registered name imports as itself — ScriptRuntime contract)
-    // and seat its default export. Generated per seat, never authored.
+    // and seat its default export WITH its host entity (a real ts/lib
+    // EntityRef — "midday" resolves through the toolchain's built-in
+    // resolver, D-BUILD-072). Generated per seat, never authored.
     const auto seat_id = static_cast<std::int64_t>(seats_.size());
     const std::string shim = "import M from " + base::Json(loaded.resolved).dump() + ";\n" +
-                             std::string(kRegisterFn) + "(" + std::to_string(seat_id) + ", M);\n";
+                             "import {EntityRef} from \"midday\";\n" + std::string(kRegisterFn) +
+                             "(" + std::to_string(seat_id) + ", M, " + "new EntityRef(" +
+                             std::to_string(host.index) + ", " + std::to_string(host.generation) +
+                             "));\n";
     const std::string shim_name = "<midday:state-script-seat:" + std::to_string(seat_id) + ">";
     ScriptRuntime::LoadedModule bound = runtime_->load_module_source(shim_name, shim);
     if (bound.error.has_value()) {
@@ -118,7 +132,11 @@ void StateScriptHost::invoke(const statechart::StateHookContext& ctx, Hook hook)
         call.set("arg", ctx.dt);
 
     emit_stack_.push_back(EmitFrame{seat->host, ctx.record_id, ctx.tick});
+    if (primitives_ != nullptr) // the cause bridge: ts/lib emits cite the hook
+        primitives_->push_cause(ctx.record_id);
     EvalResult result = runtime_->call_json(kInvokeFn, call);
+    if (primitives_ != nullptr)
+        primitives_->pop_cause();
     emit_stack_.pop_back();
 
     if (result.error.has_value() && !first_error_.has_value()) {

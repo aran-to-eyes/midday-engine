@@ -46,6 +46,12 @@ struct ToolchainConfig {
     std::string engine_dts = "api/engine.d.ts";
     std::string driver_js = "ts/toolchain/driver.js";
     std::string cache_dir = ".midday-cache/ts"; // regenerable, gitignored, never drift-gated
+    // Consumed by extract() only (M2 0B, #12b): the GENERATED
+    // event-payload bijection (`event_payload_types`) rides the driver
+    // request so onEvent bindings resolve against generated data —
+    // driver.js never reconstructs event names or compat hashes from
+    // naming conventions.
+    std::string bindings_spec = "api/bindings_spec.json";
     // The engine-side TS library: bare "midday/<name>" specifiers resolve to
     // "<lib_ts_dir>/<name>.ts" (typecheck via the canonical paths mapping,
     // runtime via load_module's resolver — D-BUILD-072). Every *.ts here is
@@ -99,8 +105,11 @@ struct BuildStats {
 // unextractable component fails clean the same way. `components` is the
 // entry file's `@component()`-decorated classes, source order, each
 // `{name, file, fields: [{name, type, default?, ...decoratorArgs}],
-// methods: [{name, params: [{name, type}], returns?}]}` — `type` is a
-// canonical reflect TypeDesc spelling (api/CODEGEN.md's mapping table).
+// methods: [{name, params: [{name, type}], returns?}],
+// event_bindings: [{event, payload_compat_hash}]}` — `type` is a canonical
+// reflect TypeDesc spelling (api/CODEGEN.md's mapping table);
+// `event_bindings` (M2 0B, #12b) come from onEvent overload declarations
+// resolved against bindings_spec.json's event_payload_types map.
 struct ExtractOutcome {
     CheckOutcome check;
     base::Json components; // array; empty unless check.ok

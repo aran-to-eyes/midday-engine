@@ -25,6 +25,7 @@ add_library(midday_base_tests OBJECT
     arena_test.cpp
     error_test.cpp
     float_format_test.cpp
+    hex_test.cpp
     json_test.cpp
     log_test.cpp
     name_test.cpp

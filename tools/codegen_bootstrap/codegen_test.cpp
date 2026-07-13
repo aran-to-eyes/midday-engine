@@ -171,9 +171,17 @@ declare module "midday" {
         readonly name: string;
     }
 
+    /** Entity-bound event subscription (M2 #12b): one binding per onEvent OVERLOAD DECLARATION — a literal event name paired with its ...Event payload type; a union-only signature carries no bindings and refuses. */
+    export interface EventListener {
+        onEvent(event: string, payload: unknown): void;
+    }
+
     export abstract class Component {
         readonly entity: midday.EntityRef;
         emit(name: string, payload?: Record<string, unknown>): void;
+        /** State-scoped lifecycle (M2 #12b): the owning state's enter/exit chains invoke these. */
+        onEnter?(from: string): void;
+        onExit?(to: string): void;
     }
 
     export abstract class StateScript {
@@ -217,10 +225,12 @@ declare module "midday" {
             prefab: AssetRef,
             opts?: { at?: midday.Vec3; overrides?: Record<string, Record<string, unknown>> },
         ): midday.EntityRef;
-        despawn(ref: midday.EntityRef): void;
+        despawn(ref: midday.EntityRef, opts?: { after?: number }): void;
     };
 
     export type ProbeFired = midday.EventPayloads["probe.fired"];
+
+    export type ProbeFiredEvent = midday.EventPayloads["probe.fired"];
 }
 )dts";
 

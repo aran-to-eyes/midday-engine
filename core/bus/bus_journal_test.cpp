@@ -5,14 +5,17 @@
 // no-record-no-dispatch rule, and dual-run record identity (two independent
 // buses driven by the same script, diffed — never a self-diff).
 
+#include "core/base/hex.h"
 #include "core/base/json.h"
 #include "core/base/name.h"
 #include "core/bus/bus.h"
 #include "core/bus/test_support.h"
 #include "core/journal/record.h"
+#include "core/reflect/payload_codec.h"
 #include "testkit/doctest.h"
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -128,6 +131,74 @@ TEST_CASE("bus.journal: depth-33 refusal — 32 chained triggers, then a bus.cas
     CHECK(field(refusal.payload, "event").as_string() == "chain.step");
     CHECK(field(refusal.payload, "depth").as_int() == 33);
     CHECK(field(refusal.payload, "cap").as_int() == 32);
+}
+
+TEST_CASE("bus.journal: a vocabulary trigger carries the D5 canonical envelope — bytes "
+          "authoritative, projection decoded, dispatch normalized") {
+    BusFixture fix;
+    Bus& bus = fix.bus();
+    const EventKey key = EventKey::named(Name("global"));
+
+    // The listener sees the decoded normalized PROJECTION, never the
+    // caller's raw spelling: -0 arrives as +0, schema declaration order.
+    std::vector<std::string> log;
+    RecordingListener a("A", log);
+    Json seen;
+    a.action = [&](Bus&, const EventView& event) { seen = event.payload; };
+    REQUIRE_FALSE(bus.subscribe(a, key));
+
+    Json payload = Json::object();
+    payload.set("device", 0); // authored out of schema order, with a -0 float
+    payload.set("action", "jump");
+    payload.set("strength", -0.0);
+    TriggerResult result = bus.trigger(key, Name("action.pressed"), payload, 0);
+    REQUIRE_FALSE(result.error.has_value());
+    CHECK(seen.dump() == R"({"action":"jump","strength":0,"device":0})");
+
+    std::vector<Record> records = fix.finish();
+    REQUIRE(records.size() == 1);
+    const Record& record = records[0];
+    // The envelope: codec + schema hash + AUTHORITATIVE lowercase-hex bytes
+    // + the projection — and the projection is EXACTLY the bytes' decode.
+    CHECK(field(record.payload, "payload_codec").as_string() == midday::reflect::kPayloadCodecName);
+    const auto* entry = fix.registry.find_event(Name("action.pressed"));
+    REQUIRE(entry != nullptr);
+    CHECK(field(record.payload, "payload_schema").as_string() ==
+          midday::base::hex64(entry->desc.compat_hash));
+    const std::string& hex = field(record.payload, "payload_bytes").as_string();
+    const auto bytes = midday::base::hex_to_bytes(hex);
+    midday::reflect::DecodeResult decoded =
+        midday::reflect::decode_payload(&entry->desc, unwrap(bytes));
+    REQUIRE_FALSE(decoded.error.has_value());
+    CHECK(field(record.payload, "payload").dump() == decoded.payload.dump());
+    CHECK(field(record.payload, "payload").dump() ==
+          R"({"action":"jump","strength":0,"device":0})");
+}
+
+TEST_CASE("bus.journal: a non-finite float refuses bus.payload_invalid WITH the field path") {
+    BusFixture fix;
+    Bus& bus = fix.bus();
+    const EventKey key = EventKey::named(Name("global"));
+
+    std::vector<std::string> log;
+    RecordingListener a("A", log);
+    REQUIRE_FALSE(bus.subscribe(a, key));
+
+    Json payload = Json::object();
+    payload.set("action", "jump");
+    payload.set("strength", std::numeric_limits<double>::quiet_NaN());
+    payload.set("device", 0);
+    TriggerResult refused = bus.trigger(key, Name("action.pressed"), payload, 0);
+    CHECK(code_of(refused.error) == "bus.payload_invalid");
+    CHECK(log.empty()); // refused triggers dispatch nothing
+    CHECK(field(unwrap(refused.error).details, "reason").as_string() == "non_finite");
+    CHECK(field(unwrap(refused.error).details, "field").as_string() == "strength");
+
+    std::vector<Record> records = fix.finish();
+    REQUIRE(records.size() == 1);
+    CHECK(records[0].kind == "bus.payload_invalid");
+    // The refusal record's payload IS the error's details — one shape.
+    CHECK(records[0].payload.dump() == unwrap(refused.error).details.dump());
 }
 
 TEST_CASE("bus.journal: an invalid payload journals its refusal, and dispatches nothing") {

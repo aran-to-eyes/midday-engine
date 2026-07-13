@@ -26,6 +26,9 @@ midday_apply_deterministic_fp(midday_statechart)
 # into the midday binary (D-BUILD-014 pattern).
 add_library(midday_statechart_tests OBJECT
     hook_order_test.cpp
+    component_hooks_test.cpp
+    despawn_exit_test.cpp
+    journal_refusal_test.cpp
     transition_test.cpp
     cascade_test.cpp
     watcher_test.cpp

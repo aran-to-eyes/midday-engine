@@ -2,7 +2,10 @@
 // embedded QuickJS right after the vendored typescript.js (global `ts`).
 // One entry point: globalThis.__midday_ts_run(request) -> response.
 //
-//   request:  { entry, engine_dts, lib_dir, options, emit, extract }
+//   request:  { entry, engine_dts, lib_dir, options, emit, extract,
+//               event_payload_types? }  // extract only: bindings_spec.json's
+//                                       // generated ...Event -> {event,
+//                                       // payload_compat_hash} bijection
 //   response: { diagnostics: [{kind, code, file, line, col, message}...],
 //               js?, components?, failure? }  // failure = infrastructure,
 //                                              // never a code problem
@@ -132,6 +135,23 @@
     // write exactly like a type error or lint hit (CheckOutcome.ok gates on
     // one array). Called only when request.extract && diagnostics.length
     // === 0 (extraction never runs against an already-dirty compile).
+    //
+    // Event bindings (M2 0B, #12b — spec §A): `onEvent` is the ONE
+    // event-listener convention. Each OVERLOAD DECLARATION (bodyless
+    // signature) is one binding — exactly two params, a literal event-name
+    // type plus a generated `...Event` payload type resolved against the
+    // request's event_payload_types bijection (bindings_spec.json; hashes
+    // are never reconstructed from names). A body-carrying implementation
+    // signature is metadata-ignored once any declaration exists, and IS the
+    // single binding otherwise. Distinct structured refusals, all "schema"
+    // kind: schema.event_union_only (a union where per-event overloads are
+    // required), schema.event_listener_shape (any other malformed onEvent
+    // signature, incl. an unrecognized payload type), schema.event_mismatch
+    // (literal event != the payload type's event), schema.event_duplicate
+    // (one event bound twice on a component), schema.event_payload_field /
+    // schema.event_payload_param (a payload type outside an onEvent
+    // binding: @field state or an ordinary method parameter — payloads are
+    // subscriptions, never storage).
     const TYPE_KEYWORD_KIND = {
         [ts.SyntaxKind.NumberKeyword]: "float",
         [ts.SyntaxKind.StringKeyword]: "string",
@@ -169,21 +189,24 @@
     // (api/CODEGEN.md "Script component API" field-type table).
     // 'midday'-qualified spellings (m1-exit Phase 3, CONCERNS #12a) resolve
     // SYNTACTICALLY against the engine.d.ts the program already carries.
-    // Layering (proven by the three negative fixtures): the CHECKER owns
+    // Layering (proven by the negative fixtures): the CHECKER owns
     // existence, PER SURFACE — import('midday').X checks against the
     // ambient module's re-export list (value types, authoring surface, and
-    // the UNSUFFIXED event-payload aliases; never the Event-suffixed
-    // interfaces — engine.d.ts:429), midday.X against the full namespace — so
-    // Nonexistent and module-unexported names (TriggerEnteredEvent) die as
-    // TS2694 before extraction ever runs; THIS gate owns the TypeDesc
-    // mapping and doubles as drift-defense should a compiler change ever
-    // demote unknown members to `any`. A qualified name
-    // extracts only when the d.ts actually declares it AND the field-type
-    // table maps it; d.ts membership without a table row
-    // (TriggerEnteredEvent) and table rows the d.ts lost both stay null —
-    // fail-closed, identical to a bare unknown TypeReference. The name set
-    // is trusted because engine.d.ts is a GENERATED artifact the CI drift
-    // lane byte-pins to codegen — a hand-divergent d.ts cannot land.
+    // BOTH event-payload alias flavors since M2 #12b: bare TriggerEntered
+    // AND suffixed TriggerEnteredEvent — engine.d.ts's module block),
+    // midday.X against the full namespace — so Nonexistent dies as TS2694
+    // before extraction ever runs; THIS gate owns the TypeDesc mapping and
+    // doubles as drift-defense should a compiler change ever demote unknown
+    // members to `any`. A qualified name extracts only when the d.ts
+    // actually declares it AND the field-type table maps it; d.ts
+    // membership without a table row and table rows the d.ts lost both
+    // stay null — fail-closed, identical to a bare unknown TypeReference.
+    // Event-payload types (the event_payload_types bijection) are handled
+    // one gate EARLIER by extractComponents' payload-position checks: legal
+    // only as an onEvent overload's second parameter, a DISTINCT structured
+    // refusal everywhere else. The name set is trusted because engine.d.ts
+    // is a GENERATED artifact the CI drift lane byte-pins to codegen — a
+    // hand-divergent d.ts cannot land.
     const typeFromAnnotation = (node, engineTypeNames) => {
         if (TYPE_KEYWORD_KIND[node.kind] !== undefined) return TYPE_KEYWORD_KIND[node.kind];
         if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName))
@@ -197,6 +220,17 @@
             return element === null ? null : "array<" + element + ">";
         }
         return null;
+    };
+
+    // The NAME an annotation spells, whatever the qualification — bare
+    // `ContactBeganEvent`, `midday.ContactBeganEvent`, or
+    // `import('midday').ContactBeganEvent` — or null for any other shape.
+    // Existence stays the checker's job (same layering as above); this is
+    // only the lookup key for the event_payload_types bijection.
+    const annotationTypeName = (node) => {
+        if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName))
+            return node.typeName.text;
+        return middayQualifiedName(node);
     };
 
     // Top-level type names `declare namespace midday { ... }` actually
@@ -297,13 +331,22 @@
         return out;
     };
 
-    function extractComponents(sourceFile, pushDiagnostic, engineTypeNames) {
-        const schemaError = (node, message) => {
+    function extractComponents(sourceFile, pushDiagnostic, engineTypeNames, eventPayloadTypes) {
+        const schemaError = (node, code, message) => {
             const pos = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
             pushDiagnostic({
-                kind: "schema", code: "schema.unresolved_type", file: sourceFile.fileName,
+                kind: "schema", code, file: sourceFile.fileName,
                 line: pos.line + 1, col: pos.character + 1, message,
             });
+        };
+        // The event_payload_types lookup: annotation -> {event,
+        // payload_compat_hash}, or null when the annotation does not name a
+        // generated payload type (whatever the qualification).
+        const payloadBinding = (node) => {
+            const name = annotationTypeName(node);
+            return name !== null &&
+                Object.prototype.hasOwnProperty.call(eventPayloadTypes, name)
+                ? { name, binding: eventPayloadTypes[name] } : null;
         };
         const components = [];
         for (const node of sourceFile.statements) {
@@ -312,17 +355,41 @@
             if (classCall === null) continue;
             const fields = [];
             const methods = [];
+            const listeners = []; // onEvent members, source order
             let clean = true;
             for (const member of node.members) {
+                // onEvent is a reserved hook name with ONE authorable shape:
+                // method declarations/overloads. A class PROPERTY (the arrow-
+                // function callback style) or accessor parses as a different
+                // member kind — the overload reader below sees methods only,
+                // while the runtime's typeof-introspection would still report
+                // the hook present: zero bindings, silently never subscribed.
+                // Refuse the shape instead of tolerating the silent gap.
+                if (!ts.isMethodDeclaration(member) && member.name !== undefined &&
+                        ts.isIdentifier(member.name) && member.name.text === "onEvent") {
+                    schemaError(member, "schema.event_listener_shape", "onEvent must be " +
+                        "authored as a method declaration, never a class property or " +
+                        "accessor — api/CODEGEN.md \"Script component API\"");
+                    clean = false;
+                    continue;
+                }
                 if (ts.isPropertyDeclaration(member) && ts.isIdentifier(member.name)) {
                     const fieldCall = decoratorCall(member, "field");
                     if (fieldCall === null) continue;
+                    if (member.type !== undefined && payloadBinding(member.type) !== null) {
+                        schemaError(member, "schema.event_payload_field", "@field " +
+                            member.name.text + ": event payload types bind through onEvent " +
+                            "overload declarations, never @field state");
+                        clean = false;
+                        continue;
+                    }
                     const type = member.type !== undefined
                         ? typeFromAnnotation(member.type, engineTypeNames)
                         : member.initializer !== undefined ? typeFromLiteral(member.initializer)
                         : null;
                     if (type === null) {
-                        schemaError(member, "@field " + member.name.text + ": cannot determine " +
+                        schemaError(member, "schema.unresolved_type", "@field " +
+                            member.name.text + ": cannot determine " +
                             "a schema type (add an explicit type annotation or a literal " +
                             "initializer) — api/CODEGEN.md \"Script component API\"");
                         clean = false;
@@ -335,7 +402,8 @@
                     }
                     const options = decoratorOptions(fieldCall);
                     if (options === null) {
-                        schemaError(fieldCall, "@field(...) on " + member.name.text + " must be " +
+                        schemaError(fieldCall, "schema.unresolved_type", "@field(...) on " +
+                            member.name.text + " must be " +
                             "a plain object literal of literal values");
                         clean = false;
                         continue;
@@ -343,20 +411,32 @@
                     if (options !== undefined) for (const key of Object.keys(options)) field[key] = options[key];
                     fields.push(field);
                 } else if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name)) {
+                    if (member.name.text === "onEvent") {
+                        listeners.push(member);
+                        continue;
+                    }
                     const params = [];
                     let paramsClean = true;
                     for (const param of member.parameters) {
+                        if (param.type !== undefined && payloadBinding(param.type) !== null) {
+                            schemaError(param, "schema.event_payload_param", member.name.text +
+                                "(...): event payload types bind through onEvent overload " +
+                                "declarations, never ordinary method parameters");
+                            paramsClean = false;
+                            break;
+                        }
                         const type = ts.isIdentifier(param.name) && param.type !== undefined
                             ? typeFromAnnotation(param.type, engineTypeNames) : null;
                         if (type === null) {
+                            schemaError(member, "schema.unresolved_type", member.name.text +
+                                "(...): every parameter needs a " +
+                                "recognized explicit type annotation");
                             paramsClean = false;
                             break;
                         }
                         params.push({ name: param.name.text, type });
                     }
                     if (!paramsClean) {
-                        schemaError(member, member.name.text + "(...): every parameter needs a " +
-                            "recognized explicit type annotation");
                         clean = false;
                         continue;
                     }
@@ -364,7 +444,8 @@
                     if (member.type !== undefined) {
                         const returns = typeFromAnnotation(member.type, engineTypeNames);
                         if (returns === null) {
-                            schemaError(member.type, member.name.text + "(): unrecognized return type");
+                            schemaError(member.type, "schema.unresolved_type",
+                                member.name.text + "(): unrecognized return type");
                             clean = false;
                             continue;
                         }
@@ -373,7 +454,64 @@
                     methods.push(method);
                 }
             }
-            if (clean) components.push({ name: node.name.text, file: sourceFile.fileName, fields, methods });
+            // onEvent -> event_bindings: overload DECLARATIONS bind; the
+            // implementation signature is metadata only once any declaration
+            // exists (and IS the single binding otherwise).
+            const declarations = listeners.filter((m) => m.body === undefined);
+            const eventBindings = [];
+            const bound = new Set();
+            for (const sig of declarations.length > 0 ? declarations : listeners) {
+                if (sig.parameters.length === 2 && sig.parameters[0].type !== undefined &&
+                    (ts.isUnionTypeNode(sig.parameters[0].type) ||
+                        (sig.parameters[1].type !== undefined &&
+                            ts.isUnionTypeNode(sig.parameters[1].type)))) {
+                    schemaError(sig, "schema.event_union_only", "onEvent binds through " +
+                        "per-event overload declarations — a union signature carries no " +
+                        "event<->payload bijection");
+                    clean = false;
+                    continue;
+                }
+                const eventType = sig.parameters.length === 2 ? sig.parameters[0].type : undefined;
+                const payloadType = sig.parameters.length === 2 ? sig.parameters[1].type : undefined;
+                if (eventType === undefined || payloadType === undefined ||
+                    !ts.isLiteralTypeNode(eventType) || !ts.isStringLiteral(eventType.literal)) {
+                    schemaError(sig, "schema.event_listener_shape", "onEvent must declare " +
+                        "exactly (event: \"<event.name>\", payload: <...Event>) — " +
+                        "api/CODEGEN.md \"Script component API\"");
+                    clean = false;
+                    continue;
+                }
+                const eventName = eventType.literal.text;
+                const payload = payloadBinding(payloadType);
+                if (payload === null) {
+                    schemaError(payloadType, "schema.event_listener_shape", "onEvent's payload " +
+                        "parameter must be a generated ...Event payload type " +
+                        "(bindings_spec.json event_payload_types)");
+                    clean = false;
+                    continue;
+                }
+                if (payload.binding.event !== eventName) {
+                    schemaError(sig, "schema.event_mismatch", "onEvent binds \"" + eventName +
+                        "\" but " + payload.name + " is the payload of \"" +
+                        payload.binding.event + "\"");
+                    clean = false;
+                    continue;
+                }
+                if (bound.has(eventName)) {
+                    schemaError(sig, "schema.event_duplicate", "duplicate onEvent binding for \"" +
+                        eventName + "\"");
+                    clean = false;
+                    continue;
+                }
+                bound.add(eventName);
+                eventBindings.push({
+                    event: eventName,
+                    payload_compat_hash: payload.binding.payload_compat_hash,
+                });
+            }
+            if (clean)
+                components.push({ name: node.name.text, file: sourceFile.fileName, fields,
+                    methods, event_bindings: eventBindings });
         }
         return components;
     }
@@ -396,7 +534,8 @@
         if (request.extract && diagnostics.length === 0) {
             const entrySource = program.getSourceFile(request.entry);
             response.components = extractComponents(entrySource, (d) => diagnostics.push(d),
-                collectEngineTypeNames(program.getSourceFile(request.engine_dts)));
+                collectEngineTypeNames(program.getSourceFile(request.engine_dts)),
+                request.event_payload_types ?? {}); // absent map = fail-closed lookups
             if (diagnostics.length > 0) delete response.components; // a schema error dirtied it
         }
         if (request.emit && diagnostics.length === 0) {

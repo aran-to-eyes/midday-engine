@@ -52,9 +52,11 @@ struct ComponentVocabLoadResult {
     std::optional<base::Error> error;
 };
 
-// Reads a project component-schema manifest (the `{"format_version":1,
+// Reads a project component-schema manifest (the `{"format_version":2,
 // "components":[{"name":...},...]}` document `midday script extract`
-// writes) and extracts just the component NAMES. `path` is optional: an
+// writes; format 1, pre-event_bindings, reads identically — the NAME walk
+// never touches versioned members) and extracts just the component NAMES.
+// `path` is optional: an
 // empty path returns an empty (native-only) vocab, not an error — callers
 // that have no manifest to offer (the common case until a project wires
 // one) still get well-defined behavior.

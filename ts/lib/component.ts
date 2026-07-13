@@ -61,7 +61,11 @@ declare function __midday_world_spawn(
     at: { x: number; y: number; z: number } | null,
     overrides: Record<string, Record<string, unknown>>,
 ): { index: number; generation: number };
-declare function __midday_world_despawn(index: number, generation: number): void;
+// `after` (despawn linger, #14) is declared but passed ONLY when the caller
+// supplies it: the C++ seat (ts/runtime/world_host.cpp) keeps its
+// two-argument arity until the linger track lands (M2 0B track D), so an
+// early {after} call fails loudly there instead of silently dropping.
+declare function __midday_world_despawn(index: number, generation: number, after?: number): void;
 
 // index -> { generation, components: {name -> instance} }. Slot reuse
 // (core/ecs/entity.h, LIFO) means a bucket must be re-validated against the
@@ -170,6 +174,19 @@ export const events = {
     },
 };
 
+/** Entity-bound event subscription (M2 #12b): a component binds by declaring
+ *  `onEvent` OVERLOADS — one binding per overload declaration, a literal
+ *  event name paired with its generated `...Event` payload type, e.g.
+ *  `onEvent(event: "contact.began", payload: ContactBeganEvent): void;` —
+ *  which `midday script extract` reads into the manifest's event_bindings.
+ *  A union-only implementation signature carries no bindings and refuses
+ *  (schema.event_union_only); payload types anywhere else (@field state,
+ *  ordinary method params) refuse too. Dispatch seating lands with the
+ *  component-host track. */
+export interface EventListener {
+    onEvent(event: string, payload: unknown): void;
+}
+
 export abstract class Component {
     // Populated by __attachComponent, once, before any script observes the
     // instance — never reassigned after. `readonly` in engine.d.ts's
@@ -181,6 +198,13 @@ export abstract class Component {
     emit(name: string, payload: Record<string, unknown> = {}): void {
         events.trigger(name, payload, { key: this.entity });
     }
+
+    /** State-scoped lifecycle (M2 #12b): the owning state's enter/exit
+     *  chains invoke these — hook seating lands with the component-host
+     *  track; the AUTHORED surface (engine.d.ts) declares them now so the
+     *  two stay in sync by hand, per the file header. */
+    onEnter?(from: string): void;
+    onExit?(to: string): void;
 }
 
 /** Every entity's invariant local TRS (spec 4.1: "Base components ...
@@ -281,8 +305,14 @@ export const world = {
     },
 
     /** Queues a despawn through the SAME deferred structural queue every
-     *  despawn rides — `ref` stays alive until the structural-apply phase. */
-    despawn(ref: EntityRef): void {
-        __midday_world_despawn(ref.index, ref.generation);
+     *  despawn rides — `ref` stays alive until the structural-apply phase.
+     *  `opts.after` (seconds, despawn linger #14) defers the reap; the
+     *  extra host argument travels ONLY when supplied because the C++ seat
+     *  keeps its current arity until the linger track lands (M2 0B track
+     *  D) — the default path is byte-for-byte the pre-#12b call. */
+    despawn(ref: EntityRef, opts?: { after?: number }): void {
+        if (opts !== undefined && opts.after !== undefined)
+            __midday_world_despawn(ref.index, ref.generation, opts.after);
+        else __midday_world_despawn(ref.index, ref.generation);
     },
 };

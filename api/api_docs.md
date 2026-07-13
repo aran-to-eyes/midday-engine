@@ -4,7 +4,7 @@ GENERATED from engine_api.json. DO NOT EDIT.
 Signature compat hashes are XXH3-64 over signature-only JSON (docs excluded).
 
 - engine_version: `0.1.0`
-- api_compat_hash: `5d6d9dc571cd6a30`
+- api_compat_hash: `412c76eca6ae00e2`
 
 ## Classes
 
@@ -408,7 +408,7 @@ Positionals:
 
 load a scene and step the deterministic sim headless (FLIGHT-recorded)
 
-- compat_hash: `b5a3a0af9153dba5`
+- compat_hash: `74d59e0075ae512d`
 
 Flags:
 
@@ -420,6 +420,7 @@ Flags:
 | `--record` | `string` | no |  | run.mrj bundle path (default: the .midday-cache/run/last.mrj scratch bundle) |
 | `--cache-dir` | `string` | no |  | TS build cache directory (default: .midday-cache/ts) |
 | `--assert` | `string` | no |  | drive + verify a registered assertion pack: case=<name> (available: appendix_a_golden, determinism_kata) |
+| `--components` | `string` | no |  | a project component-schema manifest (`midday script extract --out`) naming the scene's TS components |
 
 Positionals:
 

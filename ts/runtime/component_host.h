@@ -59,6 +59,11 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
+
+namespace midday::reflect {
+class Registry;
+}
 
 namespace midday::script {
 
@@ -90,6 +95,28 @@ public:
     // the slot reports despawn_tick: null (unknown — honestly, not "never").
     void note_despawn(ecs::EntityRef ref, std::uint64_t tick);
 
+    // The authoring->wire payload adapter's schema source (M2 0B
+    // integration): with a registry wired, the trigger seats convert the
+    // LIBRARY surface's natural JS field shapes into the bus's wire forms
+    // (D-BUILD-046) — an EntityRef instance ({index, generation} across the
+    // boundary) becomes its to_bits() integer, an {x, y[, z[, w]]} object
+    // becomes the vec tuple — for exactly the fields the event's schema
+    // declares (schema-driven, never heuristic; unregistered events and
+    // undeclared fields pass verbatim, and the bus still validates
+    // everything). Unset (tests, pre-0B compositions): payloads pass
+    // through untouched — authors owe wire forms, as before.
+    void set_registry(const reflect::Registry& registry) { registry_ = &registry; }
+
+    // Cause-frame stack (M2 0B, #12b): while a component hook / onEvent
+    // dispatch runs, ITS journal record is the cause of every trigger the
+    // script makes through this seat (the StateScriptHost EmitFrame
+    // discipline, extended to the component tier). Balanced push/pop around
+    // each invocation; empty stack = cause 0, byte-identically the pre-0B
+    // behavior.
+    void push_cause(std::uint64_t record_id) { cause_stack_.push_back(record_id); }
+
+    void pop_cause() { cause_stack_.pop_back(); }
+
 private:
     [[nodiscard]] HostResult status(const base::Json::Array& args) const;
     [[nodiscard]] HostResult root(const base::Json::Array& args) const;
@@ -103,7 +130,9 @@ private:
     ecs::World* world_;
     bus::Bus* bus_;
     hierarchy::Hierarchy* hierarchy_;
+    const reflect::Registry* registry_ = nullptr; // set_registry (wire adapter)
     std::unordered_map<std::uint32_t, std::pair<std::uint32_t, std::uint64_t>> despawn_ticks_;
+    std::vector<std::uint64_t> cause_stack_; // push_cause/pop_cause frames
 };
 
 } // namespace midday::script

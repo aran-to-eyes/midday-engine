@@ -32,7 +32,8 @@ lane):
   join at m1). Meta-schema: `formats/schema_manifest.schema.json`.
 - `api_docs.md` — generated reference: every entry with docs + compat hash.
 - `bindings_spec.json` — the glue spec m0-batch-bindings implements
-  (call signatures + batch envelope placeholder).
+  (call signatures + batch envelope + state-script hook seam + the M2 #12b
+  `event_payload_types` bijection driver.js's onEvent extraction consults).
 
 Regenerate all four: `build/dev/midday api codegen` from the repo root.
 Every formatting rule (the byte contract both generators obey): `CODEGEN.md`.

@@ -214,6 +214,15 @@ void TickLoop::run_hooks(Phase phase, std::uint64_t phase_record_id, std::uint64
 }
 
 std::optional<base::Error> TickLoop::run_structural_apply(std::uint64_t phase_record_id) {
+    // The PRE-FLUSH half of the structural extension (M2 0B, D4): due
+    // despawns run their full exit chains while the entities are provably
+    // still alive, then queue removals into the flush right below —
+    // exit-chains-before-removal at the exact ceiling tick is impossible
+    // post-flush-only, which is why this half exists.
+    if (preparer_) {
+        if (auto error = preparer_(tick_, phase_record_id))
+            return error;
+    }
     // Queued spawns/despawns/reparents apply in queue order; the hierarchy's
     // reparent handler and despawn observer run inside the flush, and tree
     // order indices rebuild lazily off the new topology.

@@ -144,25 +144,45 @@ behavioral_script_toolchain() { # <bin> <build_dir>
         and ([.diagnostics[] | select(.line > 0 and .col > 0)] | length) == 6' >/dev/null
 }
 
-# Exit-test #1: the two authored Warden components typecheck against the
-# generated engine.d.ts. Exit-test #2: their schema extracts STATICALLY from
-# the AST into a PROJECT manifest. The extract-throws fixture proves the walk
-# never runs the code.
+# Exit-test #1: the authored Warden components AND dead.ts (despawn-linger
+# authoring surface, M2 0B #12b) typecheck against the generated
+# engine.d.ts. Exit-test #2: their schema extracts STATICALLY from the AST
+# into a PROJECT manifest (format 2: event_bindings). The extract-throws
+# fixture proves the walk never runs the code.
 behavioral_ts_components() { # <bin> <build_dir>
     local bin="$1" build_dir="$2"
-    rm -f "$build_dir/health.components.json" "$build_dir/dangerous.components.json"
+    rm -f "$build_dir/health.components.json" "$build_dir/dangerous.components.json" \
+        "$build_dir/damage.components.json"
     "$bin" script check "examples/warden/components/health.ts" \
         --cache-dir "$build_dir/ts-cache.components" --json | jq -e '.ok' >/dev/null
     "$bin" script check "examples/warden/components/damage_on_touch.ts" \
         --cache-dir "$build_dir/ts-cache.components" --json | jq -e '.ok' >/dev/null
+    # dead.ts joined the typecheck corpus at M2 0B: world.despawn(ref,
+    # {after}) is authored surface now (the old standing TS2554 died with
+    # the despawn opts regeneration).
+    "$bin" script check "examples/warden/states/dead.ts" \
+        --cache-dir "$build_dir/ts-cache.components" --json | jq -e '.ok' >/dev/null
     "$bin" script extract "examples/warden/components/health.ts" \
         --out "$build_dir/health.components.json" --cache-dir "$build_dir/ts-cache.components" --json \
         | jq -e '.ok and .components == 1' >/dev/null
-    jq -e '.format_version == 1 and .components[0].name == "Health"
+    jq -e '.format_version == 2 and .components[0].name == "Health"
         and (.components[0].fields | map(.name)) == ["max","value"]
         and .components[0].fields[0].type == "float" and .components[0].fields[0].min == 0
-        and (.components[0].methods[0].params | map(.type)) == ["float","entity_ref"]' \
+        and (.components[0].methods[0].params | map(.type)) == ["float","entity_ref"]
+        and .components[0].event_bindings == []' \
         "$build_dir/health.components.json" >/dev/null
+    # The spec-literal two-param listener (D1, #12b): DamageOnTouch's
+    # onEvent overload extracts to the exact {event, payload_compat_hash}
+    # pair — the hash pinned literally against bindings_spec.json's
+    # generated bijection, and onEvent NEVER doubles as an ordinary method.
+    "$bin" script extract "examples/warden/components/damage_on_touch.ts" \
+        --out "$build_dir/damage.components.json" --cache-dir "$build_dir/ts-cache.components" --json \
+        | jq -e '.ok and .components == 1' >/dev/null
+    jq -e '.components[0].name == "DamageOnTouch"
+        and .components[0].event_bindings ==
+            [{"event":"trigger.entered","payload_compat_hash":"d9d4b0d4f4ce21a0"}]
+        and ([.components[0].methods[].name] | index("onEvent")) == null' \
+        "$build_dir/damage.components.json" >/dev/null
     "$bin" script extract "testkit/fixtures/ts/component_extract_throws.ts" \
         --out "$build_dir/dangerous.components.json" --cache-dir "$build_dir/ts-cache.components" --json \
         | jq -e '.ok and .components == 1' >/dev/null
@@ -182,11 +202,12 @@ behavioral_ts_components() { # <bin> <build_dir>
         and (.components[0].methods[0].params | map(.type)) == ["entity_ref","vec3"]
         and .components[0].methods[1].returns == "vec3"' \
         "$build_dir/qualified.components.json" >/dev/null
-    # Negatives — both refusal classes, both exit 3, both validate-before-
+    # Negatives — every refusal class, all exit 3, all validate-before-
     # write (no manifest file may appear).
-    # SCHEMA-owned: in the d.ts but not a field type (TriggerEnteredEvent —
-    # the exact boundary the M2 event-vocab decision #12b will move) ->
-    # schema.unresolved_type from the extraction walk.
+    # SCHEMA-owned: in the d.ts but not a field type (midday.EventPayloads,
+    # the lookup-map interface — retargeted at #12b when the old
+    # TriggerEnteredEvent annotation became the payload-position refusal
+    # below) -> schema.unresolved_type from the extraction walk.
     local rc=0 out
     out=$("$bin" script extract "testkit/fixtures/ts/component_extract_unresolved.ts" \
         --out "$build_dir/unresolved.components.json" \
@@ -206,17 +227,65 @@ behavioral_ts_components() { # <bin> <build_dir>
     echo "$out" | jq -e '(.ok | not) and .error.code == "script.type_error"
         and (([.diagnostics[].code] | index("TS2694")) != null)' >/dev/null
     [ ! -f "$build_dir/unknown_member.components.json" ]
-    # MODULE-surface: in the namespace but NOT module-exported (event
-    # interfaces) -> TS2694 via the import('midday') spelling. This pins
-    # module-exports ⊂ namespace — the exact surface #12b will extend.
-    rc=0
-    out=$("$bin" script extract "testkit/fixtures/ts/component_extract_module_surface.ts" \
+    # MODULE-surface, consciously FLIPPED at M2 0B (#12b): the module now
+    # exports the ...Event-suffixed payload aliases, so the m1-exit TS2694
+    # pin became the POSITIVE vocabulary pin — the spec-literal two-param
+    # onEvent extracts the exact event_bindings pair. Module-exports ⊂
+    # namespace still holds; the boundary moved by exactly these aliases
+    # (unknown_member above still pins the checker's module gate).
+    rm -f "$build_dir/module_surface.components.json"
+    "$bin" script extract "testkit/fixtures/ts/component_extract_module_surface.ts" \
         --out "$build_dir/module_surface.components.json" \
-        --cache-dir "$build_dir/ts-cache.components" --json) || rc=$?
+        --cache-dir "$build_dir/ts-cache.components" --json \
+        | jq -e '.ok and .components == 1' >/dev/null
+    jq -e '.format_version == 2 and .components[0].name == "Eavesdropper"
+        and .components[0].event_bindings ==
+            [{"event":"trigger.entered","payload_compat_hash":"d9d4b0d4f4ce21a0"}]
+        and (.components[0].fields | map(.name)) == ["sensitivity"]
+        and .components[0].methods == []' \
+        "$build_dir/module_surface.components.json" >/dev/null
+
+    # M2 0B (#12b) event-vocabulary negatives: six DISTINCT structured
+    # refusals, each exit 3 + script.schema_error + its own diagnostic code,
+    # each validate-before-write (no manifest file may appear). The sixth
+    # (council fix C3): onEvent authored as a class PROPERTY refuses as the
+    # listener-shape violation instead of extracting zero bindings silently.
+    local stem code
+    for stem in \
+        "event_field:schema.event_payload_field" \
+        "event_param:schema.event_payload_param" \
+        "event_mismatch:schema.event_mismatch" \
+        "event_duplicate:schema.event_duplicate" \
+        "event_union:schema.event_union_only" \
+        "event_property:schema.event_listener_shape"; do
+        code="${stem#*:}"
+        stem="${stem%%:*}"
+        rm -f "$build_dir/$stem.components.json"
+        rc=0
+        out=$("$bin" script extract "testkit/fixtures/ts/component_extract_$stem.ts" \
+            --out "$build_dir/$stem.components.json" \
+            --cache-dir "$build_dir/ts-cache.components" --json) || rc=$?
+        [ "$rc" -eq 3 ]
+        echo "$out" | jq -e --arg code "$code" '(.ok | not)
+            and .error.code == "script.schema_error"
+            and (([.diagnostics[].code] | index($code)) != null)' >/dev/null
+        [ ! -f "$build_dir/$stem.components.json" ]
+    done
+
+    # `midday run --components` (M2 0B, #12b): flag registered + VALIDATED
+    # only — host wiring lands with the component-host track. A missing
+    # manifest refuses structured (exit 3) before any tick; a valid format-2
+    # manifest passes through with run behavior unchanged.
+    rc=0
+    out=$("$bin" run "testkit/smoke/smoke.scene.yaml" --ticks 1 \
+        --cache-dir "$build_dir/ts-cache.components" \
+        --components "$build_dir/no_such.components.json" --json) || rc=$?
     [ "$rc" -eq 3 ]
-    echo "$out" | jq -e '(.ok | not) and .error.code == "script.type_error"
-        and (([.diagnostics[].code] | index("TS2694")) != null)' >/dev/null
-    [ ! -f "$build_dir/module_surface.components.json" ]
+    echo "$out" | jq -e '(.ok | not) and .error.code == "loader.io"' >/dev/null
+    "$bin" run "testkit/smoke/smoke.scene.yaml" --ticks 1 \
+        --cache-dir "$build_dir/ts-cache.components" \
+        --components "$build_dir/health.components.json" --json \
+        | jq -e '.ok and .ticks == 1' >/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -735,6 +804,53 @@ behavioral_determinism_kata_byte_reinforce() { # <build_dir>
     zstdcat "$build_dir/spike/ka.mrj/journal.jsonl.zst" >"$build_dir/spike/ka.jsonl"
     zstdcat "$build_dir/spike/kb.mrj/journal.jsonl.zst" >"$build_dir/spike/kb.jsonl"
     cmp "$build_dir/spike/ka.jsonl" "$build_dir/spike/kb.jsonl"
+}
+
+# ---------------------------------------------------------------------------
+# component_event_lifecycle golden (M2 node 0B, FUSED-SPEC D6) — Linux/macOS
+# ---------------------------------------------------------------------------
+
+# The milestone's THIRD golden: the authored examples/lifecycle corpus —
+# typed two-param onEvent hydration (distinct EntityRefs, Vec3, signed-zero
+# normalization), the canonical payload-byte envelope pinned literally, the
+# 7-line A.2.1 exit chain, the REAL warden dead.ts, and the exact-tick
+# despawn reap at 1 + ceil(4.0 * 60) = 241 — driven through the real run
+# verb with --components wired. The committed manifest is REGENERATED from
+# the TS source and byte-compared FIRST (extract drift reds loudly); then
+# the twelve named verdicts must hold and two INDEPENDENT runs must diff
+# identical via the engine's own `journal diff` (never a self-diff).
+behavioral_component_event_lifecycle() { # <bin> <build_dir>
+    local bin="$1" build_dir="$2"
+    rm -rf "$build_dir/lifecycle"
+    mkdir -p "$build_dir/lifecycle"
+    "$bin" script extract "examples/lifecycle/components/lifecycle_components.ts" \
+        --out "$build_dir/lifecycle/components.json" \
+        --cache-dir "$build_dir/ts-cache.lifecycle" --json \
+        | jq -e '.ok and .components == 5' >/dev/null
+    cmp "examples/lifecycle/lifecycle.components.json" "$build_dir/lifecycle/components.json"
+    "$bin" run "examples/lifecycle/lifecycle.scene.yaml" --ticks 241 --seed 7 \
+        --components "examples/lifecycle/lifecycle.components.json" \
+        --record "$build_dir/lifecycle/l1.mrj" --cache-dir "$build_dir/ts-cache.lifecycle" \
+        --assert case=component_event_lifecycle --json \
+        | jq -e '.ok and .ticks==241
+            and .assertions.initial_entry_seated_order
+            and .assertions.exit_chain_seven_lines
+            and .assertions.contact_payload_bytes_pinned
+            and .assertions.canonical_payloads_verified
+            and .assertions.typed_hydration_verified
+            and .assertions.signed_zero_normalized
+            and .assertions.base_transform_mirror_read
+            and .assertions.kill_cause_chain
+            and .assertions.boss_died_at_enter_once
+            and .assertions.despawn_scheduled_due_241
+            and .assertions.despawn_exit_order
+            and .assertions.reaped_at_exactly_241' >/dev/null
+    "$bin" run "examples/lifecycle/lifecycle.scene.yaml" --ticks 241 --seed 7 \
+        --components "examples/lifecycle/lifecycle.components.json" \
+        --record "$build_dir/lifecycle/l2.mrj" --cache-dir "$build_dir/ts-cache.lifecycle" \
+        --assert case=component_event_lifecycle --json >/dev/null
+    "$bin" journal diff "$build_dir/lifecycle/l1.mrj" "$build_dir/lifecycle/l2.mrj" --json \
+        | jq -e '.first_divergent_tick==null and .identical' >/dev/null
 }
 
 # wall-clock taint: Date.now() must die at the LINT GATE (exit 3,

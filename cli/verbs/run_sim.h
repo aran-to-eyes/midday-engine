@@ -5,10 +5,12 @@
 //
 // Destruction order = reverse declaration — that ordering IS the teardown
 // contract (M2_INBOX #13): hosts -> spawner -> scene(`loaded`) -> chart ->
-// physics -> scripts/runtime/toolchain -> pack -> loop -> bus -> writer ->
-// hierarchy -> world -> registry. PrefabSpawner holds `const EventsDecl*`
-// into `loaded`'s SceneFile (prefab_spawn.h), so `loaded` MUST outlive the
-// spawner and both hosts. run_sim_test.cpp fences the order three ways
+// physics -> instance_host -> scripts/runtime/toolchain -> pack -> loop ->
+// bus -> writer -> hierarchy -> world -> registry. PrefabSpawner holds
+// `const EventsDecl*` into `loaded`'s SceneFile (prefab_spawn.h), so
+// `loaded` MUST outlive the spawner and the tail hosts; `instance_host`
+// (like `scripts`) is a chart-held hooks implementation, so it must outlive
+// `chart` (M2 0B, D2). run_sim_test.cpp fences the order three ways
 // (offsetof static_asserts, an address-order runtime check, and an ASan
 // death witness in the sanitizer lane).
 
@@ -27,6 +29,7 @@
 #include "core/statechart/statechart.h"
 #include "core/tick/tick_loop.h"
 #include "ts/runtime/component_host.h"
+#include "ts/runtime/component_instance_host.h"
 #include "ts/runtime/script_runtime.h"
 #include "ts/runtime/state_script.h"
 #include "ts/runtime/world_host.h"
@@ -52,6 +55,15 @@ struct RunSim {
     std::optional<script::Toolchain> toolchain;
     std::optional<script::ScriptRuntime> runtime;
     std::optional<script::StateScriptHost> scripts;
+    // The TS component-instance host (M2 0B, #12b): like `scripts`, it
+    // implements chart-held hook interfaces (statechart::ComponentHooks),
+    // so it MUST outlive `chart` — declared BEFORE it, never in the
+    // post-`loaded` tail (the spawner only borrows it as DespawnHooks and
+    // dies first; ~ComponentInstanceHost touches ONLY `bus` — the teardown
+    // fence: it unsubscribes its still-subscribed seat listeners, and `bus`
+    // is declared above so it outlives the host; the tail hosts dying
+    // earlier is fine). Fenced in run_sim_test.cpp.
+    std::optional<script::ComponentInstanceHost> instance_host;
     std::unique_ptr<physics::PhysicsServer> physics;
     std::optional<statechart::Statechart> chart;
     // Lifetime tail — reverse destruction IS the contract (#13):
@@ -75,9 +87,14 @@ struct RunSim {
     // ~loop; nothing can call it there (realize only runs inside tick()),
     // but this node exists to kill exactly that class of latent teardown
     // dangling. Empty realizer is the documented unset state (tick_loop.h).
+    // M2 0B track D: the extension is now TWO-PHASE (tick_loop.h D4) — the
+    // preparer_ slot captures the same &*spawner once run.cpp wires the
+    // despawn-linger half, so BOTH slots clear here, symmetrically.
     ~RunSim() {
-        if (loop.has_value())
+        if (loop.has_value()) {
+            loop->set_structural_preparer({});
             loop->set_structural_realizer({});
+        }
     }
 
     // THE single tick executor (plan seam #1): batch, bridge, testkit, and

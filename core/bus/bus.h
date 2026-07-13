@@ -17,7 +17,7 @@
 //     gets a structured "bus.cascade_depth" Error and dispatches nothing,
 //     while every enclosing level completes normally — no unwinding.
 //   * EVERYTHING JOURNALS. Every accepted trigger writes ONE FLIGHT record
-//     {kind:"event.trigger", payload:{event,key,payload,subscribers},
+//     {kind:"event.trigger", payload:{event,key,...,subscribers},
 //     cause_id: caller's cause} BEFORE dispatch; the consumed record id is
 //     handed to every listener (EventView::record_id) as THE cause id for
 //     their effects — causality chains reconstruct mechanically. If the
@@ -25,10 +25,21 @@
 //     ("bus.journal_refused"): unjournaled effects do not exist. Refused
 //     triggers journal their refusal ("bus.cascade_depth",
 //     "bus.payload_invalid") so the journal explains itself.
-//   * TYPED PAYLOADS. Events registered in the reflect vocabulary validate
-//     strictly against their payload schema (missing/unknown/mistyped fields
-//     refuse with "bus.payload_invalid"); unregistered event names pass
-//     through — custom key-scoped vocabularies are legal (D-BUILD-046).
+//   * TYPED PAYLOADS ARE CANONICAL BYTES (M2 0B, D5). Events registered in
+//     the reflect vocabulary validate strictly against their payload schema
+//     (missing/unknown/mistyped fields refuse "bus.payload_invalid"), then
+//     encode through core/reflect/payload_codec.h AT TRIGGER: the record
+//     gains payload_codec ("midday.payload/1") + payload_schema (the
+//     compat hash, hex64) + payload_bytes (lowercase hex — AUTHORITATIVE)
+//     + payload (the decoded normalized projection, produced by DECODING
+//     the bytes, never built independently). Values the fixed layout cannot
+//     canonically spell — NaN/±inf floats, invalid UTF-8 — refuse
+//     "bus.payload_invalid" WITH the exact field path. Dispatch delivers
+//     the PROJECTION (schema field order, -0 normalized to +0), so
+//     listeners, journal, and replay all read one truth. Unregistered event
+//     names pass through verbatim, envelope-free — custom key-scoped
+//     vocabularies are legal (D-BUILD-046); their canonical encoding is a
+//     later node's decision (payload_codec.h refuses schema-less encodes).
 //   * STRUCTURE DEFERS DURING DISPATCH. subscribe/unsubscribe mid-dispatch
 //     queue and apply at the END of the outermost dispatch, in queue order
 //     (the ECS structural-queue rule): new subscribers never see the cascade
@@ -40,12 +51,16 @@
 // Cost model (dispatch is a hot path):
 //   * Per trigger: one channel-map lookup (integer-mix hash of the key, map
 //     never iterated) + one registry event lookup (precomputed Name id) +
-//     the journal record (one deep copy of the caller's payload into the
-//     record — the ONLY per-trigger allocation class, inherent in
-//     "everything journals") + the dispatch loop.
+//     the journal record + the dispatch loop. Payload allocation class:
+//     vocabulary events pay one canonical encode + decode (bytes + the
+//     projection both land in the record — inherent in "the bytes are the
+//     journal truth", D5); unregistered events pay one deep copy of the
+//     caller's payload into the record, as before.
 //   * Per delivery: plain listener = one virtual call; entity listener =
 //     one generation check (two vector loads) + two paged sparse-set finds
-//     inside the thunk (activity + row; core/bus/entity_listener.h).
+//     inside the thunk (activity + row; core/bus/entity_listener.h); the
+//     entity-bound LISTENER flavor (M2 0B) = the generation check + one
+//     virtual call (no pool row exists to find).
 //   * The dispatch machinery itself — lookup, iteration, depth tracking,
 //     dead-marking — allocates nothing and hashes nothing further. No
 //     exceptions anywhere.
@@ -141,7 +156,10 @@ private:
 struct EventView {
     base::Name event;          // the triggered event name
     EventKey key;              // the channel it arrived on
-    const base::Json& payload; // the trigger's payload (never mutated mid-dispatch)
+    const base::Json& payload; // vocabulary events: the decoded normalized
+                               // projection of the canonical bytes (D5);
+                               // unregistered events: the trigger's payload
+                               // verbatim. Never mutated mid-dispatch.
     std::uint64_t record_id;   // journal id of the trigger — THE cause id for effects
     std::uint64_t tick;        // sim tick of the trigger
 };
@@ -222,6 +240,19 @@ public:
     std::optional<base::Error>
     unsubscribe_entity(EventKey key, ecs::EntityRef entity, EntityThunk thunk);
 
+    // Entity-bound LISTENER flavor (M2 0B, #12b): a stable listener pointer
+    // whose delivery is generation-gated on `entity` — pending skips and
+    // stays, stale auto-unsubscribes WITHOUT touching the listener, exactly
+    // the thunk flavor's lifecycle. For runtime seats with no C++ component
+    // type (TS-authored components live as QuickJS objects, never in a typed
+    // ecs::Pool<T>): a pool thunk cannot exist for them and a plain
+    // subscription would dangle after reap. Identity is (key, entity,
+    // listener); the listener must outlive the subscription or the entity.
+    std::optional<base::Error>
+    subscribe_entity_listener(EventKey key, ecs::EntityRef entity, EventListener& listener);
+    std::optional<base::Error>
+    unsubscribe_entity_listener(EventKey key, ecs::EntityRef entity, EventListener& listener);
+
     // ---- the nervous impulse ----------------------------------------------
     // Journal first, then dispatch immediately (registration order, same
     // call stack). `cause_id` is the journal id of the causing record
@@ -242,10 +273,13 @@ public:
     [[nodiscard]] const BusStats& stats() const { return stats_; }
 
 private:
+    // Three flavors, discriminated by which fields engage: plain (listener,
+    // null entity), entity thunk (thunk + entity), entity listener
+    // (listener + entity — M2 0B). A null entity ONLY ever means plain.
     struct Subscription {
-        EventListener* listener = nullptr; // plain flavor (thunk null)
-        EntityThunk thunk = nullptr;       // entity flavor (listener null)
-        ecs::EntityRef entity;             // entity flavor target
+        EventListener* listener = nullptr; // plain + entity-listener flavors
+        EntityThunk thunk = nullptr;       // entity-thunk flavor (listener null)
+        ecs::EntityRef entity;             // entity flavors' generation gate
         bool dead = false;                 // deferred removal mark
 
         [[nodiscard]] bool same_identity(const Subscription& other) const {

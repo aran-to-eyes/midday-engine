@@ -40,6 +40,7 @@
 #include "core/base/name.h"
 #include "core/bus/bus.h"
 #include "core/ecs/entity.h"
+#include "core/loader/component_materialize.h"
 #include "core/loader/component_vocab.h"
 #include "core/loader/entity_format.h"
 #include "core/loader/gaps.h"
@@ -464,13 +465,26 @@ std::optional<base::Error> register_scene_events(const SceneFile& scene,
 // Statechart::instantiate, spawns children under their state entities, and
 // flushes the structural queue. Every spawn journals a FLIGHT "scene.spawn"
 // record citing `cause_id`. `physics` may be null iff !scene_uses_physics.
+// `options` (M2 0B, component_materialize.h) wires script components and
+// the deferred-entry split; the default is byte-identically the pre-0B
+// behavior for component-free scenes, and a REFUSAL — never a silent omit —
+// for scenes that author components nothing can materialize.
 SpawnResult spawn_scene(const SceneFile& scene,
                         ecs::World& world,
                         hierarchy::Hierarchy& hierarchy,
                         statechart::Statechart& chart,
                         physics::PhysicsServer* physics,
                         journal::Writer& journal,
-                        std::uint64_t cause_id);
+                        std::uint64_t cause_id,
+                        const SpawnOptions& options = {});
+
+// The deferred half of SpawnOptions::defer_initial_entry: starts every
+// spawned machine's initial enter chains, spawn order (= scene document
+// order). Call AFTER seating state scripts and component hooks — that
+// pre-entry seating window is the split's entire purpose (D2). First
+// failure wins.
+std::optional<base::Error> start_initial_entries(statechart::Statechart& chart,
+                                                 const SpawnResult& spawned);
 
 // The spec 4.2 symbolic key vocabulary, resolved at spawn: `self`/`root` ->
 // the host's private channel, `global`/<group> -> the shared named channel.

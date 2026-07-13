@@ -68,10 +68,23 @@ struct WorldHostFixture {
     ComponentHost component_host;
 
     explicit WorldHostFixture(const std::string& name)
-        : spawner(
-              fix.world, fix.hierarchy, fix.chart(), fix.bus(), fix.writer(), fix.registry, events),
+        : spawner(fix.world,
+                  fix.hierarchy,
+                  fix.chart(),
+                  fix.bus(),
+                  fix.writer(),
+                  fix.registry,
+                  events,
+                  loader::ComponentVocab{},
+                  &fix.loop()),
           prefab_path(write_goblin_prefab(fix.dir)), toolchain(fresh_toolchain(name)),
           host(runtime, spawner), component_host(runtime, fix.world, fix.bus(), &fix.hierarchy) {
+        // BOTH halves of the two-phase structural extension (M2 0B D4):
+        // despawns exit-chain + queue at prepare, spawns realize post-flush.
+        fix.loop().set_structural_preparer(
+            [this](std::uint64_t tick, std::uint64_t phase_record_id) {
+                return spawner.prepare(tick, phase_record_id);
+            });
         fix.loop().set_structural_realizer(
             [this](std::uint64_t phase_record_id) { return spawner.realize(phase_record_id); });
     }
@@ -144,4 +157,54 @@ TEST_CASE("script.world_host: world.despawn(ref) queues; the handle stays alive 
 
     REQUIRE_FALSE(wf.fix.loop().tick().has_value());
     CHECK_FALSE(wf.fix.world.alive(spawned.ref));
+}
+
+TEST_CASE("script.world_host: world.despawn(ref, {after}) marshals the 3-arg linger — the "
+          "corpse lives to the exact ceiling tick; bad values refuse loudly") {
+    WorldHostFixture wf("despawn_linger");
+
+    loader::PrefabSpawnResult spawned = wf.spawner.spawn_prefab(wf.prefab_path, math::Vec3{});
+    REQUIRE_FALSE(spawned.error.has_value());
+    REQUIRE_FALSE(wf.fix.loop().tick().has_value()); // tick 1: alive
+    REQUIRE(wf.fix.world.alive(spawned.ref));
+
+    // The spec-literal ceiling from TS: 0.1 * 60 is exactly 6.0 in IEEE
+    // doubles -> due tick 1 + 6 = 7 (prefab_spawn.h D4 contract).
+    testkit::TempDir scripts_dir{"world-host-despawn-linger"};
+    const std::string path = scripts_dir.file("linger.ts");
+    const std::string source = "import {world, EntityRef} from 'midday/component'\n"
+                               "const ref = new EntityRef(" +
+                               std::to_string(spawned.ref.index) + ", " +
+                               std::to_string(spawned.ref.generation) +
+                               ")\n"
+                               "world.despawn(ref, {after: 0.1})\n"
+                               "if (!ref.alive) throw new Error('a linger never applies "
+                               "synchronously')\n";
+    REQUIRE_FALSE(base::write_file(path, source, "test.io").has_value());
+    Toolchain::LoadOutcome loaded = wf.toolchain.load_module(wf.runtime, path);
+    REQUIRE_MESSAGE(!loaded.error.has_value(),
+                    (loaded.error ? loaded.error->message : std::string()));
+
+    REQUIRE_FALSE(wf.fix.loop().run_to_tick(6).has_value());
+    CHECK(wf.fix.world.alive(spawned.ref));          // fully alive through tick 6
+    REQUIRE_FALSE(wf.fix.loop().tick().has_value()); // tick 7: the due tick
+    CHECK_FALSE(wf.fix.world.alive(spawned.ref));
+
+    // A bad `after` surfaces the spawner's structured refusal as a script
+    // error (fail-closed at the request site, never a silent drop). A fresh
+    // entity keeps the ref valid so the VALUE is what refuses.
+    loader::PrefabSpawnResult second = wf.spawner.spawn_prefab(wf.prefab_path, math::Vec3{});
+    REQUIRE_FALSE(second.error.has_value());
+    REQUIRE_FALSE(wf.fix.loop().tick().has_value());
+    REQUIRE(wf.fix.world.alive(second.ref));
+    const std::string bad_path = scripts_dir.file("bad_linger.ts");
+    const std::string bad_source = "import {world, EntityRef} from 'midday/component'\n"
+                                   "world.despawn(new EntityRef(" +
+                                   std::to_string(second.ref.index) + ", " +
+                                   std::to_string(second.ref.generation) + "), {after: -1})\n";
+    REQUIRE_FALSE(base::write_file(bad_path, bad_source, "test.io").has_value());
+    Toolchain::LoadOutcome refused = wf.toolchain.load_module(wf.runtime, bad_path);
+    REQUIRE(refused.error.has_value());
+    CHECK(testkit::unwrap(refused.error).message.find("despawn.bad_after") != std::string::npos);
+    CHECK(wf.spawner.pending_despawn_count() == 0); // nothing was recorded
 }

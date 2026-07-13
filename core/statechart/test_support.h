@@ -141,6 +141,25 @@ struct RecordingHooks final : StateHooks {
     }
 };
 
+// Recording component hooks (the enter-2/exit-3 seats): appends
+// "c-enter:<state>/<component>" / "c-exit:<state>/<component>" to a shared
+// log — the component-side sibling of RecordingHooks.
+struct RecordingComponentHooks final : ComponentHooks {
+    std::vector<std::string>* log = nullptr;
+
+    explicit RecordingComponentHooks(std::vector<std::string>& log_in) : log(&log_in) {}
+
+    void on_enter(Statechart&, const ComponentHookContext& context) override {
+        log->push_back("c-enter:" + std::string(context.state.view()) + "/" +
+                       std::string(context.component.view()));
+    }
+
+    void on_exit(Statechart&, const ComponentHookContext& context) override {
+        log->push_back("c-exit:" + std::string(context.state.view()) + "/" +
+                       std::string(context.component.view()));
+    }
+};
+
 // Desc builders — tests read as machine literals.
 inline TransitionDesc pair(std::string_view event,
                            std::string_view target,

@@ -62,7 +62,9 @@ MaterializeResult materialize_prefab(ecs::World& world,
                                      const std::vector<MachineFile>& machines,
                                      ecs::EntityRef root,
                                      std::string_view prefab_path,
-                                     std::uint64_t cause_id) {
+                                     std::uint64_t cause_id,
+                                     const SpawnOptions& options,
+                                     const std::vector<GenericComponentEntry>* base_components) {
     MaterializeResult out;
 
     base::Json root_payload = base::Json::object();
@@ -75,15 +77,61 @@ MaterializeResult materialize_prefab(ecs::World& world,
         return out;
     }
 
+    // Council fix G6: the root arrives PRE-PLACED — both callers (scene
+    // prefab instance and runtime world.spawn) ran hierarchy.set_local with
+    // the `at:` placement before this call. When the prefab hosts script
+    // components that seeded native Transform mirrors here, unless the
+    // `base:` list authors its own generic Transform (that entry re-places
+    // and mirrors on its turn below — the authored value lands last).
+    {
+        static const std::vector<GenericComponentEntry> kNoBase;
+        const std::vector<GenericComponentEntry>& base =
+            base_components != nullptr ? *base_components : kNoBase;
+        bool state_components = false;
+        for (const MachineFile& machine : machines)
+            state_components = state_components || machine_has_state_components(machine.desc);
+        if (const math::Transform* placed = hierarchy.local_of(root); placed != nullptr) {
+            if (auto error = mirror_seeded_transform(
+                    options, root, *placed, base, state_components, record_id)) {
+                out.error = std::move(error);
+                return out;
+            }
+        }
+    }
+
+    // Base components FIRST (M2 0B, header contract): authored order is
+    // subscription order, and base seats must precede the machine roots'.
+    if (base_components != nullptr) {
+        if (auto error = materialize_entity_base(hierarchy,
+                                                 options,
+                                                 root,
+                                                 *base_components,
+                                                 record_id,
+                                                 /*allow_native_transform=*/true)) {
+            out.error = std::move(error);
+            return out;
+        }
+    }
+
+    statechart::InstantiateOptions chart_options;
+    chart_options.defer_initial_entry = options.defer_initial_entry;
     for (const MachineFile& machine : machines) {
         const statechart::InstantiateResult instantiated =
-            chart.instantiate(machine.desc, root, record_id);
+            chart.instantiate(machine.desc, root, record_id, chart_options);
         if (instantiated.error.has_value()) {
             out.error = instantiated.error;
             return out;
         }
         out.machines.push_back(MaterializedMachine{
             .id = instantiated.machine, .machine = machine.desc.name, .scripts = machine.scripts});
+
+        // The machine's state components (attach order = document order),
+        // seated BEFORE anything can enter (the deferred split, D2).
+        if (auto error = materialize_machine_components(
+                chart, options, instantiated.machine, machine.desc, root, record_id)) {
+            out.error = std::move(error);
+            return out;
+        }
 
         for (const StateChildren& children : machine.children) {
             const ecs::EntityRef state_entity =
@@ -111,6 +159,17 @@ MaterializeResult materialize_prefab(ecs::World& world,
                                "prefab.spawn",
                                record_id,
                                std::move(child_payload));
+                // The child's own components (entity-lifetime; `at:` owns
+                // placement, so a generic Transform here refuses).
+                if (auto error = materialize_entity_base(hierarchy,
+                                                         options,
+                                                         child_ref,
+                                                         child.components,
+                                                         record_id,
+                                                         /*allow_native_transform=*/false)) {
+                    out.error = std::move(error);
+                    return out;
+                }
                 out.children.push_back(PrefabChild{child_ref, child.at});
             }
         }

@@ -53,15 +53,16 @@ std::string bindings_equivalence_view(std::string_view bindings_bytes) {
     if (parsed.error || !parsed.value.is_object() || parsed.value.find("batch_envelope") == nullptr)
         return std::string(bindings_bytes);
     // batch_envelope: both generators emit the member (bootstrap froze on
-    // the version-0 placeholder), so it nulls. state_script_hooks: the
-    // frozen bootstrap never emits it at all, so it DROPS — the view keeps
-    // the two artifacts member-for-member comparable without teaching the
-    // temporary bootstrap every new selfhost-only seam (D-BUILD-084).
+    // the version-0 placeholder), so it nulls. state_script_hooks and
+    // event_payload_types (M2 #12b): the frozen bootstrap never emits them
+    // at all, so they DROP — the view keeps the two artifacts
+    // member-for-member comparable without teaching the temporary bootstrap
+    // every new selfhost-only seam (D-BUILD-084).
     Json view = Json::object();
     for (const auto& [key, value] : parsed.value.items()) {
         if (key == "batch_envelope")
             view.set(key, Json());
-        else if (key != "state_script_hooks")
+        else if (key != "state_script_hooks" && key != "event_payload_types")
             view.set(key, value);
     }
     return view.dump() + "\n";

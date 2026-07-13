@@ -247,6 +247,32 @@ struct Toolchain::Impl {
         request.set("options", std::move(options.value));
         request.set("emit", emit);
         request.set("extract", extract);
+        if (extract) {
+            // The event-payload bijection rides the request (M2 0B, #12b):
+            // extraction consults the GENERATED event_payload_types map in
+            // bindings_spec.json — driver.js never reconstructs event names
+            // or compat hashes from naming conventions. A missing/malformed
+            // spec is an infrastructure failure (same class as a missing
+            // vendored compiler), never a script problem.
+            base::ReadFileResult spec = base::read_file(config.bindings_spec, kIoCode);
+            if (spec.error) {
+                outcome.failure = std::move(spec.error);
+                return outcome;
+            }
+            base::Json::ParseResult parsed = base::Json::parse(spec.bytes, config.bindings_spec);
+            const base::Json* map = parsed.error || !parsed.value.is_object()
+                                        ? nullptr
+                                        : parsed.value.find("event_payload_types");
+            if (map == nullptr || !map->is_object()) {
+                outcome.failure = base::Error{
+                    .code = "script.toolchain",
+                    .message = config.bindings_spec +
+                               ": no event_payload_types map (regenerate the api/ artifacts "
+                               "via `midday api codegen`)"};
+                return outcome;
+            }
+            request.set("event_payload_types", *map);
+        }
         EvalResult result = runtime->call_json("__midday_ts_run", request);
         entry_root.clear();
         if (result.error) {

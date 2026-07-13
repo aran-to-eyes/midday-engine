@@ -20,6 +20,7 @@ add_library(midday_loader STATIC
     entity_load.cpp
     override.cpp
     component_vocab.cpp
+    component_materialize.cpp
     generic_components.cpp
     asset_ref_parse.cpp
     machine_emit.cpp
@@ -51,10 +52,13 @@ add_library(midday_loader_tests OBJECT
     entity_load_test.cpp
     override_test.cpp
     component_vocab_test.cpp
+    component_materialize_test.cpp
     generic_components_test.cpp
     machine_emit_test.cpp
     spawn_test.cpp
     prefab_spawn_test.cpp
+    despawn_linger_test.cpp
+    despawn_journal_test.cpp
     uid_test.cpp
     uid_registry_test.cpp
     asset_ref_test.cpp
